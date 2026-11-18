@@ -294,7 +294,7 @@ SQLite `app.db` v1, table `app(_id, package_name, name)`; `database.DeviceHelper
 | in-player advertising | `get_next_adv` / `add_adv_history` / `adv_image?type=3` in the backend; `#ad-countdown` overlay with the APK's `ad_video_time_remains` text, skip-on-any-key when `allowSkip`, `AddAdvHistory` type 1 (live watch time) and type 2 (`check` 1 finished / 2 skipped), advert image in the watermark slot |
 | boot advert video (`BootVideoActivity`) | `get_adv_video_em` in the backend (`/api/call?ep=adv_video_em`); new full-screen `#scr-bootvideo` with `#boot-video`. `boot()` mirrors `PingServerActivity`: `settings.advVideoEM` → boot video → welcome/home. `sanitiseAdvPaths()` applies the APK's filter (non-empty, `/` not last) and encodes only the final segment; `iptvUrl()` is `IptvSP.getUrl()`; completion **or** error → welcome; **every key except ↑/↓** (the port's volume keys = VOLUME_UP/DOWN) leaves the screen; `S.bootLeft` is `isLeave` |
 | welcome background advertising | `advVideoEM` → `GetAdvImage?type=1` slideshow in `#wel-ppt` (5 s a page, fade, no rotation for one page); otherwise the `GetAdvVideoEM` clips loop in `#wel-video` (first clip, then a random one, error → slideshow). `#wel-sign` shows a random `type=12` image, `#bg-music` loops `res/adv/music/<BGMusicBean.url>` from `apk/getClientBackgroundMusics`. All of it is torn down by `onEnter()` when the welcome screen is left |
-| browser autoplay policy | `install/launch.ps1` adds `--autoplay-policy=no-user-gesture-required` to the Edge app window, and `tryPlay()` retries muted if a gesture is still required, so a boot advert is never silently dropped |
+| browser autoplay policy | `install/launch.ps1` adds `--autoplay-policy=no-user-gesture-required` to the Edge app window, `tryPlay()` retries muted if a gesture is still required, and a stall guard (3.5 s + 2.5 s muted retry) treats a clip that never starts as the APK's `onError` case and moves on to the welcome screen, so a boot advert can never be silently dropped nor strand the guest on a black screen |
 
 ## 7.3 Verification of the v2 build
 
@@ -322,5 +322,5 @@ SQLite `app.db` v1, table `app(_id, package_name, name)`; `database.DeviceHelper
   with `#boot-video` sourced from `GetAdvVideoEM[0]`, an **↑ (volume) key does not leave it**, Enter continues to
   `scr-welcome`, and there the `type=1` slideshow, the `type=12` signature and the background music are all live while
   `#wel-video` stays hidden (`advVideoEM` on) — **0 errors**.
-* Distribution zip: `dist/PARDIK-SMART-IPTV-Win10-x64-2.7.2.06.zip`, 515 entries, 12,369,529 bytes,
-  sha256 `aa866e80825ed6efde9b12eccd2ae20e2f429a25f35697840e51ac44ed9f0280`.
+* Distribution zip: `dist/PARDIK-SMART-IPTV-Win10-x64-2.7.2.06.zip`, 515 entries, 12,369,741 bytes,
+  sha256 `32aac67513db6fdfe11cf01a32b26fc8e0a631513acc4f62a0e0126482c0ab1e`.

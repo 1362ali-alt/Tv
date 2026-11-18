@@ -42,6 +42,7 @@ const S = {
   bootLeft: false,         // v2: BootVideoActivity.isLeave - one transition only
   bootHls: null,
   bootHintTimer: null,
+  bootStallTimer: null,
   welVideos: [],           // v2: welcome background clips (same endpoint)
   isPlayVideo: false,      // v2: WelcomeStyleZeroActivity.isPlayVideo
   pptTimer: null,          // v2: welcome GetAdvImage?type=1 slideshow
@@ -372,9 +373,26 @@ function playBootVideo(i) {
       S.bootHls.on(Hls.Events.ERROR, (e, d) => { if (d.fatal) leaveBootVideo(); });
     } else { video.src = src; tryPlay(video); }
   } catch (e) { leaveBootVideo(); }
+  /* Safety net for the browser: a clip that never starts (autoplay refused even
+     muted) is the APK's onError case, so retry muted and then move on instead of
+     leaving the guest on a black screen. */
+  clearTimeout(S.bootStallTimer);
+  S.bootStallTimer = setTimeout(() => {
+    if (S.bootLeft || S.cur !== "scr-bootvideo") return;
+    const v = $("#boot-video");
+    if (!v || v.currentTime > 0 || !v.paused) return;
+    try { v.muted = true; tryPlay(v); } catch (e) {}
+    clearTimeout(S.bootStallTimer);
+    S.bootStallTimer = setTimeout(() => {
+      if (S.bootLeft || S.cur !== "scr-bootvideo") return;
+      const v2 = $("#boot-video");
+      if (!v2 || (v2.paused && !(v2.currentTime > 0))) leaveBootVideo();
+    }, 2500);
+  }, 3500);
 }
 function stopBootVideo() {
   clearTimeout(S.bootHintTimer);
+  clearTimeout(S.bootStallTimer);
   if (S.bootHls) { try { S.bootHls.destroy(); } catch (e) {} S.bootHls = null; }
   const video = $("#boot-video");
   if (!video) return;
