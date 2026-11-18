@@ -33,6 +33,39 @@ What the residential flavour means in practice:
   `/iptv2/websocket/{unit}`
 - Change IP/port/**unit number** in **System settings** (password-gated).
 
+## Will live TV actually play? (post-install checklist)
+Five conditions decide it, and **Settings → password `111999` → "Live playback
+check"** tests all of them in one go (backend: `GET /api/diagnose`, which returns
+`server`, `network`, `ffmpeg`, `protocol`, `source_kinds`, `checks[]`,
+`sample_channels[]` and `issues[]` for support):
+
+1. **a physical adapter is up** — `Get-NetAdapter -Physical` on Windows,
+   `/sys/class/net` on Linux; the MAC of the *wired* adapter is the client id.
+2. **a real LAN address** — `169.254.x.x` is reported as a problem (no DHCP
+   answer on the complex LAN).
+3. **the head-end answers** — a 4-second TCP connect to `ip:port` (the APK's
+   factory default `10.21.0.10:8030` is *not* necessarily your head-end). When the
+   socket is closed the remaining checks are skipped, so the diagnosis takes 4 s
+   instead of three 8-second HTTP timeouts.
+4. **the server hands out channels** — `GetSettings`, then `GetLivePackage` /
+   `GetLiveTV?mac=`; the dialog lists the count plus six sample channels with the
+   kind of source each one uses.
+5. **FFmpeg is present** whenever any channel source is `rtsp://`, `udp://` or
+   `.ts`, or the head-end's `Settings.protocol` is `rtsp`/`udp` — those are
+   remuxed locally (`tools\ffmpeg.exe`; the installer fetches it from PyPI, and an
+   offline install needs the file dropped in by hand).
+
+Two code-level guarantees behind that list:
+
+* `Settings.protocol` from the head-end wins, but when the chosen source needs the
+  FFmpeg remux and `ffmpeg.exe` is missing, `pickSource()` falls back to the same
+  channel's `hlsUrl`/`httpUrl`, and if there is none the player prints the reason
+  (`ffmpeg_missing_long`) instead of a black screen with a generic decode error.
+* Start-up never hangs on an unreachable head-end: the connect screen tries
+  `GetSettings` six times (8 s timeout + 1.5 s apart) and then brings the UI up
+  **offline**, so the wrong IP/port or the m3u source can be fixed from Settings
+  without the server being reachable.
+
 ## Channel source: the platform server, or an m3u playlist
 1. **Platform server (default)** — bouquets from `GetLivePackage`, channels from
    `GetLiveTV?packageId=`. The bundled mock publishes a domestic bouquet

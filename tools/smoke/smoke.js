@@ -52,7 +52,17 @@ async function main() {
     if (on) {
       doc.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
       await sleep(900);
-      console.log("[v2] after skip: overlay hidden =", adBox().hidden, "| src =", (doc.querySelector("#video").currentSrc || doc.querySelector("#video").src || "").slice(0, 90));
+      const vid = doc.querySelector("#video");
+      const afterSrc = (vid.currentSrc || vid.src || "");
+      const errTxt = ((doc.querySelector("#player-error-txt") || {}).textContent || "");
+      const errShown = !doc.querySelector("#player-error").hidden;
+      console.log("[v2] after skip: overlay hidden =", adBox().hidden, "| src =", afterSrc.slice(0, 90),
+        errShown ? "| banner = " + errTxt.slice(0, 60) : "");
+      /* the channel must either be loading, or the player must say exactly why it
+         is not - a missing ffmpeg.exe is the only accepted reason here */
+      if (!/stream\/play|proxy\?url=/.test(afterSrc) && !(errShown && /FFmpeg/.test(errTxt))) {
+        errors.push("after the advert the channel neither loaded nor reported a reason");
+      }
     }
     return on;
   };
@@ -234,6 +244,42 @@ async function main() {
   if (custom) { custom.click(); await sleep(700); }
   doc.querySelector("#app-back").click(); await sleep(600);
   console.log("[v2] after app-back active =", active());
+
+  /* --- live-playback pre-flight check (Settings -> "بررسی پخش زنده") --- */
+  await goHome();
+  if (homeBtn(/تنظیمات/i)) { homeBtn(/تنظیمات/i).click(); await sleep(600); }
+  console.log("[diag] ffmpeg row =", (doc.querySelector("#set-ffmpeg-value") || {}).textContent,
+    "| check row =", (doc.querySelector("#set-diag-value") || {}).textContent);
+  const diagRow = doc.querySelector("#set-diag");
+  if (diagRow) {
+    diagRow.click(); await sleep(4000);
+    const rows = Array.from(doc.querySelectorAll("#diag-list .diag-item"));
+    console.log("[diag] dialog hidden =", doc.querySelector("#input-modal").hidden,
+      "| rows =", rows.length, "|", rows.map(n => n.textContent.trim().slice(0, 46)).join(" || "));
+    if (doc.querySelector("#input-modal").hidden) errors.push("the live-playback check did not open its dialog");
+    if (!rows.length) errors.push("the live-playback check reported nothing");
+    if (!rows.some(n => /GetLiveTV|فهرست کانال/.test(n.textContent))) {
+      errors.push("the check does not cover the channel list (GetLiveTV)");
+    }
+    if (!rows.some(n => /هداند|head-end/i.test(n.textContent))) {
+      errors.push("the check does not cover head-end reachability");
+    }
+    const okBtn = doc.querySelector("#input-ok");
+    console.log("[diag] verdict button =", okBtn.textContent, "| data-i18n =", okBtn.getAttribute("data-i18n"));
+    okBtn.click(); await sleep(500);
+    console.log("[diag] after close: dialog hidden =", doc.querySelector("#input-modal").hidden,
+      "| list removed =", !doc.querySelector("#diag-list"),
+      "| ok label =", doc.querySelector("#input-ok").textContent,
+      "| row value =", (doc.querySelector("#set-diag-value") || {}).textContent);
+    if (!doc.querySelector("#input-modal").hidden) errors.push("the check dialog did not close");
+    if (doc.querySelector("#diag-list")) errors.push("the check dialog left its result list behind");
+  } else errors.push("no live-playback check row in settings");
+  // the m3u dialog reuses the same modal - make sure it still works afterwards
+  doc.querySelector("#set-m3u").click(); await sleep(500);
+  const mfield = doc.querySelector("#input-field");
+  console.log("[diag] m3u dialog input type =", mfield.type, "| hint hidden =", doc.querySelector("#input-hint").hidden);
+  if (mfield.type !== "text") errors.push("the m3u dialog inherited the hidden input from the check dialog");
+  doc.querySelector("#input-cancel").click(); await sleep(400);
 
   /* --- external playlist source (residential head-end): Settings -> m3u --- */
   await goHome();

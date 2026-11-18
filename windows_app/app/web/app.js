@@ -704,6 +704,8 @@ async function openM3u() {
     return;
   }
   const mo = $("#input-modal"); mo.hidden = false;
+  const df = $("#diag-list"); if (df) df.remove();
+  const dfield = $("#input-field"); if (dfield) dfield.type = "text";
   $("#input-title").textContent = t("m3u_source", "فهرست کانال‌ها (m3u)");
   const h = $("#input-hint");
   if (h) { h.hidden = false; h.textContent = t("m3u_source_hint", "نشانی یا مسیر فایل فهرست پخش") + " — http(s)://… .m3u یا C:\\lists\\channels.m3u8"; }
@@ -722,6 +724,72 @@ async function openM3u() {
     else toast("● " + (S.m3u.count || 0) + " " + t("channel_count", "کانال"));
   };
   $("#input-cancel").onclick = () => { mo.hidden = true; focusFirst("scr-settings"); };
+}
+/* One-click pre-flight check for the thing that actually matters after the
+   installer finishes: can this box reach the head-end, does the head-end hand out
+   channels, and can this machine play the URLs it returns? Everything comes from
+   the backend's /api/diagnose, which re-tests the socket, GetSettings, the live
+   tables, ffmpeg and the m3u source. */
+async function runDiagnose() {
+  const dv = $("#set-diag-value");
+  if (dv) { dv.textContent = "…"; dv.classList.remove("ok", "bad"); }
+  let d = null;
+  try { d = await (await fetch("/api/diagnose")).json(); }
+  catch (e) { if (dv) { dv.textContent = t("status_disconnected", "خطا"); dv.classList.add("bad"); } return; }
+  S.config = await cfg(); fillSettings();
+  const m = $("#input-modal"); m.hidden = false;
+  $("#input-title").textContent = t("diag_live_check", "بررسی پخش زنده");
+  const h = $("#input-hint");
+  if (h) {
+    h.hidden = false;
+    h.textContent = (d.server && d.server.address ? d.server.address : "") +
+      " · RTSP " + (d.server && d.server.rtsp_port) +
+      " · MAC " + ((d.network && d.network.mac) || "-") +
+      (d.unit ? " · " + t("unit_number", "شمارهٔ واحد") + " " + d.unit : "") +
+      (d.protocol ? " · protocol=" + d.protocol : "");
+  }
+  const f = $("#input-field");
+  f.type = "hidden"; f.value = "";
+  f.insertAdjacentHTML("afterend", '<div class="diag-list" id="diag-list"></div>');
+  const list = $("#diag-list");
+  (d.checks || []).forEach(c => {
+    const row = el("div", "diag-item" + (c.ok ? "" : " bad"));
+    row.appendChild(el("span", "mark", c.ok ? "✓" : "✗"));
+    const body = el("div");
+    body.appendChild(el("div", "nm", t("diag_" + c.name, c.name) + (c.detail ? " — " + c.detail : "")));
+    if (!c.ok && c.hint) body.appendChild(el("div", "hn", c.hint));
+    row.appendChild(body);
+    list.appendChild(row);
+  });
+  if (d.sample_channels && d.sample_channels.length) {
+    const row = el("div", "diag-item");
+    row.appendChild(el("span", "mark", "≡"));
+    const body = el("div");
+    body.appendChild(el("div", "nm", t("diag_sample", "نمونهٔ کانال‌ها")));
+    d.sample_channels.forEach(c => body.appendChild(el("div", "dt",
+      (c.number != null ? c.number + ". " : "") + (c.name || "") + "  [" + c.kind + "] " + (c.src || ""))));
+    row.appendChild(body); list.appendChild(row);
+  }
+  /* the dialog's buttons carry data-i18n, so drop it while they read as a
+     verdict and let applyI18n() put it back in closeDiag() */
+  const okBtn = $("#input-ok"), cancel = $("#input-cancel");
+  okBtn.removeAttribute("data-i18n"); cancel.removeAttribute("data-i18n");
+  okBtn.textContent = d.ok ? t("diag_ok", "همه‌چیز آماده است") : t("diag_has_issues", "نیاز به رسیدگی");
+  okBtn.onclick = () => closeDiag();
+  cancel.textContent = t("cancel", "انصراف");
+  cancel.onclick = () => closeDiag();
+  if (dv) { dv.textContent = d.ok ? "✓ " + t("ready", "آماده") : "✗ " + (d.issues || []).length; dv.classList.toggle("ok", !!d.ok); dv.classList.toggle("bad", !d.ok); }
+  setTimeout(() => { try { okBtn.focus(); } catch (e) {} }, 40);
+}
+function closeDiag() {
+  const m = $("#input-modal");
+  const list = $("#diag-list"); if (list) list.remove();
+  const f = $("#input-field"); if (f) { f.type = "text"; f.value = ""; }
+  const h = $("#input-hint"); if (h) { h.hidden = true; h.textContent = ""; }
+  const okBtn = $("#input-ok"), cancel = $("#input-cancel");
+  okBtn.setAttribute("data-i18n", "submit"); cancel.setAttribute("data-i18n", "cancel");
+  okBtn.textContent = t("submit", "تأیید"); cancel.textContent = t("cancel", "انصراف");
+  m.hidden = true; focusFirst("scr-settings");
 }
 function m3uChannel(c) {
   /* classify() already defaults to "http", so every playlist entry ends up with a
@@ -786,11 +854,25 @@ async function loadChannels(packageId) {
 function pickSource(item) {
   const proto = ((S.settings && S.settings.protocol) || "rtsp").toLowerCase();
   const rtsp = item.rtspUrl || "", hls = item.hlsUrl || "", http = item.httpUrl || "", url = item.url || "";
+  /* RTSP / UDP / MPEG-TS only play through the local FFmpeg remux
+     (/stream/play). If ffmpeg.exe is missing - a machine installed without
+     internet, or a blocked PyPI download - preferring the head-end's HLS or
+     plain-HTTP URL keeps the channel playing instead of showing a black screen. */
+  const ff = !!(S.config && S.config.ffmpeg);
+  const needsFf = (u) => { const k = classify(u); return k === "rtsp" || k === "udp" || k === "mpegts"; };
   if (proto === "hls" && hls) return [hls, "hls"];
   if (proto === "http" && http) return [http, "http"];
   if (proto === "udp" && url.indexOf("udp") === 0) return [url, "udp"];
-  if (proto === "rtsp" && rtsp) return [rtsp, "rtsp"];
+  if (proto === "rtsp" && rtsp) {
+    if (ff || (!hls && !http)) return [rtsp, "rtsp"];
+    return [hls || http, hls ? "hls" : "http"];
+  }
   const cands = [[hls, "hls"], [http, "http"], [url, "auto"], [rtsp, "rtsp"]];
+  for (const c of cands) {
+    if (!c[0]) continue;
+    if (!ff && needsFf(c[0])) continue;
+    return c;
+  }
   for (const c of cands) if (c[0]) return c;
   return [url || rtsp || http || hls, proto];
 }
@@ -819,6 +901,10 @@ function playItem(item, opts) {
   $("#player-loading").style.display = "flex";
   startLoadAnim();
   $("#player-error").hidden = true;
+  const pet0 = $("#player-error-txt");
+  if (pet0 && !pet0.hasAttribute("data-i18n")) {
+    pet0.setAttribute("data-i18n", "decoding_video_failed"); applyI18n();
+  }
   const [src, proto] = pickSource(item);
   /* v2.7.2.06: use_vlc_paly_live_prg hands live playback to the external
      player (LivePlayerActivity.playWithVlc). If VLC is missing the Android app
@@ -830,30 +916,18 @@ function playItem(item, opts) {
     }).catch(() => {});
   }
   const kind = classify(src);
+  /* RTSP / UDP / MPEG-TS are remuxed to HLS by the local FFmpeg, so without
+     ffmpeg.exe (a machine installed with no internet, or a blocked PyPI
+     download) those channels cannot play at all. The source is still classified
+     below - the overlays, the EPG poll and the pre-roll advert are all armed
+     first, and only then does the player say why there is no picture instead of
+     leaving a black screen with a generic "decoding failed" banner. */
+  const noFfmpeg = !S.config.ffmpeg && (kind === "rtsp" || kind === "udp" || kind === "mpegts");
   let playUrl;
   if (kind === "hls") playUrl = "/proxy?url=" + enc(src);
   else if (kind === "rtsp" || kind === "udp" || kind === "mpegts") playUrl = "/stream/play?src=" + enc(src) + "&proto=" + enc(proto);
   else playUrl = "/stream/play?src=" + enc(src);
   const useHls = (kind === "hls" || kind === "rtsp" || kind === "udp" || kind === "mpegts") && window.Hls && Hls.isSupported();
-  try {
-    if (useHls) {
-      S.hls = new Hls({ manifestLoadingTimeOut: 12000, manifestLoadingMaxRetry: 2, levelLoadingTimeOut: 12000, fragLoadingTimeOut: 20000 });
-      S.hls.loadSource(playUrl);
-      S.hls.attachMedia(video);
-      S.hls.on(Hls.Events.MANIFEST_PARSED, () => { video.play().catch(() => {}); });
-      S.hls.on(Hls.Events.ERROR, (e, d) => {
-        if (d.fatal) { $("#player-loading").style.display = "none"; stopLoadAnim(); $("#player-error").hidden = false; }
-      });
-    } else {
-      video.src = playUrl;
-      video.play().catch(() => {});
-    }
-  } catch (e) {
-    $("#player-error").hidden = false;
-  }
-  video.onplaying = () => { $("#player-loading").style.display = "none"; stopLoadAnim(); $("#player-error").hidden = true; applySpeed(); };
-  video.onwaiting = () => { $("#player-loading").style.display = "flex"; startLoadAnim(); };
-  video.onerror = () => { $("#player-loading").style.display = "none"; stopLoadAnim(); $("#player-error").hidden = false; };
   // overlays
   const badge = $("#ch-badge");
   if (S.playerCtx.kind === "live") {
@@ -878,6 +952,36 @@ function playItem(item, opts) {
   // v2: report how long the previous live programme was watched (AddAdvHistory type=1)
   if (S.playerCtx.kind === "live") reportLiveWatch(item);
   applyVolume();
+  if (noFfmpeg) {
+    $("#player-loading").style.display = "none"; stopLoadAnim();
+    $("#player-error").hidden = false;
+    const pet = $("#player-error-txt");
+    if (pet) {
+      pet.removeAttribute("data-i18n");   // a port message, not an APK string
+      pet.textContent = t("ffmpeg_missing_long",
+        "این کانال برای پخش به FFmpeg نیاز دارد (tools\\ffmpeg.exe) و FFmpeg پیدا نشد.");
+    }
+    return;
+  }
+  try {
+    if (useHls) {
+      S.hls = new Hls({ manifestLoadingTimeOut: 12000, manifestLoadingMaxRetry: 2, levelLoadingTimeOut: 12000, fragLoadingTimeOut: 20000 });
+      S.hls.loadSource(playUrl);
+      S.hls.attachMedia(video);
+      S.hls.on(Hls.Events.MANIFEST_PARSED, () => { video.play().catch(() => {}); });
+      S.hls.on(Hls.Events.ERROR, (e, d) => {
+        if (d.fatal) { $("#player-loading").style.display = "none"; stopLoadAnim(); $("#player-error").hidden = false; }
+      });
+    } else {
+      video.src = playUrl;
+      video.play().catch(() => {});
+    }
+  } catch (e) {
+    $("#player-error").hidden = false;
+  }
+  video.onplaying = () => { $("#player-loading").style.display = "none"; stopLoadAnim(); $("#player-error").hidden = true; applySpeed(); };
+  video.onwaiting = () => { $("#player-loading").style.display = "flex"; startLoadAnim(); };
+  video.onerror = () => { $("#player-loading").style.display = "none"; stopLoadAnim(); $("#player-error").hidden = false; };
 }
 function stopVideo(hideScreen) {
   const video = $("#video");
@@ -1718,6 +1822,17 @@ function fillSettings() {
     lv.textContent = kind + (net.iface ? " · " + net.iface : "") + (net.ip ? " · " + net.ip : "");
     lv.classList.toggle("ok", !!net.wired);
   }
+  /* live-playback readiness: the remuxer and the one-click pre-flight check */
+  const fv = $("#set-ffmpeg-value");
+  if (fv) {
+    const fl = $("#set-ffmpeg-label");
+    if (fl) fl.textContent = t("ffmpeg_status", "FFmpeg (کانال‌های RTSP/TS)");
+    fv.textContent = S.config.ffmpeg ? "✓ " + t("ready", "آماده") : "✗ " + t("ffmpeg_missing", "یافت نشد");
+    fv.classList.toggle("ok", !!S.config.ffmpeg);
+    fv.classList.toggle("bad", !S.config.ffmpeg);
+  }
+  const dl = $("#set-diag-label");
+  if (dl) dl.textContent = t("diag_live_check", "بررسی پخش زنده");
   const mrow = $("#set-m3u");
   if (mrow) {
     mrow.querySelector(".set-label").textContent = t("m3u_source", "فهرست کانال‌ها (m3u)");
@@ -1759,6 +1874,7 @@ function fillSettings() {
   };
   $("#set-apps").onclick = () => openApps();
   if ($("#set-m3u")) $("#set-m3u").onclick = () => openM3u();
+  if ($("#set-diag")) $("#set-diag").onclick = () => runDiagnose();
   $("#set-reconnect").onclick = async () => {
     try { await fetch("/api/network"); } catch (e) {}
     location.reload();
@@ -1772,6 +1888,8 @@ function fillSettings() {
 function editSetting(key) {
   const m = $("#input-modal"); m.hidden = false;
   const h = $("#input-hint"); if (h) { h.hidden = true; h.textContent = ""; }
+  const dl = $("#diag-list"); if (dl) dl.remove();
+  const df = $("#input-field"); if (df) df.type = "text";
   const titles = { server_ip: t("settings_network_ip"), server_port: t("settings_network_port"),
                    iptv_room_number: S.mode === "hotel" ? t("room_number") : t("unit_number", "شمارهٔ واحد") };
   $("#input-title").textContent = titles[key] || key;

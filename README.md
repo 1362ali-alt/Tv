@@ -49,8 +49,12 @@ bash tools/build_package.sh                    # dist zip (MODE=hotel for the ho
 ```
 
 ## Backend API added by the port
-`/api/config` now also returns `mode`, `branding`, `network{mac,iface,kind,ip,wired}`
-and `m3u{enabled,url,path,error,updated,count,groups}`; `GET /api/network`
+`/api/config` now also returns `mode`, `branding`, `network{mac,iface,kind,ip,wired}`,
+`ffmpeg` and `m3u{enabled,url,path,error,updated,count,groups}`; `GET /api/network`
 re-detects the physical adapter and persists it, `GET|POST /api/m3u` manage the
-playlist source. Everything else (`/api/call?ep=…`, `/api/img`, `/stream/play`,
-`/proxy`) mirrors the APK's `HttpUtil`/`IptvSP` contract.
+playlist source, and **`GET /api/diagnose`** is a post-install pre-flight check
+(adapter → LAN address → 4 s TCP connect to the head-end → `GetSettings` →
+`GetLivePackage`/`GetLiveTV` → FFmpeg → m3u), returning `checks[]`, `issues[]`,
+`source_kinds` and six `sample_channels` — the UI shows it under
+Settings → «بررسی پخش زنده». Everything else (`/api/call?ep=…`, `/api/img`,
+`/stream/play`, `/proxy`) mirrors the APK's `HttpUtil`/`IptvSP` contract.

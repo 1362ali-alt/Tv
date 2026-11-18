@@ -311,7 +311,10 @@
       <div class="set-row focusable" data-edit="server_port"><span class="set-label" data-i18n="settings_network_port">پورت سرور</span><span class="set-value" id="set-port"></span></div>
       <div class="set-row" ><span class="set-label" data-i18n="settings_local_network">شبکه محلی</span><span class="set-value" id="set-localip"></span></div>
       <div class="set-row" ><span class="set-label" data-i18n="settings_local_mac">مک محلی</span><span class="set-value" id="set-mac"></span></div>
+      <!-- pre-flight check: head-end reachable? channels handed out? ffmpeg present? -->
+      <div class="set-row focusable" data-act="diag" id="set-diag"><span class="set-label" id="set-diag-label">بررسی پخش زنده</span><span class="set-value" id="set-diag-value"></span></div>
       <div class="set-section" data-i18n="settings_play">تنظیمات پخش</div>
+      <div class="set-row" id="set-ffmpeg"><span class="set-label" id="set-ffmpeg-label">FFmpeg (کانال‌های RTSP/TS)</span><span class="set-value" id="set-ffmpeg-value"></span></div>
       <!-- residential head-ends usually publish a playlist instead of GetLiveTV -->
       <div class="set-row focusable" data-act="m3u" id="set-m3u"><span class="set-label">فهرست کانال‌ها (m3u)</span><span class="set-value" id="set-m3u-value"></span></div>
       <!-- v2.7.2.06: setting_vlc_decode_layout / vlc_decode_value -->

@@ -159,6 +159,66 @@ window.I18N = {
   "fa": "اتصال دستگاه",
   "zh": "设备连接"
  },
+ "diag_ffmpeg": {
+  "en": "FFmpeg (remuxer)",
+  "fa": "FFmpeg (بازچینندهٔ جریان)",
+  "zh": "FFmpeg (remuxer)",
+ },
+ "diag_get_live_tv": {
+  "en": "Channel list (GetLiveTV)",
+  "fa": "فهرست کانال‌ها (GetLiveTV)",
+  "zh": "Channel list (GetLiveTV)",
+ },
+ "diag_get_settings": {
+  "en": "Head-end settings (GetSettings)",
+  "fa": "تنظیمات هداند (GetSettings)",
+  "zh": "Head-end settings (GetSettings)",
+ },
+ "diag_has_issues": {
+  "en": "Needs attention",
+  "fa": "نیاز به رسیدگی",
+  "zh": "Needs attention",
+ },
+ "diag_ip_address": {
+  "en": "IP address from the LAN",
+  "fa": "آی‌پی گرفته‌شده از LAN",
+  "zh": "IP address from the LAN",
+ },
+ "diag_live_check": {
+  "en": "Live playback check",
+  "fa": "بررسی پخش زنده",
+  "zh": "Live playback check",
+ },
+ "diag_m3u": {
+  "en": "Playlist source (m3u)",
+  "fa": "فهرست پخش (m3u)",
+  "zh": "Playlist source (m3u)",
+ },
+ "diag_network_adapter": {
+  "en": "Network adapter",
+  "fa": "کارت شبکه",
+  "zh": "Network adapter",
+ },
+ "diag_ok": {
+  "en": "Everything is ready",
+  "fa": "همه‌چیز آماده است",
+  "zh": "Everything is ready",
+ },
+ "diag_sample": {
+  "en": "Sample channels",
+  "fa": "نمونهٔ کانال‌ها",
+  "zh": "Sample channels",
+ },
+ "diag_tcp_head_end": {
+  "en": "Connection to the head-end",
+  "fa": "اتصال به هداند",
+  "zh": "Connection to the head-end",
+ },
+ "diag_wired_link": {
+  "en": "Wired link (Ethernet)",
+  "fa": "اتصال کابلی (Ethernet)",
+  "zh": "Wired link (Ethernet)",
+ },
  "dialog_cancel": {
   "en": "Cancel",
   "fa": "لغو",
@@ -203,6 +263,21 @@ window.I18N = {
   "en": "Handed over to the external player",
   "fa": "پخش به پخش‌کنندهٔ خارجی سپرده شد",
   "zh": "已切换到外部播放器"
+ },
+ "ffmpeg_missing": {
+  "en": "not found",
+  "fa": "یافت نشد",
+  "zh": "not found",
+ },
+ "ffmpeg_missing_long": {
+  "en": "This channel needs FFmpeg to play (tools\\ffmpeg.exe) and FFmpeg was not found.",
+  "fa": "این کانال برای پخش به FFmpeg نیاز دارد (tools\\ffmpeg.exe) و FFmpeg پیدا نشد.",
+  "zh": "This channel needs FFmpeg to play (tools\\ffmpeg.exe) and FFmpeg was not found.",
+ },
+ "ffmpeg_status": {
+  "en": "FFmpeg (RTSP/TS channels)",
+  "fa": "FFmpeg (کانال‌های RTSP/TS)",
+  "zh": "FFmpeg (RTSP/TS channels)",
  },
  "goods_service": {
   "en": "Goods Service",
@@ -793,6 +868,11 @@ window.I18N = {
   "en": "Actors:",
   "fa": "قهرمان داستان:",
   "zh": "主演:"
+ },
+ "ready": {
+  "en": "ready",
+  "fa": "آماده",
+  "zh": "ready",
  },
  "real_time": {
   "en": "实时",

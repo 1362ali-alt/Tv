@@ -320,6 +320,14 @@ body{
 .home-subtitle{color:var(--gold-2); font-size:1.05em; margin-top:.2em; letter-spacing:.4px;}
 .set-value.ok{color:#8fe3a5;}
 .input-hint{color:var(--muted); font-size:.92em; line-height:1.7; margin:.2em 0 .8em;}
+.set-value.bad{color:#ff9c9c;}
+.diag-list{max-height:52vh; overflow:auto; margin:.4em 0 .9em;}
+.diag-item{display:flex; gap:.6em; align-items:flex-start; padding:.45em 0; border-bottom:1px solid var(--line); font-size:.95em;}
+.diag-item .mark{flex:0 0 auto;}
+.diag-item .nm{color:var(--txt);}
+.diag-item .dt{color:var(--muted); font-size:.9em;}
+.diag-item .hn{color:#ffcf8f; font-size:.9em; line-height:1.6;}
+.diag-item.bad .nm{color:#ff9c9c;}
 
 /* Duplicate of the `[hidden]` rule at the TOP of this file — keep both.
    Browsers resolve it by specificity/!important whatever its position, but

@@ -489,12 +489,58 @@ A residential head-end frequently publishes its line-up as a plain playlist inst
 ## 8.6 Distribution
 
 * `tools/build_package.sh` → **`dist/PARDIK-IPTV-RonikaPalace-Kohak-Win10-x64-2.7.2.06.zip`**,
-  516 entries, 12,380,944 bytes, sha256 `c70b0d6149a08adeda6509850843036976efb8b10d5db4919fe1b7b81a36d928`
+  516 entries, 12,388,090 bytes, sha256 `37f3b8c58c17b1a680a0d8d9aa6f68a337eaeec0bd15c09811203f86a36acb72`
   (adds `mode.txt`, drops `_userdata/` and `__pycache__`). `MODE=hotel bash tools/build_package.sh`
-  rebuilds `dist/PARDIK-SMART-IPTV-Win10-x64-2.7.2.06.zip` (516 entries, 12,380,938 bytes,
-  sha256 `d94f5bb642dc58c0276bf9705e844c70b6207eea230922285b2d30ed91d5b08b`) — the same code with
+  rebuilds `dist/PARDIK-SMART-IPTV-Win10-x64-2.7.2.06.zip` (516 entries, 12,388,084 bytes,
+  sha256 `ff504a4eb1f007de3a8e1c1f408b960efcc975bde7ff2d18e3be56a5bfeb5e38`) — the same code with
   `mode.txt` = `hotel`. The backend banner now names the flavour it started
   (`PARDIK IPTV - Ronika Palace Kahak backend on … (mode=residential)`).
 * Docs rewritten for the residential product: `windows_app/README-FA.md` (Persian, primary — install,
   defaults, wired-Ethernet identity, both channel sources, controls, troubleshooting),
   `windows_app/README-EN.md`, root `README.md`.
+
+## 8.7 Will live TV play after the install? (`GET /api/diagnose`)
+
+The residential question is not "does the UI work" but "will the cabled channels
+actually play on this PC", and five separate things can break that. `diagnose()`
+in `iptv_backend.py` tests them in order and stops early, so the answer costs 4 s
+when the head-end is simply not there instead of three 8 s HTTP timeouts:
+
+| # | Check | How | Failure hint |
+|---|---|---|---|
+| 1 | `network_adapter` | `detect_interfaces()` → MAC/iface/kind | check the cable |
+| — | `wired_link` | `NETWORK["wired"]` | prefer Ethernet, then "reconnect to server" |
+| — | `ip_address` | `169.254.*` means no DHCP answer on the complex LAN | talk to the building admin / set a static IP |
+| 2 | `tcp_head_end` | `socket.create_connection((server_ip, server_port), 4)` | enter the real head-end IP/port — the APK's factory `10.21.0.10:8030` may not be this network's |
+| 3 | `get_settings` | `GetSettings` → reports `protocol`, `showPackage`, `epg`, `activeAdv` | the `iptv2` service is not answering |
+| 4 | `get_live_tv` | `GetLivePackage` + `GetLiveTV?mac=` → channel/bouquet counts and six `sample_channels` with their source kind | the head-end returned nothing for this MAC/unit → register the device in Pardik's panel, or use an m3u playlist |
+| 5 | `ffmpeg` | `find_ffmpeg()` (`IPTV_FFMPEG`, `<install>\tools\ffmpeg{,.exe}`, `PATH`) — only checked when a source is rtsp/udp/mpegts or `Settings.protocol` is rtsp/udp | drop `ffmpeg.exe` into `tools\` by hand on an offline LAN |
+| — | `m3u` | `m3u_public(load_m3u())` when the playlist source is enabled | the playlist could not be read (error text included) |
+
+`chk()` only reports a hint when the check fails, so a green line never reads like
+a problem; `ok`/`issues[]` summarise the run. The UI reaches it from
+Settings → **«بررسی پخش زنده»** (`runDiagnose()` in `app.js` renders the checks in
+the existing input dialog plus a `≡` sample-channel block, and the row itself
+keeps the verdict: `✓ آماده` / `✗ n`). `closeDiag()` restores the dialog for the
+m3u and `data-edit` rows, which reuse the same modal.
+
+Two playback guarantees that came out of writing this check:
+
+* `pickSource()` honours the head-end's `Settings.protocol`, but when the chosen
+  source needs the local FFmpeg remux and `ffmpeg.exe` is missing it now falls
+  back to the same channel's `hlsUrl`/`httpUrl` before giving up; if there is no
+  playable source left, `playItem()` arms the badge, EPG poll and pre-roll advert
+  as usual and *then* prints `ffmpeg_missing_long` («این کانال برای پخش به FFmpeg
+  نیاز دارد…») instead of a black screen with the APK's generic
+  `decoding_video_failed`.
+* `boot()` cannot hang forever on an unreachable head-end: six `GetSettings`
+  attempts (8 s timeout + 1.5 s apart), then the UI comes up **offline**
+  (`S.settings = {}`) so the wrong IP/port or an m3u source can be fixed from
+  Settings without the server being reachable.
+
+`tools/smoke/smoke.js` runs the check through the UI in both flavours (dialog
+opens, ≥1 row, the `GetLiveTV` and head-end rows are present, the verdict button
+loses its `data-i18n`, closing removes `#diag-list` and restores the button, the
+m3u dialog still gets a visible text input afterwards) and asserts that after a
+skipped pre-roll advert the channel either has a `stream/play`/`proxy` source or
+the player states the FFmpeg reason — **0 errors** for `residential` and `hotel`.

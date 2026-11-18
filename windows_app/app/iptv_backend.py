@@ -43,6 +43,10 @@ APP_VERSION_CODE = 20702006
 #   IPTV_MODE=residential (default) hides them; IPTV_MODE=hotel keeps the full
 #   platform behaviour for parity testing against the APK.
 # --------------------------------------------------------------------------- #
+# IptvConfig.DEFAULT_SERVER_IP in the APK - a factory/demo address, not necessarily
+# the Ronika Palace head-end, so the diagnostics say so explicitly.
+DEFAULT_SERVER_HINT = "10.21.0.10:8030"
+
 APP_MODE = (os.environ.get("IPTV_MODE") or "residential").strip().lower()
 if APP_MODE not in ("residential", "hotel"):
     APP_MODE = "residential"
@@ -677,6 +681,124 @@ def refresh_m3u(d):
     if not d.get("text") and text:
         d["text"] = text[:200000]        # keep a copy so the list survives offline
     return save_m3u(d)
+
+
+def diagnose():
+    """Pre-flight check for live playback: is the head-end reachable, does it hand
+    out channels, and can this machine actually play the URLs it returns?
+    Everything the UI shows in Settings -> "Connection check" comes from here."""
+    out = {
+        "mode": APP_MODE,
+        "server": {"ip": SETTINGS.get("server_ip"), "port": SETTINGS.get("server_port"),
+                   "rtsp_port": SETTINGS.get("rtsp_port"), "address": SETTINGS.address()},
+        "unit": SETTINGS.get("iptv_room_number") or "",
+        "network": {k: NETWORK.get(k) for k in ("mac", "iface", "kind", "ip", "wired")},
+        "ffmpeg": bool(find_ffmpeg()),
+        "ffmpeg_path": find_ffmpeg() or "",
+        "vlc": bool(find_vlc()),
+        "checks": [], "issues": [], "ok": True,
+    }
+
+    def chk(name, ok, detail="", hint=""):
+        """hint is only reported when the check fails, so a green line never
+        carries advice that reads like a problem."""
+        ok = bool(ok)
+        out["checks"].append({"name": name, "ok": ok,
+                              "detail": detail if ok else (detail or hint),
+                              "hint": "" if ok else hint})
+        if not ok:
+            out["ok"] = False
+            out["issues"].append(hint or detail or name)
+
+    # 1. the cable itself: a MAC and an IP that is not APIPA/self-assigned
+    wired = bool(NETWORK.get("wired"))
+    ip = NETWORK.get("ip") or ""
+    chk("network_adapter", bool(NETWORK.get("mac")),
+        "%s (%s) mac=%s ip=%s" % (NETWORK.get("iface") or "-", NETWORK.get("kind") or "-",
+                                  NETWORK.get("mac") or "-", ip or "-"),
+        "هیچ کارت شبکهٔ فیزیکی‌ای پیدا نشد؛ کابل شبکه را بررسی کنید.")
+    if not wired:
+        out["checks"].append({"name": "wired_link", "ok": False,
+                              "detail": "کارت شبکهٔ انتخاب‌شده %s است" % (NETWORK.get("kind") or "-"),
+                              "hint": "ترجیح با کابل شبکه است: کابل را وصل کنید و «اتصال مجدد به سرور» را بزنید."})
+    if ip.startswith("169.254."):
+        out["checks"].append({"name": "ip_address", "ok": False, "detail": ip,
+                              "hint": "آی‌پی 169.254.x.x یعنی DHCP روی LAN پاسخ نداده؛ با مدیر مجتمع "
+                                      "بررسی کنید یا آی‌پی ثابت ست کنید."})
+
+    # 2. TCP to the head-end (fast, tells a wrong IP from a blocked port)
+    tcp_ms, tcp_err = None, ""
+    try:
+        t0 = time.time()
+        sk = socket.create_connection((str(SETTINGS.get("server_ip")), int(SETTINGS.get("server_port"))), timeout=4)
+        sk.close()
+        tcp_ms = int((time.time() - t0) * 1000)
+    except Exception as e:
+        tcp_err = str(e)
+    chk("tcp_head_end", tcp_ms is not None,
+        ("%d ms" % tcp_ms) if tcp_ms is not None else tcp_err,
+        "به %s نمی‌رسیم؛ آی‌پی/پورت هداند را در تنظیمات وارد کنید (پیش‌فرض کارخانه %s "
+        "است و ممکن است مال شبکهٔ شما نباشد)." % (SETTINGS.address(), DEFAULT_SERVER_HINT))
+
+    # 3. the platform contract: GetSettings then the live tables
+    st = None
+    if tcp_ms is not None:
+        try:
+            st = API.get_settings()
+            chk("get_settings", isinstance(st, dict),
+                "protocol=%s showPackage=%s epg=%s activeAdv=%s" % (
+                    (st or {}).get("protocol"), (st or {}).get("showPackage"),
+                    (st or {}).get("epg"), (st or {}).get("activeAdv")),
+                "GetSettings پاسخ نداد؛ سرویس iptv2 روی سرور در حال اجرا نیست؟")
+        except Exception as e:
+            chk("get_settings", False, str(e),
+                "GetSettings خطا داد: %s" % e)
+
+    chans, pkgs = [], []
+    if isinstance(st, dict):
+        try:
+            pkgs = API.get_live_packages() or []
+        except Exception:
+            pkgs = []
+        try:
+            chans = API.get_live_tv(-1) or []
+        except Exception as e:
+            chk("get_live_tv", False, str(e), "GetLiveTV خطا داد: %s" % e)
+        if chans:
+            chk("get_live_tv", True, "%d کانال در %d بسته" % (len(chans), len(pkgs) or 0), "")
+        else:
+            chk("get_live_tv", False, "هیچ کانالی برنگشت",
+                "سرور کانالی برای این MAC/واحد برنگرداند؛ ثبت دستگاه در پنل پردیک را بررسی کنید.")
+
+    # 4. can those URLs be played here?
+    kinds = {}
+    for c in chans:
+        for f in ("hlsUrl", "httpUrl", "rtspUrl", "url"):
+            v = c.get(f) or ""
+            if v:
+                kinds[classify(v)] = kinds.get(classify(v), 0) + 1
+                break
+    out["source_kinds"] = kinds
+    proto = ((st or {}).get("protocol") or "").lower()
+    out["protocol"] = proto or "(بدون protocol؛ انتخاب خودکار hls→http→url→rtsp)"
+    needs_ff = bool(kinds.get("rtsp") or kinds.get("udp") or kinds.get("mpegts")) or proto in ("rtsp", "udp")
+    if chans or needs_ff:
+        chk("ffmpeg", out["ffmpeg"], out["ffmpeg_path"] or "پیدا نشد",
+            "کانال‌های RTSP/TS/UDP بدون FFmpeg پخش نمی‌شوند: فایل ffmpeg.exe را در "
+            "tools\\ کنار برنامه بگذارید (نصب‌کننده خودش از PyPI می‌گیرد).")
+
+    # 5. the alternative source: an m3u playlist from the head-end
+    m = m3u_public(load_m3u())
+    out["m3u"] = {k: v for k, v in m.items() if k != "channels"}
+    if m.get("enabled"):
+        chk("m3u", bool(m.get("count")), "%d کانال از %s" % (m.get("count") or 0, m.get("url") or m.get("path") or "-"),
+            "فهرست m3u خوانده نشد: %s" % (m.get("error") or "خطای نامشخص"))
+    out["sample_channels"] = [
+        {"number": c.get("number"), "name": c.get("name") or c.get("name_1") or "",
+         "src": (c.get("hlsUrl") or c.get("httpUrl") or c.get("url") or c.get("rtspUrl") or "")[:120],
+         "kind": classify(c.get("hlsUrl") or c.get("httpUrl") or c.get("url") or c.get("rtspUrl") or "")}
+        for c in chans[:6]]
+    return out
 
 
 def m3u_public(d):
@@ -1338,6 +1460,8 @@ class Handler(BaseHTTPRequestHandler):
                 SETTINGS.d["device_iface_kind"] = NETWORK.get("kind", "unknown")
                 SETTINGS.save()
                 return self._json({"ok": True, "network": NETWORK})
+            if path == "/api/diagnose":
+                return self._json(diagnose())
             if path == "/api/m3u":
                 d = load_m3u()
                 if q.get("refresh", ["0"])[0] in ("1", "true"):
