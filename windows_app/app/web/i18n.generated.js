@@ -15,6 +15,11 @@ window.I18N = {
   "fa": "空气质量",
   "zh": "空气质量"
  },
+ "all_time": {
+  "en": "All times",
+  "fa": "همهٔ زمان‌ها",
+  "zh": "全部时间"
+ },
  "app_launch_failed": {
   "en": "Could not start the app",
   "fa": "اجرای برنامه ناموفق بود",
@@ -39,6 +44,11 @@ window.I18N = {
   "en": "Start with Windows",
   "fa": "شروع خودکار با ویندوز",
   "zh": "开机自启"
+ },
+ "brvah_loading": {
+  "en": "Loading...",
+  "fa": "در حال بارگیری...",
+  "zh": "正在加载中..."
  },
  "butler_service": {
   "en": "Butler Service",
@@ -65,10 +75,20 @@ window.I18N = {
   "fa": "انتخاب کشور",
   "zh": "选择国家"
  },
+ "check_out_tip": {
+  "en": "Dear Sir/Madam, are you sure to check out?",
+  "fa": "مهمان گرامی، آیا از تسویه حساب مطمئن هستید؟",
+  "zh": "Dear Sir/Madam, are you sure to check out?"
+ },
  "check_service": {
   "en": "Check Service",
   "fa": "خدمات بررسی",
   "zh": "Check Service"
+ },
+ "checking_out": {
+  "en": "Checking out",
+  "fa": "تسویه حساب",
+  "zh": "Checking out"
  },
  "checking_out_failed": {
   "en": "Check out failed",
@@ -134,6 +154,16 @@ window.I18N = {
   "en": "Dinner",
   "fa": "شام",
   "zh": "Dinner"
+ },
+ "director": {
+  "en": "Director:",
+  "fa": "کارگردان:",
+  "zh": "Director:"
+ },
+ "duration": {
+  "en": "Duration:",
+  "fa": "مدت:",
+  "zh": "Duration:"
  },
  "enable_vlc": {
   "en": "Enable",
@@ -250,6 +280,11 @@ window.I18N = {
   "fa": "Illegal IP address, please try again！",
   "zh": "Illegal IP address, please try again！"
  },
+ "input_error": {
+  "en": "Please fill in both name and path",
+  "fa": "نام و مسیر را وارد کنید",
+  "zh": "请输入名称和路径"
+ },
  "item_no_more": {
   "en": "No More Item",
   "fa": "مورد دیگری وجود ندارد",
@@ -294,6 +329,11 @@ window.I18N = {
   "en": "Loading failed, please try again later！",
   "fa": "Loading failed, please try again later！",
   "zh": "Loading failed, please try again later！"
+ },
+ "loading_failed": {
+  "en": "Loading failed",
+  "fa": "بارگیری ناموفق بود",
+  "zh": "加载失败"
  },
  "main_house_keeping": {
   "en": "Housekeeping",
@@ -490,6 +530,11 @@ window.I18N = {
   "fa": "No data!",
   "zh": "No data!"
  },
+ "no_epg_data": {
+  "en": "No programme information available",
+  "fa": "اطلاعات برنامه‌ها در دسترس نیست",
+  "zh": "暂无节目信息"
+ },
  "no_orders": {
   "en": "No orders yet",
   "fa": "سفارشی ثبت نشده است",
@@ -570,10 +615,25 @@ window.I18N = {
   "fa": "وضعیت",
   "zh": "状态"
  },
+ "order_status_accepted": {
+  "en": "Accepted",
+  "fa": "تأیید شده",
+  "zh": "已受理"
+ },
  "order_status_canceled": {
   "en": "Cancelled",
   "fa": "لغو شده",
   "zh": "已取消"
+ },
+ "order_status_finished": {
+  "en": "Completed",
+  "fa": "تکمیل شده",
+  "zh": "已完成"
+ },
+ "order_status_new": {
+  "en": "Submitted",
+  "fa": "ثبت شده",
+  "zh": "已提交"
  },
  "order_status_wait_cancel": {
   "en": "Waiting to be canceled",
@@ -915,6 +975,11 @@ window.I18N = {
   "fa": "موارد مهم",
   "zh": "Tips"
  },
+ "sign_text_hotel": {
+  "en": "Hotel",
+  "fa": "هتل",
+  "zh": "Hotel"
+ },
  "special_catering": {
   "en": "Special Catering",
   "fa": "کاترینگ خاص",
@@ -945,6 +1010,11 @@ window.I18N = {
   "fa": "با موفقیت ارسال شد.",
   "zh": "Submit success"
  },
+ "synopsis": {
+  "en": "Synopsis:",
+  "fa": "خلاصه داستان:",
+  "zh": "Synopsis:"
+ },
  "taxi_service_setting_time": {
   "en": "Set the time for using the car",
   "fa": "زمان استفاده از خودرو را تعیین کنید",
@@ -959,6 +1029,11 @@ window.I18N = {
   "en": "Timeshift",
   "fa": "پخش با تأخیر",
   "zh": "时移"
+ },
+ "timeshift_unavailable": {
+  "en": "Timeshift is not available for this programme",
+  "fa": "پخش با تأخیر برای این برنامه در دسترس نیست",
+  "zh": "该节目暂不支持时移"
  },
  "tips_of_catering_country": {
   "en": "Press the \"OK\" button to enter and view dining information",
@@ -1069,6 +1144,11 @@ window.I18N = {
   "en": "Year",
   "fa": "سال",
   "zh": "Year"
+ },
+ "wake_up_notice": {
+  "en": "Please note that the time limit is 24 hours.",
+  "fa": "لطفاً توجه داشته باشید که محدودهٔ زمانی ۲۴ ساعت است.",
+  "zh": "Please note that the time limit is 24 hours."
  },
  "wake_up_service": {
   "en": "Wake_up Service",

@@ -250,7 +250,7 @@ SQLite `app.db` v1, table `app(_id, package_name, name)`; `database.DeviceHelper
 | `BootReceiver` | `/api/autostart` writes the `HKCU\…\Run` entry on Windows (stored-only elsewhere), toggled from Settings |
 | `loading1..8` | the APK's own buffering animation in `#load-anim` |
 | `name_1`/`content_1` bilingual beans | `nm()` helper used by every list/detail renderer |
-| strings 343→419 (fa 231→305) | `web/i18n.generated.js` regenerated → **229 keys** × zh/en/fa (41 added, 8 updated); the new fa placeholders were replaced with real Persian |
+| strings 343→419 (fa 231→305) | `web/i18n.generated.js` regenerated → **245 keys** × zh/en/fa (41 keys from the new APK strings, 8 updated, plus 16 UI-only keys such as the order-status labels); the new fa placeholders that ship as English in the APK were replaced with real Persian. Every `t("…")` / `data-i18n` key used by the UI resolves — verified by script (0 missing). |
 | `GetRecTV` + `GetEpgRecProgram` | playback screen: channels → dates → programmes |
 
 ## 7.3 Verification of the v2 build
@@ -266,5 +266,5 @@ SQLite `app.db` v1, table `app(_id, package_name, name)`; `database.DeviceHelper
   **plus the v2 flows**: VLC/speed/autostart/apps rows, apps screen, EPG panel + detail + timeshift, speed key,
   catering country → types → basket → orders → submit → detail → cancel, service record, one-key checkout confirm,
   taxi time picker, laundry (`GetClothingType`), playback screen — **0 errors**.
-* Distribution zip: `dist/PARDIK-SMART-IPTV-Win10-x64-2.7.2.06.zip`, 515 entries, 12,361,103 bytes,
-  sha256 `8fc4a061e2d0b9d480bef010798d77b782c187177424120dc698afab5c2553d2`.
+* Distribution zip: `dist/PARDIK-SMART-IPTV-Win10-x64-2.7.2.06.zip`, 515 entries, 12,361,691 bytes,
+  sha256 `27c456d73749d6712852f74b1a1a32d36da2e0e749be9da8def21a3dc894fc41`.
