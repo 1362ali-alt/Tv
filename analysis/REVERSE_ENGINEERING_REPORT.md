@@ -266,5 +266,5 @@ SQLite `app.db` v1, table `app(_id, package_name, name)`; `database.DeviceHelper
   **plus the v2 flows**: VLC/speed/autostart/apps rows, apps screen, EPG panel + detail + timeshift, speed key,
   catering country → types → basket → orders → submit → detail → cancel, service record, one-key checkout confirm,
   taxi time picker, laundry (`GetClothingType`), playback screen — **0 errors**.
-* Distribution zip: `dist/PARDIK-SMART-IPTV-Win10-x64-2.7.2.06.zip`, 515 entries, 12,361,081 bytes,
-  sha256 `497866ac4558805a73f561902474a39b31e6e2427274aec7970b9ab5fe64c37e`.
+* Distribution zip: `dist/PARDIK-SMART-IPTV-Win10-x64-2.7.2.06.zip`, 515 entries, 12,361,103 bytes,
+  sha256 `8fc4a061e2d0b9d480bef010798d77b782c187177424120dc698afab5c2553d2`.

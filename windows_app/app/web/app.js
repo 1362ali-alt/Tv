@@ -384,7 +384,7 @@ function renderPackages() {
   S.packages.forEach(p => {
     const d = el("div", "pkg-item focusable");
     d.appendChild(el("span", "num", String(p.number != null ? p.number : p.id)));
-    d.appendChild(el("span", null, p.name || ""));
+    d.appendChild(el("span", null, nm(p) || p.name || ""));
     if (p.price) d.appendChild(el("span", "price", String(p.price)));
     d.onclick = async () => { await loadChannels(p.id); startPlayer("live"); };
     list.appendChild(d);
@@ -470,14 +470,14 @@ function playItem(item) {
   if (S.playerCtx.kind === "live") {
     badge.hidden = false;
     $("#ch-number").textContent = item.number != null ? item.number : "";
-    $("#ch-name").textContent = item.name || "";
+    $("#ch-name").textContent = nm(item) || item.name || "";
     apiPost("/api/settings", { last_channel: item.id });
     clearTimeout(S._badgeT); S._badgeT = setTimeout(() => badge.hidden = true, 4000);
     pollEpg(item);
     setupEpg(item);   // v2.7.2.06: settings.epg -> LivePlayerWithEpgActivity
   } else {
     badge.hidden = true;
-    $("#osd-title").textContent = item.videoName || item.name || "";
+    $("#osd-title").textContent = item.videoName || nm(item) || item.name || "";
   }
   // watermark
   const wm = $("#watermark");
@@ -641,7 +641,7 @@ function toggleSideList() {
     S.playerCtx.list.forEach((c, i) => {
       const d = el("div", "side-item focusable" + (i === S.playerCtx.index ? " sel" : ""));
       d.appendChild(el("span", "n", String(c.number != null ? c.number : i + 1)));
-      d.appendChild(el("span", null, c.name || c.videoName || ""));
+      d.appendChild(el("span", null, nm(c) || c.name || c.videoName || ""));
       d.onclick = () => { S.playerCtx.index = i; playItem(c); sl.hidden = true; };
       sl.appendChild(d);
     });
@@ -732,7 +732,7 @@ async function openRec() {
     if (!Array.isArray(chs) || !chs.length) chs = (await apiGet("live_tv", { packageId: -1 })) || [];
     chs.slice(0, 80).forEach(c => {
       const d = el("div", "rec-item focusable");
-      d.textContent = (c.number != null ? c.number + "  " : "") + (c.name || "");
+      d.textContent = (c.number != null ? c.number + "  " : "") + (nm(c) || c.name || "");
       d.onclick = () => loadRecDates(c);
       c1.appendChild(d);
     });
@@ -784,7 +784,7 @@ async function openScenery() {
       const d = el("div", "poster scen-item focusable");
       const img = el("img"); img.src = imgUrl(it.imagePath || it.icon || it.url || "");
       img.onerror = () => img.src = "/assets/img/mipmap__pic_swimming_pool_demo.jpg";
-      d.appendChild(img); d.appendChild(el("div", "cap", it.name || it.title || ""));
+      d.appendChild(img); d.appendChild(el("div", "cap", nm(it) || it.name || it.title || ""));
       g.appendChild(d);
     });
   } catch (e) {}
@@ -1150,7 +1150,7 @@ async function openHotel() {
       img.onerror = () => img.src = "/assets/img/mipmap__bg_welcome.png";
       d.appendChild(img);
       const cap = el("div", "cap");
-      cap.innerHTML = "<b>" + (it.name || it.title || "") + "</b><br>" + (it.content || it.description || "");
+      cap.innerHTML = "<b>" + (nm(it) || it.name || it.title || "") + "</b><br>" + (nm(it, "content") || it.content || it.description || "");
       d.appendChild(cap);
       wrap.appendChild(d);
     });
@@ -1165,7 +1165,7 @@ async function openMusic() {
     const tr = $("#music-types"); tr.innerHTML = "";
     cats.forEach((c, i) => {
       const d = el("div", "type-item focusable" + (i === 0 ? " active" : ""));
-      d.textContent = c.name || "";
+      d.textContent = nm(c) || c.name || "";
       d.onclick = () => { $$("#music-types .type-item").forEach(x => x.classList.remove("active")); d.classList.add("active"); loadMusic(c.id); };
       tr.appendChild(d);
     });
@@ -1180,8 +1180,8 @@ async function loadMusic(albumId) {
       const d = el("div", "food-item focusable");
       const img = el("img"); img.src = imgUrl(m.imagePath || m.cover || "");
       img.onerror = () => img.src = "/assets/img/mipmap__pic_music_poster.png";
-      d.appendChild(img); d.appendChild(el("div", "cap", m.name || m.videoName || ""));
-      d.onclick = () => { const a = $("#audio"); a.src = "/proxy?url=" + enc(m.url || ""); a.play().catch(() => {}); toast("♪ " + (m.name || "")); };
+      d.appendChild(img); d.appendChild(el("div", "cap", nm(m) || m.name || m.videoName || ""));
+      d.onclick = () => { const a = $("#audio"); a.src = "/proxy?url=" + enc(m.url || ""); a.play().catch(() => {}); toast("♪ " + (nm(m) || m.name || "")); };
       g.appendChild(d);
     });
   } catch (e) {}
