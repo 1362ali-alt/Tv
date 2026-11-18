@@ -18,7 +18,7 @@ SETTINGS = {
     "epg": True, "caterSub": True, "tfPlayerFlag": 0, "appShowInMenu": True,
     "serverIpAddress": "10.21.0.10",
     "protocol": "http", "playerFlag": 0, "layout": 0, "language": 1, "defaultLanguage": 1,
-    "hotelName": "هتل رونیکا پالاس", "hotelNameEn": "Ronika Palace Hotel", "city": "Tehran",
+    "hotelName": "مجتمع مسکونی رونیکا پالاس کوهک", "hotelNameEn": "Ronika Palace Residential Complex, Kahak", "city": "Tehran",
     "phone": "021-0000000", "symbol": "$", "chargeMode": 1, "pmsType": 1, "timeout": 1,
     "pictureInterval": 8, "indexArea": 1, "vodFreeMinutes": 5, "apkUpdateType": 1,
     "showLogo": True, "showWeather": True, "showWaterMark": False, "showWaterMarkVod": False,
@@ -43,14 +43,23 @@ CLIENT = {
     "id": 1, "groupId": 1, "mac": "", "ip": "", "name": "Ronika", "enable": True, "online": True,
     "money": 0, "costSum": 0.0, "unfinishedOrderCount": 0, "versionCode": 20702006,
     "versionText": "2.7.2.06", "welcomeWord": "Ronika", "welcomeWordEn": "Ronika",
-    "wifiName": "RONIKA-GUEST", "wifiPassword": "ronika1234", "wifiStatus": 1,
+    "wifiName": "RONIKA-RESIDENTS", "wifiPassword": "ronika1234", "wifiStatus": 1,
     "wifiTips": "", "wifiTipsEn": "", "checkInTime": NOW(), "checkPerson": "guest",
     "timeZone": "", "timeMills": NOW(), "goods": [], "checked": False, "nrStatus": False,
 }
 
+# Pardik's residential deployment for Ronika Palace (Kahak): the head-end hands
+# out two bouquets - the domestic (IRIB) channels and the satellite channels -
+# instead of the hotel platform's paid packages.
 PACKAGES = [
-    {"id": 1, "number": 1, "name": "Free To Air", "content": "شبکه‌های رایگان", "price": 0, "clientIds": "", "tvIds": "1,2,3", "imagePath": "", "nameVisible": True, "imageVisible": False},
-    {"id": 2, "number": 2, "name": "Premium", "content": "بسته ویژه", "price": 50, "clientIds": "", "tvIds": "4", "imagePath": "", "nameVisible": True, "imageVisible": False},
+    {"id": 1, "number": 1, "name": "شبکه‌های داخلی", "name_1": "Domestic channels",
+     "content": "شبکه‌های سراسری و استانی", "content_1": "National and provincial channels",
+     "price": 0, "clientIds": "", "tvIds": "1,2,3,4,5,6", "imagePath": "",
+     "nameVisible": True, "imageVisible": False},
+    {"id": 2, "number": 2, "name": "شبکه‌های ماهواره‌ای", "name_1": "Satellite channels",
+     "content": "بازپخش شبکه‌های ماهواره‌ای از هداند مجتمع", "content_1": "Satellite channels restreamed by the complex head-end",
+     "price": 0, "clientIds": "", "tvIds": "7,8,9,10", "imagePath": "",
+     "nameVisible": True, "imageVisible": False},
 ]
 
 
@@ -62,18 +71,34 @@ def _tv(i, name, num, proto_urls):
 
 
 def channels():
+    """The residential line-up. Only ids 1-2 carry a pre-roll advert (ADV_LIVE_IDS);
+    the media files stand in for the real transport streams of the head-end."""
     base = "http://127.0.0.1:%d" % PORT
+    vod = base + "/iptv2/vod/"
+    def tv(i, fa, en, num, urls, ts=False):
+        d = _tv(i, fa, num, urls)
+        d["name_1"] = en
+        d["timeshift"] = ts
+        return d
     return [
-        _tv(1, "IRIB TV1 (HTTP-TS)", 1, {"httpUrl": base + "/iptv2/vod/test.ts", "rtspUrl": "rtsp://127.0.0.1:8554/live/1.sdp"}),
-        _tv(2, "Sample MP4 (HTTP)", 2, {"httpUrl": base + "/iptv2/vod/test.mp4", "url": base + "/iptv2/vod/test.mp4"}),
-        _tv(3, "HLS Channel", 3, {"hlsUrl": base + "/iptv2/vod/test.m3u8"}),
-        _tv(4, "Premium Movie", 4, {"httpUrl": base + "/iptv2/vod/test.mp4"}),
+        # --- domestic (IRIB) ---
+        tv(1, "شبکه یک", "IRIB TV1", 1, {"httpUrl": vod + "test.ts", "rtspUrl": "rtsp://127.0.0.1:8554/live/1.sdp"}, ts=True),
+        tv(2, "شبکه دو", "IRIB TV2", 2, {"httpUrl": vod + "test.mp4", "url": vod + "test.mp4"}, ts=True),
+        tv(3, "شبکه سه", "IRIB TV3", 3, {"hlsUrl": vod + "test.m3u8"}, ts=True),
+        tv(4, "شبکه چهار", "IRIB TV4", 4, {"httpUrl": vod + "boot.mp4"}),
+        tv(5, "شبکه خبر", "IRIB News", 5, {"httpUrl": vod + "welcome.mp4"}),
+        tv(6, "شبکه ورزش", "IRIB Sport", 6, {"httpUrl": vod + "test.ts"}, ts=True),
+        # --- satellite, restreamed by the complex head-end ---
+        tv(7, "تی‌آر‌تی ورلد", "TRT World", 7, {"httpUrl": vod + "test.mp4"}),
+        tv(8, "فرانس ۲۴", "France 24", 8, {"hlsUrl": vod + "test.m3u8"}),
+        tv(9, "الجزیره", "Al Jazeera", 9, {"httpUrl": vod + "test.ts"}),
+        tv(10, "دویچه وله", "DW English", 10, {"httpUrl": vod + "welcome.mp4"}),
     ]
 
 
 VOD_TYPES = [
-    {"id": 1, "number": 1, "name": "Movies", "count": 2},
-    {"id": 2, "number": 2, "name": "Series", "count": 1},
+    {"id": 1, "number": 1, "name": "فیلم سینمایی", "name_1": "Movies", "count": 2},
+    {"id": 2, "number": 2, "name": "سریال", "name_1": "Series", "count": 1},
 ]
 VOD = {
     1: [
@@ -85,8 +110,10 @@ VOD = {
     ],
 }
 SCENERY = {"items": [
-    {"id": 1, "name": "Lobby", "imagePath": "res/scenery/lobby.jpg"},
-    {"id": 2, "name": "Pool", "imagePath": "res/scenery/pool.jpg"},
+    {"id": 1, "name": "محوطهٔ مجتمع", "name_1": "Complex grounds", "imagePath": "res/scenery/lobby.jpg"},
+    {"id": 2, "name": "استخر و سونا", "name_1": "Pool and sauna", "imagePath": "res/scenery/pool.jpg"},
+    {"id": 3, "name": "سالن اجتماعات", "name_1": "Community hall", "imagePath": "res/scenery/lobby.jpg"},
+    {"id": 4, "name": "پارکینگ طبقاتی", "name_1": "Parking", "imagePath": "res/scenery/pool.jpg"},
 ]}
 # v2.7.2.06: GetFoodType returns catering COUNTRIES at the root and the food
 # types of one country when called with ?parentId=
@@ -475,6 +502,29 @@ class H(BaseHTTPRequestHandler):
             return self._j([])
         if p == "/iptv2/manager/GetSubtitleStyle":
             return self._j({})
+        # a plain playlist, the way a residential head-end usually publishes its
+        # line-up (Settings -> "Channel list (m3u)" in the Windows client)
+        if p == "/iptv2/residential/channels.m3u":
+            lines = ["#EXTM3U"]
+            for c in channels():
+                url = c.get("httpUrl") or c.get("hlsUrl") or c.get("url") or ""
+                if not url:
+                    continue
+                grp = "کانال‌ها"
+                for pkg in PACKAGES:
+                    if str(c["id"]) in [x.strip() for x in (pkg.get("tvIds") or "").split(",")]:
+                        grp = pkg["name"]
+                        break
+                lines.append('#EXTINF:-1 tvg-id="%s" tvg-name="%s" group-title="%s",%s'
+                             % (c["id"], c["name"], grp, c["name"]))
+                lines.append(url)
+            b = ("\n".join(lines) + "\n").encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/x-mpegurl; charset=utf-8")
+            self.send_header("Content-Length", str(len(b)))
+            self.end_headers()
+            self.wfile.write(b)
+            return
         # media
         if p.startswith("/iptv2/res/adv/music/"):
             # welcome background music (BGMusicBean.url under res/adv/music/)

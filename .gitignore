@@ -16,6 +16,7 @@ node_modules/
 dist/*
 !dist/PARDIK-SMART-IPTV-Win10-x64-2.7.1.71.zip
 !dist/PARDIK-SMART-IPTV-Win10-x64-2.7.2.06.zip
+!dist/PARDIK-IPTV-RonikaPalace-Kohak-Win10-x64-2.7.2.06.zip
 analysis/out/dex_strings.txt
 analysis/res_decoded/public.xml
 analysis/res_decoded/values-strings.xml

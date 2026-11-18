@@ -8,6 +8,10 @@ const logs = [];
 const dom = new JSDOM("<!DOCTYPE html><html><body></body></html>", { url: BASE + "/" });
 
 async function main() {
+  const cfg0 = await (await fetch(BASE + "/api/config")).json();
+  const mode = cfg0.mode || "residential";
+  console.log("deployment mode =", mode, "| product =", (cfg0.branding || {}).product,
+    "| subtitle =", (cfg0.branding || {}).subtitle);
   const res = await fetch(BASE + "/");
   const html = await res.text();
   const d = new JSDOM(html, {
@@ -92,7 +96,8 @@ async function main() {
     console.log("[v2] welcome bg music src =", ((mus && mus.src) || "none").slice(0, 90));
     console.log("[v2] welcome background video hidden =", doc.querySelector("#wel-video").hidden);
     if (ppt.hidden) errors.push("welcome slideshow (GetAdvImage?type=1) is not showing");
-    if (sign.hidden) errors.push("manager signature (GetAdvImage?type=12) is not showing");
+    if (mode === "hotel" && sign.hidden) errors.push("manager signature (GetAdvImage?type=12) is not showing");
+    if (mode !== "hotel" && !sign.hidden) errors.push("the hotel manager signature must not show in residential mode");
     if (!mus || !mus.src) errors.push("welcome background music (apk/getClientBackgroundMusics) not started");
   }
 
@@ -128,12 +133,34 @@ async function main() {
   console.log("[css] overlays painted while hidden =", shown.length ? JSON.stringify(shown) : "none");
   if (shown.length) errors.push("hidden overlays are still displayed: " + shown.join(", "));
 
+  /* ============ deployment flavour: Pardik residential vs hotel platform ============ */
+  if (mode === "residential") {
+    const hotelOnly = /شام|غذا|خدمات|هتل|صورتحساب|CATERING|SERVICE|HOTEL/i;
+    const leaked = menu.filter(m => hotelOnly.test(m));
+    console.log("[mode] residential menu =", JSON.stringify(menu));
+    if (leaked.length) errors.push("hotel tiles in the residential menu: " + leaked.join(", "));
+    const brand = ((doc.querySelector("#home-title") || {}).textContent || "") + " | " +
+                  ((doc.querySelector("#home-subtitle") || {}).textContent || "");
+    console.log("[mode] branding =", brand);
+    if (!/PARDIK/i.test(brand) || !/رونیکا پالاس/.test(brand)) errors.push("residential branding missing: " + brand);
+    const unit = (doc.querySelector("#home-roomlabel") || {}).textContent || "";
+    console.log("[mode] unit label =", unit, "| welcome =", (doc.querySelector("#wel-guest") || {}).textContent);
+    if (!/واحد/.test(unit)) errors.push("the home bar still says room instead of unit: " + unit);
+    if (/مهمان|میهمان/.test((doc.querySelector("#wel-guest") || {}).textContent || "")) errors.push("welcome still addresses hotel guests");
+  } else {
+    console.log("[mode] hotel platform menu =", JSON.stringify(menu));
+    if (!menu.some(m => /خدمت|SERVICE/i.test(m))) errors.push("hotel mode lost the room-service tile");
+  }
+
   // open LIVE
   const liveBtn = Array.from(doc.querySelectorAll("#home-menu .menu-item")).find(n => /زنده|LIVE/i.test(n.textContent));
   if (liveBtn) { liveBtn.click(); await sleep(1500); }
   console.log("after LIVE click, active =", active());
   const pkgs = Array.from(doc.querySelectorAll("#pkg-list .pkg-item")).map(n => n.textContent.trim());
   console.log("packages =", JSON.stringify(pkgs));
+  if (mode === "residential" && !/داخلی/.test(pkgs.join(" "))) {
+    errors.push("the residential bouquets (domestic/satellite) are missing: " + JSON.stringify(pkgs));
+  }
   const pkg = doc.querySelector("#pkg-list .pkg-item");
   if (pkg) { pkg.click(); await sleep(2500); }
   console.log("after package click, active =", active());
@@ -164,6 +191,12 @@ async function main() {
   console.log("settings active =", active(), "gate shown =", doc.querySelector("#set-gate").style.display);
   const gp = doc.querySelector("#gate-pass");
   if (gp) { gp.value = "111999"; doc.querySelector("#gate-ok").click(); await sleep(500); }
+  console.log("[mode] device link =", (doc.querySelector("#set-link-value") || {}).textContent,
+    "| room/unit label =", (doc.querySelector("#set-room-label") || {}).textContent,
+    "| m3u =", (doc.querySelector("#set-m3u-value") || {}).textContent);
+  if (!/کابل شبکه|Ethernet|وای|Wi-?Fi/i.test((doc.querySelector("#set-link-value") || {}).textContent || "")) {
+    errors.push("the device-connection row is empty: " + (doc.querySelector("#set-link-value") || {}).textContent);
+  }
   console.log("settings body hidden =", doc.querySelector("#set-body").hidden,
     "ip =", (doc.querySelector("#set-ip") || {}).textContent,
     "port =", (doc.querySelector("#set-port") || {}).textContent,
@@ -202,7 +235,52 @@ async function main() {
   doc.querySelector("#app-back").click(); await sleep(600);
   console.log("[v2] after app-back active =", active());
 
-  // --- EPG + speed inside the live player
+  /* --- external playlist source (residential head-end): Settings -> m3u --- */
+  await goHome();
+  if (homeBtn(/تنظیمات/i)) { homeBtn(/تنظیمات/i).click(); await sleep(600); }
+  const m3uRow = doc.querySelector("#set-m3u");
+  if (m3uRow) {
+    m3uRow.click(); await sleep(500);
+    console.log("[m3u] dialog hidden =", doc.querySelector("#input-modal").hidden,
+      "| hint =", ((doc.querySelector("#input-hint") || {}).textContent || "").slice(0, 60));
+    const inp = doc.querySelector("#input-field");
+    inp.value = "http://127.0.0.1:8030/iptv2/residential/channels.m3u";
+    doc.querySelector("#input-ok").click(); await sleep(2000);
+    const rowVal = (doc.querySelector("#set-m3u-value") || {}).textContent || "";
+    console.log("[m3u] row value =", rowVal);
+    if (!/10/.test(rowVal)) errors.push("the playlist was not parsed: " + rowVal);
+    await goHome();
+    const lb = homeBtn(/زنده|LIVE/i);
+    if (lb) { lb.click(); await sleep(1500); }
+    const mpkgs = Array.from(doc.querySelectorAll("#pkg-list .pkg-item")).map(n => n.textContent.trim());
+    console.log("[m3u] packages from playlist =", JSON.stringify(mpkgs));
+    if (!mpkgs.some(x => /داخلی/.test(x)) || !mpkgs.some(x => /ماهواره/.test(x))) {
+      errors.push("playlist groups are not used as packages: " + JSON.stringify(mpkgs));
+    }
+    const mp = Array.from(doc.querySelectorAll("#pkg-list .pkg-item")).find(n => /ماهواره/.test(n.textContent));
+    if (mp) { mp.click(); await sleep(2200); }
+    const msrc = ((doc.querySelector("#video") || {}).src || "");
+    console.log("[m3u] satellite bouquet player =", active(), "| src =", msrc.slice(0, 100),
+      "| channel badge =", (doc.querySelector("#ch-name") || {}).textContent);
+    if (active() !== "scr-player" || !/stream\/play|proxy/.test(msrc)) errors.push("a playlist channel did not start");
+    if (doc.querySelector("#ad-countdown") && !doc.querySelector("#ad-countdown").hidden) {
+      errors.push("playlist channels must not run the platform advert flow");
+    }
+    await goHome();
+    // turn the playlist off again so the rest of the run uses the server list
+    if (homeBtn(/تنظیمات/i)) { homeBtn(/تنظیمات/i).click(); await sleep(600); }
+    doc.querySelector("#set-m3u").click(); await sleep(600);
+    const cok2 = doc.querySelector("#confirm-ok");
+    console.log("[m3u] disable confirm hidden =", doc.querySelector("#confirm-modal").hidden);
+    if (cok2) { cok2.click(); await sleep(1000); }
+    console.log("[m3u] row value after disable =", (doc.querySelector("#set-m3u-value") || {}).textContent);
+    if (/●/.test((doc.querySelector("#set-m3u-value") || {}).textContent || "")) errors.push("the playlist is still enabled");
+    await goHome();
+  }
+
+  // --- EPG + speed inside the live player (server channel table, not the playlist)
+  await fetch(BASE + "/api/m3u", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled: false }) });
   await goHome();
   const liveBtn2 = homeBtn(/زنده|LIVE/i);
   if (liveBtn2) { liveBtn2.click(); await sleep(800); }
@@ -222,70 +300,79 @@ async function main() {
   console.log("[v2] speed after 's' =", (doc.querySelector("#speed-val") || {}).textContent);
   await goHome();
 
-  // --- catering: country selector (caterSub) -> types -> basket -> orders
-  const dinnerBtn = homeBtn(/شام|CATERING|DINNER/i);
-  if (dinnerBtn) { dinnerBtn.click(); await sleep(900); }
-  console.log("[v2] dinner active =", active(), "countries =", Array.from(doc.querySelectorAll("#country-list .country-item")).map(n => n.textContent.trim()).join(","));
-  const c0 = doc.querySelector("#country-list .country-item");
-  if (c0) { c0.click(); await sleep(1000); }
-  console.log("[v2] catering active =", active(), "types =", Array.from(doc.querySelectorAll("#dinner-types .type-item")).map(n => n.textContent.trim()).join(","),
-    "items =", doc.querySelectorAll("#dinner-items .food-item").length);
-  const f0 = doc.querySelector("#dinner-items .food-item");
-  if (f0) { f0.click(); await sleep(400); }
-  console.log("[v2] orders badge =", (doc.querySelector("#dinner-orders") || {}).textContent);
-  doc.querySelector("#dinner-orders").click(); await sleep(1100);
-  const oRows = Array.from(doc.querySelectorAll("#order-list .order-item"));
-  console.log("[v2] orders active =", active(), "rows =", oRows.length, JSON.stringify(oRows.map(n => n.textContent.trim()).slice(0, 4)));
-  const submitBtn = Array.from(doc.querySelectorAll("#order-list button")).find(b => /ارسال|submit/i.test(b.textContent));
-  if (submitBtn) { submitBtn.click(); await sleep(1000); console.log("[v2] after submit rows =", doc.querySelectorAll("#order-list .order-item").length); }
-  const hist = Array.from(doc.querySelectorAll("#order-list .order-item"))
-    .find(n => !/ارسال|submit/i.test(n.textContent) && !/لغو|cancel/i.test(n.textContent));
-  if (hist) { hist.click(); await sleep(600); }
-  console.log("[v2] order detail hidden =", doc.querySelector("#order-detail").hidden,
-    "total =", (doc.querySelector("#od-total") || {}).textContent, "status =", (doc.querySelector("#od-status") || {}).textContent,
-    "cancel disabled =", doc.querySelector("#od-cancel").disabled);
-  const cancelBtn = doc.querySelector("#od-cancel");
-  if (cancelBtn && !cancelBtn.disabled) {
-    cancelBtn.click(); await sleep(400);
-    const okBtn = doc.querySelector("#confirm-ok");
-    console.log("[v2] confirm modal hidden =", doc.querySelector("#confirm-modal").hidden, "|", (doc.querySelector("#confirm-title") || {}).textContent);
-    if (okBtn) { okBtn.click(); await sleep(900); }
+  /* The hotel-platform services (catering, room service, laundry, taxi,
+     check-out, orders) only exist when the backend runs with IPTV_MODE=hotel;
+     Pardik's residential deployment for Ronika Palace has none of them. */
+  if (mode === "hotel") {
+    // --- catering: country selector (caterSub) -> types -> basket -> orders
+    const dinnerBtn = homeBtn(/شام|CATERING|DINNER/i);
+    if (dinnerBtn) { dinnerBtn.click(); await sleep(900); }
+    console.log("[v2] dinner active =", active(), "countries =", Array.from(doc.querySelectorAll("#country-list .country-item")).map(n => n.textContent.trim()).join(","));
+    const c0 = doc.querySelector("#country-list .country-item");
+    if (c0) { c0.click(); await sleep(1000); }
+    console.log("[v2] catering active =", active(), "types =", Array.from(doc.querySelectorAll("#dinner-types .type-item")).map(n => n.textContent.trim()).join(","),
+      "items =", doc.querySelectorAll("#dinner-items .food-item").length);
+    const f0 = doc.querySelector("#dinner-items .food-item");
+    if (f0) { f0.click(); await sleep(400); }
+    console.log("[v2] orders badge =", (doc.querySelector("#dinner-orders") || {}).textContent);
+    doc.querySelector("#dinner-orders").click(); await sleep(1100);
+    const oRows = Array.from(doc.querySelectorAll("#order-list .order-item"));
+    console.log("[v2] orders active =", active(), "rows =", oRows.length, JSON.stringify(oRows.map(n => n.textContent.trim()).slice(0, 4)));
+    const submitBtn = Array.from(doc.querySelectorAll("#order-list button")).find(b => /ارسال|submit/i.test(b.textContent));
+    if (submitBtn) { submitBtn.click(); await sleep(1000); console.log("[v2] after submit rows =", doc.querySelectorAll("#order-list .order-item").length); }
+    const hist = Array.from(doc.querySelectorAll("#order-list .order-item"))
+      .find(n => !/ارسال|submit/i.test(n.textContent) && !/لغو|cancel/i.test(n.textContent));
+    if (hist) { hist.click(); await sleep(600); }
+    console.log("[v2] order detail hidden =", doc.querySelector("#order-detail").hidden,
+      "total =", (doc.querySelector("#od-total") || {}).textContent, "status =", (doc.querySelector("#od-status") || {}).textContent,
+      "cancel disabled =", doc.querySelector("#od-cancel").disabled);
+    const cancelBtn = doc.querySelector("#od-cancel");
+    if (cancelBtn && !cancelBtn.disabled) {
+      cancelBtn.click(); await sleep(400);
+      const okBtn = doc.querySelector("#confirm-ok");
+      console.log("[v2] confirm modal hidden =", doc.querySelector("#confirm-modal").hidden, "|", (doc.querySelector("#confirm-title") || {}).textContent);
+      if (okBtn) { okBtn.click(); await sleep(900); }
+    }
+    console.log("[v2] after cancel, active =", active(), "detail hidden =", doc.querySelector("#order-detail").hidden);
+    await goHome();
+
+    // --- room service (GetServiceIcon) incl. taxi / checkout / service record
+    const svcBtn = homeBtn(/خدمت|SERVICE/i);
+    if (svcBtn) { svcBtn.click(); await sleep(900); }
+    console.log("[v2] service active =", active(), "tiles =", doc.querySelectorAll("#svc-grid .svc-item").length);
+    const tile = (re) => Array.from(doc.querySelectorAll("#svc-grid .svc-item")).find(n => re.test(n.textContent));
+    const t8 = tile(/سوابق|record|Record/i) || doc.querySelectorAll("#svc-grid .svc-item")[7];
+    if (t8) { t8.click(); await sleep(900); }
+    console.log("[v2] service-record active =", active(), "rows =", doc.querySelectorAll("#svcrec-body tr").length);
+    await goHome();
+    if (homeBtn(/خدمت|SERVICE/i)) { homeBtn(/خدمت|SERVICE/i).click(); await sleep(900); }
+    const t6 = tile(/تسویه|checkout|Check/i) || doc.querySelectorAll("#svc-grid .svc-item")[5];
+    if (t6) { t6.click(); await sleep(600); }
+    console.log("[v2] checkout confirm hidden =", doc.querySelector("#confirm-modal").hidden, "| title =", (doc.querySelector("#confirm-title") || {}).textContent);
+    const cok = doc.querySelector("#confirm-ok");
+    if (cok) { cok.click(); await sleep(900); }
+    await goHome();
+    if (homeBtn(/خدمت|SERVICE/i)) { homeBtn(/خدمت|SERVICE/i).click(); await sleep(900); }
+    const t7 = tile(/تاکسی|taxi|Taxi/i) || doc.querySelectorAll("#svc-grid .svc-item")[6];
+    if (t7) { t7.click(); await sleep(700); }
+    console.log("[v2] taxi/wakeup active =", active(), "label =", (doc.querySelector("#wk-label") || {}).textContent);
+    const wk = doc.querySelector("#wk-submit");
+    if (wk) { wk.click(); await sleep(900); }
+    console.log("[v2] after taxi submit active =", active());
+    await goHome();
+
+    // --- laundry uses the new GetClothingType endpoint
+    if (homeBtn(/خدمت|SERVICE/i)) { homeBtn(/خدمت|SERVICE/i).click(); await sleep(900); }
+    const t3 = tile(/لباس|laundry|wash/i) || doc.querySelectorAll("#svc-grid .svc-item")[2];
+    if (t3) { t3.click(); await sleep(900); }
+    console.log("[v2] laundry active =", active(), "title =", (doc.querySelector("#rent-title") || {}).textContent,
+      "items =", doc.querySelectorAll("#rent-grid .food-item").length);
+    await goHome();
+
+  } else {
+    console.log("[mode] hotel-platform flows skipped (residential deployment)");
+    await goHome();
   }
-  console.log("[v2] after cancel, active =", active(), "detail hidden =", doc.querySelector("#order-detail").hidden);
-  await goHome();
-
-  // --- room service (GetServiceIcon) incl. taxi / checkout / service record
-  const svcBtn = homeBtn(/خدمت|SERVICE/i);
-  if (svcBtn) { svcBtn.click(); await sleep(900); }
-  console.log("[v2] service active =", active(), "tiles =", doc.querySelectorAll("#svc-grid .svc-item").length);
-  const tile = (re) => Array.from(doc.querySelectorAll("#svc-grid .svc-item")).find(n => re.test(n.textContent));
-  const t8 = tile(/سوابق|record|Record/i) || doc.querySelectorAll("#svc-grid .svc-item")[7];
-  if (t8) { t8.click(); await sleep(900); }
-  console.log("[v2] service-record active =", active(), "rows =", doc.querySelectorAll("#svcrec-body tr").length);
-  await goHome();
-  if (homeBtn(/خدمت|SERVICE/i)) { homeBtn(/خدمت|SERVICE/i).click(); await sleep(900); }
-  const t6 = tile(/تسویه|checkout|Check/i) || doc.querySelectorAll("#svc-grid .svc-item")[5];
-  if (t6) { t6.click(); await sleep(600); }
-  console.log("[v2] checkout confirm hidden =", doc.querySelector("#confirm-modal").hidden, "| title =", (doc.querySelector("#confirm-title") || {}).textContent);
-  const cok = doc.querySelector("#confirm-ok");
-  if (cok) { cok.click(); await sleep(900); }
-  await goHome();
-  if (homeBtn(/خدمت|SERVICE/i)) { homeBtn(/خدمت|SERVICE/i).click(); await sleep(900); }
-  const t7 = tile(/تاکسی|taxi|Taxi/i) || doc.querySelectorAll("#svc-grid .svc-item")[6];
-  if (t7) { t7.click(); await sleep(700); }
-  console.log("[v2] taxi/wakeup active =", active(), "label =", (doc.querySelector("#wk-label") || {}).textContent);
-  const wk = doc.querySelector("#wk-submit");
-  if (wk) { wk.click(); await sleep(900); }
-  console.log("[v2] after taxi submit active =", active());
-  await goHome();
-
-  // --- laundry uses the new GetClothingType endpoint
-  if (homeBtn(/خدمت|SERVICE/i)) { homeBtn(/خدمت|SERVICE/i).click(); await sleep(900); }
-  const t3 = tile(/لباس|laundry|wash/i) || doc.querySelectorAll("#svc-grid .svc-item")[2];
-  if (t3) { t3.click(); await sleep(900); }
-  console.log("[v2] laundry active =", active(), "title =", (doc.querySelector("#rent-title") || {}).textContent,
-    "items =", doc.querySelectorAll("#rent-grid .food-item").length);
-  await goHome();
 
   // --- record/EPG screen (GetRecTV + GetEpgRecProgram)
   const recBtn = homeBtn(/دوباره|REPLAY|RECORD/i);

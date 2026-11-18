@@ -315,6 +315,12 @@ body{
   object-fit: contain; filter: drop-shadow(0 6px 18px rgba(0, 0, 0, .5));
 }
 
+/* residential branding (Pardik / Ronika Palace Kahak) */
+.boot-brand{margin-top:.35em; color:var(--gold-2); font-size:1.05em; letter-spacing:.4px;}
+.home-subtitle{color:var(--gold-2); font-size:1.05em; margin-top:.2em; letter-spacing:.4px;}
+.set-value.ok{color:#8fe3a5;}
+.input-hint{color:var(--muted); font-size:.92em; line-height:1.7; margin:.2em 0 .8em;}
+
 /* Duplicate of the `[hidden]` rule at the TOP of this file — keep both.
    Browsers resolve it by specificity/!important whatever its position, but
    jsdom (tools/smoke/smoke.js) applies source order only and ignores

@@ -49,6 +49,11 @@ const S = {
   pptIndex: 0,
   pptImages: [],
   bgMusic: null,           // v2: apk/getClientBackgroundMusics loop
+  /* residential deployment (Pardik / Ronika Palace Kahak) */
+  mode: "residential",     // /api/config.mode: residential | hotel
+  branding: {},            // title/subtitle/welcome/unit labels for this deployment
+  m3u: {},                 // external playlist source {enabled,count,url,path,error}
+  m3uChannels: [],         // parsed playlist entries
   vlc: false,
   autostart: false,
   loadAnim: null,
@@ -65,6 +70,31 @@ function applyI18n() {
   document.documentElement.lang = S.lang;
   document.documentElement.dir = rtl ? "rtl" : "ltr";
   $$("[data-i18n]").forEach(n => { n.textContent = t(n.dataset.i18n, n.textContent); });
+  applyBranding();
+}
+
+/* The APK is one platform that each deployment rebrands. Pardik's build for the
+   Ronika Palace residential complex in Kahak is a pure IPTV client, so the
+   titles, the welcome wording and "unit" instead of "room" come from
+   /api/config.branding rather than from the hotel strings. */
+function applyBranding() {
+  const b = S.branding || {};
+  const en = S.lang === "en";
+  const setTxt = (sel, v) => { const n = $(sel); if (n && v != null && v !== "") n.textContent = v; };
+  const sub = en ? (b.subtitle_en || b.subtitle || "") : (b.subtitle || "");
+  document.title = b.product || "PARDIK IPTV";
+  setTxt("#boot-title", b.title || "");
+  setTxt("#boot-brand", sub);
+  setTxt("#home-title", b.title || "");
+  setTxt("#home-subtitle", sub);
+  setTxt("#wel-guest", (en ? (b.welcome_en || "Dear residents") : (b.welcome || "ساکنین محترم")) + ":");
+  setTxt("#wel-word", en ? (b.welcome_word_en || "") : (b.welcome_word || ""));
+  setTxt("#wel-sign-label", en ? (S.mode === "hotel" ? "Hotel" : "Residential complex")
+                               : (S.mode === "hotel" ? "هتل" : "مجتمع مسکونی"));
+  setTxt("#home-roomlabel", en ? (b.unit_label_en || "Unit number") : (b.unit_label || "شمارهٔ واحد"));
+  setTxt("#set-room-label", en ? (b.unit_label_en || "Unit number") : (b.unit_label || "شمارهٔ واحد"));
+  const hs = $("#home-subtitle"); if (hs) hs.hidden = !sub;
+  const bb = $("#boot-brand"); if (bb) bb.hidden = !sub;
 }
 
 /* ----------------------------- API ----------------------------- */
@@ -300,7 +330,18 @@ async function boot() {
   S.vlc = !!S.config.settings.use_vlc_paly_live_prg;
   S.autostart = !!S.config.autostart;
   S.appsSelected = S.config.apps_selected || [];
+  /* deployment flavour + branding + optional external playlist */
+  S.mode = S.config.mode || "residential";
+  S.branding = S.config.branding || {};
+  S.m3u = S.config.m3u || {};
   applyI18n();
+  if (S.m3u.enabled) {
+    try {
+      const d = await (await fetch("/api/m3u")).json();
+      S.m3uChannels = d.channels || [];
+      S.m3u = { enabled: d.enabled, count: d.count, url: d.url, path: d.path, error: d.error };
+    } catch (e) { S.m3uChannels = []; }
+  }
   const bar = $("#boot-progress"); const msg = $("#boot-msg");
   let tries = 0;
   while (tries < 6) {
@@ -418,9 +459,17 @@ async function heartbeat() {
 function enterWelcome() {
   show("scr-welcome", false);
   const c = S.client || {};
-  const name = (S.lang === "en" ? c.welcomeWordEn : c.welcomeWord) || "";
-  if (name) $("#wel-name").textContent = t("welcome_word_guest_name", "جناب آقای/سرکار خانم {0}").replace("{0}", name);
-  $("#wel-hotel").textContent = (S.settings && (S.lang === "en" ? S.settings.hotelNameEn : S.settings.hotelName)) || "";
+  const en = S.lang === "en";
+  const name = (en ? c.welcomeWordEn : c.welcomeWord) || "";
+  /* Client.welcomeWord is the guest's name on the hotel platform; a residential
+     welcome is generic, so only the hotel flavour prints it. */
+  if (name && S.mode === "hotel") $("#wel-name").textContent = t("welcome_word_guest_name", "جناب آقای/سرکار خانم {0}").replace("{0}", name);
+  /* residential: the venue line is the complex name from the branding, and the
+     hotel-manager signature image (GetAdvImage?type=12) does not apply. */
+  $("#wel-hotel").textContent = (S.mode === "hotel"
+    ? ((S.settings && (en ? S.settings.hotelNameEn : S.settings.hotelName)) || "")
+    : ((en ? S.branding.subtitle_en : S.branding.subtitle) || ""));
+  const sign = $("#wel-sign"); if (sign) sign.hidden = (S.mode !== "hotel");
   loadWeather("#wel-weather", "#wel-weather-img", "#wel-weather-temp", "#wel-weather-txt");
   loadWelcomeAdv();
   $$("#wel-langs .langbtn").forEach(b => {
@@ -441,7 +490,7 @@ function enterWelcome() {
    (apk/getClientBackgroundMusics -> res/adv/music/<url>, random, looped). */
 async function loadWelcomeAdv() {
   stopWelcomeAdv();
-  loadManagerSign();
+  if (S.mode === "hotel") loadManagerSign();     // GetAdvImage?type=12 is the hotel manager's signature
   loadBgMusic();
   S.isPlayVideo = false;
   if (!(S.settings && S.settings.advVideoEM)) {
@@ -560,7 +609,7 @@ function enterHome() {
   S.stack = [];
   const st = S.settings || {};
   $("#home-room").textContent = (S.config.settings.iptv_room_number || (S.client && S.client.name) || "");
-  if (S.client && S.client.wifiName) {
+  if (S.mode === "hotel" && S.client && S.client.wifiName) {
     $("#home-wifi").hidden = false;
     $("#home-wifi-name").textContent = t("wifi_name", "Wifi: {0}").replace("{0}", S.client.wifiName);
     $("#home-wifi-pass").textContent = t("wifi_passwd", "Password: {0}").replace("{0}", S.client.wifiPassword || "");
@@ -570,16 +619,20 @@ function enterHome() {
 }
 function buildMenu(st) {
   const nav = $("#home-menu"); nav.innerHTML = "";
+  /* The hotel platform services (catering, room service, hotel intro, folio) are
+     not part of Pardik's residential deployment: they stay in the code base for
+     APK parity but only appear when the backend runs with IPTV_MODE=hotel. */
+  const hotel = S.mode === "hotel";
   const items = [
     { id: "live",    label: t("live", "پخش زنده"),        icon: "icon_live_large",    act: () => openLive() },
     { id: "vod",     label: t("vod", "ویدئو"),            icon: "icon_vod_large",     act: () => openVod(),      show: st.menuVodVisible !== false },
     { id: "rec",     label: t("main_menu_rec", "بازپخش"), icon: "icon_rec_large",     act: () => openRec(),      show: !!st.menuRecVisible },
     { id: "scenery", label: t("scenery", "مناظر"),        icon: "icon_scenery_large", act: () => openScenery(),  show: st.menuSceneryVisible !== false },
-    { id: "dinner",  label: t("dinner", "غذا"),           icon: "icon_dinner_large",  act: () => openDinner(),   show: st.menuCaterVisible !== false },
-    { id: "service", label: t("hotel_service", "خدمات"), icon: "icon_service_large", act: () => openService(),  show: st.menuRoomServiceVisible !== false },
-    { id: "music",   label: "موسیقی",                     icon: "icon_music_large",   act: () => openMusic(),    show: true },
-    { id: "hotel",   label: t("hotel", "هتل"),            icon: "icon_hotel_large",   act: () => openHotel(),    show: st.menuHotelVisible !== false },
-    { id: "consume", label: t("main_menu_consume", "صورتحساب"), icon: "icon_money",   act: () => openConsume(),  show: st.menuConsumeVisible !== false },
+    { id: "dinner",  label: t("dinner", "غذا"),           icon: "icon_dinner_large",  act: () => openDinner(),   show: hotel && st.menuCaterVisible !== false },
+    { id: "service", label: t("hotel_service", "خدمات"), icon: "icon_service_large", act: () => openService(),  show: hotel && st.menuRoomServiceVisible !== false },
+    { id: "music",   label: t("play_music", "موسیقی"),    icon: "icon_music_large",   act: () => openMusic(),    show: st.menuMusicVisible !== false },
+    { id: "hotel",   label: t("hotel", "هتل"),            icon: "icon_hotel_large",   act: () => openHotel(),    show: hotel && st.menuHotelVisible !== false },
+    { id: "consume", label: t("main_menu_consume", "صورتحساب"), icon: "icon_money",   act: () => openConsume(),  show: hotel && st.menuConsumeVisible !== false },
     { id: "settings",label: t("settings_system", "تنظیمات"), icon: "icon_settings_large", act: () => openSettings(), show: st.menuSystemVisible !== false },
   ].filter(i => i.show !== false);
   /* v2.7.2.06: when the server sets appShowInMenu, MainStyleFourthActivity
@@ -631,9 +684,71 @@ function renderMenu(items) {
 }
 
 /* ----------------------------- LIVE ----------------------------- */
+/* A residential head-end is usually published as an m3u playlist rather than
+   through the platform's GetLiveTV table. Settings -> "Channel list (m3u)" sets
+   the source; group-title becomes the package and every entry a channel. The
+   server list stays as the fallback while the playlist is off. */
+async function openM3u() {
+  const m = S.m3u || {};
+  if (m.enabled) {
+    const off = await askConfirm(t("m3u_source", "فهرست کانال‌ها (m3u)"),
+      m.count ? ("فهرست " + m.count + " کانال غیرفعال شود و کانال‌ها دوباره از سرور خوانده شوند؟")
+              : "این فهرست غیرفعال شود؟",
+      t("not_enabled", "غیرفعال"));
+    if (off) {
+      const r = await apiPost("/api/m3u", { enabled: false });
+      S.m3u = (r && r.m3u) || {}; S.m3uChannels = [];
+      S.config = await cfg(); fillSettings();
+      toast(t("not_enabled", "غیرفعال"));
+    }
+    return;
+  }
+  const mo = $("#input-modal"); mo.hidden = false;
+  $("#input-title").textContent = t("m3u_source", "فهرست کانال‌ها (m3u)");
+  const h = $("#input-hint");
+  if (h) { h.hidden = false; h.textContent = t("m3u_source_hint", "نشانی یا مسیر فایل فهرست پخش") + " — http(s)://… .m3u یا C:\\lists\\channels.m3u8"; }
+  const f = $("#input-field"); f.value = m.url || m.path || ""; f.focus();
+  $("#input-ok").onclick = async () => {
+    const v = f.value.trim();
+    const isUrl = /^https?:\/\//i.test(v);
+    const r = await apiPost("/api/m3u", { url: isUrl ? v : "", path: isUrl ? "" : v, enabled: !!v });
+    mo.hidden = true;
+    S.m3u = (r && r.m3u) || {};
+    if (S.m3u.enabled && S.m3u.count) {
+      try { const d = await (await fetch("/api/m3u")).json(); S.m3uChannels = d.channels || []; } catch (e) {}
+    } else S.m3uChannels = [];
+    S.config = await cfg(); fillSettings(); focusFirst("scr-settings");
+    if (S.m3u.error) toast(S.m3u.error);
+    else toast("● " + (S.m3u.count || 0) + " " + t("channel_count", "کانال"));
+  };
+  $("#input-cancel").onclick = () => { mo.hidden = true; focusFirst("scr-settings"); };
+}
+function m3uChannel(c) {
+  const k = classify(c.url);
+  const o = { id: c.id, number: c.number, name: c.name, url: c.url, liveType: 0, _m3u: true };
+  if (c.logo) o.icon = c.logo;
+  if (k === "hls") o.hlsUrl = c.url;
+  else if (k === "http") o.httpUrl = c.url;
+  return o;
+}
+function m3uPackages() {
+  const groups = [];
+  (S.m3uChannels || []).forEach(c => { if (groups.indexOf(c.group) < 0) groups.push(c.group); });
+  return groups.map((g, i) => ({ id: "m3u:" + i, number: i + 1, name: g, _group: g }));
+}
+function m3uActive() {
+  return !!(S.m3u && S.m3u.enabled && (S.m3uChannels || []).length);
+}
+
 async function openLive() {
   const st = S.settings || {};
   try {
+    if (m3uActive()) {
+      S.packages = m3uPackages();
+      renderPackages();
+      show("scr-livepkg");
+      return;
+    }
     if (st.showPackage) {
       S.packages = (await apiGet("live_packages")) || [];
       renderPackages();
@@ -656,7 +771,14 @@ function renderPackages() {
   });
 }
 async function loadChannels(packageId) {
-  S.channels = (await apiGet("live_tv", { packageId: packageId })) || [];
+  if (typeof packageId === "string" && packageId.indexOf("m3u:") === 0) {
+    const g = ((S.packages || []).find(p => p.id === packageId) || {})._group;
+    S.channels = (S.m3uChannels || []).filter(c => c.group === g).map(m3uChannel);
+  } else if (packageId === -1 && m3uActive()) {
+    S.channels = (S.m3uChannels || []).map(m3uChannel);
+  } else {
+    S.channels = (await apiGet("live_tv", { packageId: packageId })) || [];
+  }
   S.channels.forEach(c => { if (S.favourites.indexOf(c.id) >= 0) c._fav = true; });
 }
 function pickSource(item) {
@@ -763,6 +885,7 @@ function stopVideo(hideScreen) {
 }
 function pollEpg(item) {
   clearInterval(S._epgT);
+  if (item && item._m3u) return;      // playlist channels have no platform EPG
   const tick = async () => {
     try {
       const st = await apiGet("live_status");
@@ -894,6 +1017,7 @@ async function loadAdImage() {
 }
 async function startAdCheck(item) {
   if (!(S.settings && S.settings.activeAdv)) return;
+  if (item._m3u) return;                          // playlist channels: no platform advert/EPG ids
   if (item.liveType === 1) return;              // liveType 1 channels carry no pre-roll
   let bean = null;
   try {
@@ -961,10 +1085,11 @@ function finishAd(check) {
 /* AddAdvHistory type=1: watch time of the live programme we are leaving */
 function reportLiveWatch(nextItem) {
   const w = S.liveWatch;
+  if (w && w._m3u) { S.liveWatch = null; return; }   // no AddAdvHistory ids for playlist channels
   if (w && (!nextItem || nextItem.id !== w.id)) {
     apiPost("/api/post", { ep: "add_adv_history", id: w.id, type: 1, time: Date.now() - w.startedAt, check: 1 }).catch(() => {});
   }
-  S.liveWatch = (S.playerCtx && S.playerCtx.kind === "live" && nextItem)
+  S.liveWatch = (S.playerCtx && S.playerCtx.kind === "live" && nextItem && !nextItem._m3u)
     ? { id: nextItem.id, startedAt: Date.now() } : null;
 }
 
@@ -1578,6 +1703,27 @@ function fillSettings() {
   $("#set-port").textContent = c.server_port;
   $("#set-localip").textContent = S.config.local_ip;
   $("#set-mac").textContent = S.config.mac;
+  /* how the box reaches the head-end: the client is identified by the MAC of the
+     wired adapter (IptvUtil.getMacAddress() reads eth0 before wlan0), which is
+     what a cabled residential installation uses. */
+  const net = S.config.network || {};
+  const ll = $("#set-link-label");
+  if (ll) ll.textContent = t("device_link", "اتصال دستگاه");
+  const lv = $("#set-link-value");
+  if (lv) {
+    const kind = net.wired ? t("link_wired", "کابل شبکه (Ethernet)")
+      : (net.kind === "wifi" ? t("link_wifi", "وای‌فای") : (net.kind || "—"));
+    lv.textContent = kind + (net.iface ? " · " + net.iface : "") + (net.ip ? " · " + net.ip : "");
+    lv.classList.toggle("ok", !!net.wired);
+  }
+  const mrow = $("#set-m3u");
+  if (mrow) {
+    mrow.querySelector(".set-label").textContent = t("m3u_source", "فهرست کانال‌ها (m3u)");
+    const m = S.m3u || {};
+    $("#set-m3u-value").textContent = (m.enabled && m.count)
+      ? "● " + m.count + " " + t("channel_count", "کانال")
+      : (m.enabled ? "● " + (m.error || "—") : "○ " + t("not_enabled", "غیرفعال"));
+  }
   $("#set-lang").textContent = S.lang;
   $("#set-version").textContent = S.config.version + (S.config.ffmpeg ? "" : "  (ffmpeg: —)");
   $$("#set-body .set-row[data-edit]").forEach(row => {
@@ -1610,7 +1756,11 @@ function fillSettings() {
                       : t("boot_auto_start", "شروع خودکار با ویندوز") + ": " + t("not_enabled", "غیرفعال"));
   };
   $("#set-apps").onclick = () => openApps();
-  $("#set-reconnect").onclick = () => location.reload();
+  if ($("#set-m3u")) $("#set-m3u").onclick = () => openM3u();
+  $("#set-reconnect").onclick = async () => {
+    try { await fetch("/api/network"); } catch (e) {}
+    location.reload();
+  };
   $("#set-lang").parentElement.onclick = () => {
     const order = ["fa", "en", "zh"];
     S.lang = order[(order.indexOf(S.lang) + 1) % order.length];
@@ -1619,7 +1769,9 @@ function fillSettings() {
 }
 function editSetting(key) {
   const m = $("#input-modal"); m.hidden = false;
-  const titles = { server_ip: t("settings_network_ip"), server_port: t("settings_network_port"), iptv_room_number: t("room_number") };
+  const h = $("#input-hint"); if (h) { h.hidden = true; h.textContent = ""; }
+  const titles = { server_ip: t("settings_network_ip"), server_port: t("settings_network_port"),
+                   iptv_room_number: S.mode === "hotel" ? t("room_number") : t("unit_number", "شمارهٔ واحد") };
   $("#input-title").textContent = titles[key] || key;
   const f = $("#input-field"); f.value = String(S.config.settings[key] || ""); f.focus();
   $("#input-ok").onclick = async () => {
@@ -1668,7 +1820,11 @@ async function openApps() {
 }
 
 /* ----------------------------- enter-screen hook ----------------------------- */
+const HOTEL_SCREENS = ["scr-dinner", "scr-country", "scr-orders", "scr-service", "scr-svcrecord",
+  "scr-rent", "scr-wakeup", "scr-consume", "scr-hotel"];
+
 function onEnter(id) {
+  if (S.mode !== "hotel" && HOTEL_SCREENS.indexOf(id) >= 0) { show("scr-home", false); return; }
   if (id !== "scr-player") {
     clearInterval(S._epgT); stopLoadAnim();
     if (S.ad) { clearInterval(S.adTimer); S.ad = null; const ac = $("#ad-countdown"); if (ac) ac.hidden = true; }

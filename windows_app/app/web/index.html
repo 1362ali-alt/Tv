@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PARDIK SMART IPTV</title>
+<title>PARDIK IPTV</title>
 <link rel="icon" href="/assets/img/mipmap__ic_launcher.png">
 <link rel="stylesheet" href="/web/styles.css">
 </head>
@@ -15,7 +15,8 @@
     <div class="boot-bg"></div>
     <div class="boot-center">
       <img class="boot-logo" src="/assets/img/mipmap__ic_launcher.png" alt="">
-      <div class="boot-title">PARDIK SMART IPTV</div>
+      <div class="boot-title" id="boot-title">PARDIK IPTV</div>
+      <div class="boot-brand" id="boot-brand">مجتمع مسکونی رونیکا پالاس کوهک</div>
       <div class="boot-sub" data-i18n="connecting_server_tips">در حال دریافت آدرس سرور…</div>
       <div class="boot-bar"><i id="boot-progress"></i></div>
       <div class="boot-msg" id="boot-msg"></div>
@@ -46,10 +47,10 @@
       </div>
     </div>
     <div class="welcome-card">
-      <div class="welcome-title" id="wel-guest" data-i18n="welcome_title_text_default">میهمانان عزیز:</div>
+      <div class="welcome-title" id="wel-guest">ساکنین محترم:</div>
       <div class="welcome-name" id="wel-name"></div>
-      <div class="welcome-word" id="wel-word" data-i18n="welcome_text_en">به هتل ما خوش آمدید. در خدمت شما هستیم!</div>
-      <div class="welcome-sign"><span data-i18n="sign_text_hotel">هتل</span> · <span id="wel-hotel"></span></div>
+      <div class="welcome-word" id="wel-word">به شبکهٔ تلویزیون اینترنتی مجتمع خوش آمدید.</div>
+      <div class="welcome-sign"><span id="wel-sign-label">مجتمع مسکونی</span> · <span id="wel-hotel"></span></div>
     </div>
     <div class="welcome-langs" id="wel-langs">
       <button class="langbtn focusable" data-lang="fa">فارسی</button>
@@ -65,7 +66,7 @@
     <header class="topbar">
       <div class="tb-left">
         <img class="tb-logo" src="/assets/img/mipmap__ic_launcher.png" alt="">
-        <div class="tb-room"><span id="home-room"></span><span class="tb-roomlabel" data-i18n="room_number">شماره اتاق</span></div>
+        <div class="tb-room"><span id="home-room"></span><span class="tb-roomlabel" id="home-roomlabel">شماره واحد</span></div>
       </div>
       <div class="tb-right">
         <div class="tb-wifi" id="home-wifi" hidden><span id="home-wifi-name"></span><span id="home-wifi-pass"></span></div>
@@ -73,7 +74,8 @@
         <div class="tb-clock"><div id="home-time" class="clock-time">--:--</div><div id="home-date" class="clock-date"></div></div>
       </div>
     </header>
-    <div class="home-title" id="home-title">PARDIK SMART IPTV</div>
+    <div class="home-title" id="home-title">PARDIK IPTV</div>
+    <div class="home-subtitle" id="home-subtitle">مجتمع مسکونی رونیکا پالاس کوهک</div>
     <nav class="menu" id="home-menu"></nav>
     <div class="home-hint" data-i18n="welcome_tips_info">برای ورود به صفحه اصلی OK را بزنید</div>
   </section>
@@ -303,12 +305,15 @@
     </div>
     <div class="set-body" id="set-body" hidden>
       <div class="set-section" data-i18n="settings_network">تنظیمات شبکه</div>
-      <div class="set-row focusable" data-edit="iptv_room_number"><span class="set-label" data-i18n="room_number">شماره اتاق</span><span class="set-value" id="set-room"></span></div>
+      <div class="set-row focusable" data-edit="iptv_room_number"><span class="set-label" id="set-room-label">شماره واحد</span><span class="set-value" id="set-room"></span></div>
+      <div class="set-row" id="set-link"><span class="set-label" id="set-link-label">اتصال دستگاه</span><span class="set-value" id="set-link-value"></span></div>
       <div class="set-row focusable" data-edit="server_ip"><span class="set-label" data-i18n="settings_network_ip">آی‌پی سرور</span><span class="set-value" id="set-ip"></span></div>
       <div class="set-row focusable" data-edit="server_port"><span class="set-label" data-i18n="settings_network_port">پورت سرور</span><span class="set-value" id="set-port"></span></div>
       <div class="set-row" ><span class="set-label" data-i18n="settings_local_network">شبکه محلی</span><span class="set-value" id="set-localip"></span></div>
       <div class="set-row" ><span class="set-label" data-i18n="settings_local_mac">مک محلی</span><span class="set-value" id="set-mac"></span></div>
       <div class="set-section" data-i18n="settings_play">تنظیمات پخش</div>
+      <!-- residential head-ends usually publish a playlist instead of GetLiveTV -->
+      <div class="set-row focusable" data-act="m3u" id="set-m3u"><span class="set-label">فهرست کانال‌ها (m3u)</span><span class="set-value" id="set-m3u-value"></span></div>
       <!-- v2.7.2.06: setting_vlc_decode_layout / vlc_decode_value -->
       <div class="set-row focusable" data-act="vlc" id="set-vlc"><span class="set-label" data-i18n="enable_vlc_decoding">کدگشایی با VLC</span><span class="set-value" id="set-vlc-value"></span></div>
       <div class="set-row focusable" data-act="speed" id="set-speed"><span class="set-label" data-i18n="play_speed_txt">سرعت پخش</span><span class="set-value" id="set-speed-value"></span></div>
@@ -326,7 +331,8 @@
   <div class="modal" id="input-modal" hidden>
     <div class="modal-card small">
       <h3 id="input-title"></h3>
-      <input id="input-field" class="focusable">
+      <div class="input-hint" id="input-hint" hidden></div>
+      <input id="input-field" class="focusable" type="text" autocomplete="off">
       <div class="vd-actions">
         <button class="btn focusable" id="input-ok" data-i18n="submit">تأیید</button>
         <button class="btn focusable" id="input-cancel" data-i18n="cancel">انصراف</button>

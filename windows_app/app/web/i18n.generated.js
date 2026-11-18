@@ -1,6 +1,8 @@
 // Auto-generated from APK resources (default/zh, en, fa).
 // The vendor's values-fa leaves some keys in English; those are translated
-// here because Persian is the primary language of this Windows port.
+// here because Persian is the primary language of this Windows port. Keys
+// marked (port) below have no APK equivalent: they belong to the residential
+// deployment (Pardik / Ronika Palace Kahak) or to Windows-only features.
 window.I18N = {
  "account": {
   "en": "SSID: {0}",
@@ -77,6 +79,11 @@ window.I18N = {
   "fa": "انتخاب کشور",
   "zh": "选择国家"
  },
+ "channel_count": {
+  "en": "channel",
+  "fa": "کانال",
+  "zh": "channel",
+ },
  "check_out_tip": {
   "en": "Dear Sir/Madam, are you sure to check out?",
   "fa": "مهمان گرامی، آیا از تسویه حساب مطمئن هستید؟",
@@ -146,6 +153,11 @@ window.I18N = {
   "en": "Decoding video failed!",
   "fa": "کدگشایی ویدئو ناموفق بود.",
   "zh": "解码视频失败!"
+ },
+ "device_link": {
+  "en": "Device connection",
+  "fa": "اتصال دستگاه",
+  "zh": "设备连接"
  },
  "dialog_cancel": {
   "en": "Cancel",
@@ -292,6 +304,16 @@ window.I18N = {
   "fa": "مورد دیگری وجود ندارد",
   "zh": "没有更多物品"
  },
+ "link_wifi": {
+  "en": "Wi-Fi",
+  "fa": "وای‌فای",
+  "zh": "无线网络"
+ },
+ "link_wired": {
+  "en": "Wired (Ethernet)",
+  "fa": "کابل شبکه (Ethernet)",
+  "zh": "有线网络（以太网）"
+ },
  "live": {
   "en": "LIVE",
   "fa": "زنده",
@@ -336,6 +358,16 @@ window.I18N = {
   "en": "Loading failed",
   "fa": "بارگیری ناموفق بود",
   "zh": "加载失败"
+ },
+ "m3u_source": {
+  "en": "Channel list (m3u)",
+  "fa": "فهرست کانال‌ها (m3u)",
+  "zh": "频道列表 (m3u)"
+ },
+ "m3u_source_hint": {
+  "en": "Playlist URL or file path",
+  "fa": "نشانی یا مسیر فایل فهرست پخش",
+  "zh": "播放列表网址或文件路径"
  },
  "main_house_keeping": {
   "en": "Housekeeping",
@@ -1051,6 +1083,11 @@ window.I18N = {
   "en": "Total Price:",
   "fa": "قیمت کل:",
   "zh": "总费用:"
+ },
+ "unit_number": {
+  "en": "Unit number",
+  "fa": "شمارهٔ واحد",
+  "zh": "单元号"
  },
  "valet_service": {
   "en": "Valet Service",

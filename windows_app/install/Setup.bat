@@ -1,6 +1,7 @@
 @echo off
 rem ============================================================
-rem  PARDIK SMART IPTV - one-click installer (Windows 10 x64)
+rem  PARDIK IPTV - one-click installer (Windows 10 x64)
+rem  Residential flavour: Ronika Palace, Kahak (mode.txt decides the UI)
 rem  Copies the app, creates shortcuts, registers uninstaller,
 rem  then launches it.  Run as the normal user (no admin needed).
 rem ============================================================
@@ -20,6 +21,14 @@ xcopy "%SRC%\install" "%DST%\install\" /e /i /q /y >nul
 if exist "%SRC%\runtime" xcopy "%SRC%\runtime" "%DST%\runtime\" /e /i /q /y >nul
 copy /y "%SRC%\PARDIK-SMART-IPTV.bat" "%DST%\" >nul
 copy /y "%SRC%\PARDIK-SMART-IPTV-silent.vbs" "%DST%\" >nul
+rem deployment flavour (residential | hotel); launch.ps1 exports it as IPTV_MODE
+set "MODE=residential"
+if exist "%SRC%\mode.txt" set /p MODE=<"%SRC%\mode.txt"
+echo %MODE%>"%DST%\mode.txt"
+rem shortcut name stays ASCII: cmd.exe parses this file in the OEM codepage,
+rem so a Persian .lnk name would come out as mojibake. The app itself is Persian.
+set "LNK=PARDIK IPTV - Ronika Palace"
+if /i "%MODE%"=="hotel" set "LNK=PARDIK SMART IPTV"
 
 rem --- ensure python + ffmpeg ---
 powershell -NoProfile -ExecutionPolicy Bypass -File "%DST%\install\bootstrap_runtime.ps1"
@@ -27,15 +36,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%DST%\install\bootstrap_run
 rem --- shortcuts (Desktop + Start Menu) ---
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$ws=New-Object -ComObject WScript.Shell;" ^
-  "$d='%USERPROFILE%\Desktop\PARDIK SMART IPTV.lnk';" ^
+  "$d='%USERPROFILE%\Desktop\%LNK%.lnk';" ^
   "$s=$ws.CreateShortcut($d); $s.TargetPath='%DST%\PARDIK-SMART-IPTV-silent.vbs';" ^
   "$s.IconLocation='%DST%\app\web\favicon.ico,0'; $s.WorkingDirectory='%DST%'; $s.Save();" ^
   "$m='%APPDATA%\Microsoft\Windows\Start Menu\Programs';" ^
-  "$s2=$ws.CreateShortcut(\"$m\PARDIK SMART IPTV.lnk\"); $s2.TargetPath='%DST%\PARDIK-SMART-IPTV-silent.vbs';" ^
+  "$s2=$ws.CreateShortcut(\"$m\%LNK%.lnk\"); $s2.TargetPath='%DST%\PARDIK-SMART-IPTV-silent.vbs';" ^
   "$s2.IconLocation='%DST%\app\web\favicon.ico,0'; $s2.WorkingDirectory='%DST%'; $s2.Save();"
 
 rem --- uninstall entry ---
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\PARDIK-SMART-IPTV" /v DisplayName /t REG_SZ /d "PARDIK SMART IPTV" /f >nul
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\PARDIK-SMART-IPTV" /v DisplayName /t REG_SZ /d "%LNK%" /f >nul
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\PARDIK-SMART-IPTV" /v DisplayVersion /t REG_SZ /d "2.7.2.06" /f >nul
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\PARDIK-SMART-IPTV" /v UninstallString /t REG_SZ /d "\"%DST%\install\Uninstall.bat\"" /f >nul
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\PARDIK-SMART-IPTV" /v InstallLocation /t REG_SZ /d "%DST%" /f >nul

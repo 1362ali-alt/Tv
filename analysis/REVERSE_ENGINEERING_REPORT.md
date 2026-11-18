@@ -1,5 +1,9 @@
 # Reverse-Engineering Report — PARDIK SMART IPTV (Android) → Windows 10 port
 
+**Delivered product (§8):** Pardik's IPTV client for the **residential complex «Ronika Palace», Kahak** —
+live domestic (IRIB) + satellite channels over a wired Ethernet LAN. The hospitality platform analysed
+here is retained in the code but switched off (`mode.txt` / `IPTV_MODE=hotel` turns it back on).
+
 **Source APK:** `iptv3_2.7.1.71_20251223_10.21.0.10_name_PARDIK_SMART_IPTV.apk` (50,692,807 bytes)
 **Package:** `com.dexin.wanchuan.iptv3` · **Version:** 2.7.1.71 (code 20701071) · minSdk 19 / targetSdk 28
 **App label:** `PARDIK SMART IPTV` · **Launcher activity:** `com.dexin.wanchuan.iptv3.activity.PingServerActivity`
@@ -340,5 +344,154 @@ SQLite `app.db` v1, table `app(_id, package_name, name)`; `database.DeviceHelper
   * `install/Setup.bat` copied `app`, `tools`, `install`, `runtime` but **not `app_assets`**, so an
     installed app answered 404 for every icon/background (`iptv_backend._app_image` resolves
     `<install>\app_assets\img`).
-* Distribution zip: `dist/PARDIK-SMART-IPTV-Win10-x64-2.7.2.06.zip`, 515 entries, 12,370,993 bytes,
-  sha256 `abd3b4a077b058d4fe0dad3e055b6b8c811c2f3d7ba24b8420206d300f049660`.
+* Distribution zip (hotel flavour, superseded by §8): `dist/PARDIK-SMART-IPTV-Win10-x64-2.7.2.06.zip`,
+  515 entries, 12,370,993 bytes, sha256 `abd3b4a077b058d4fe0dad3e055b6b8c811c2f3d7ba24b8420206d300f049660`.
+
+---
+
+# 8. Residential deployment — Pardik IPTV for «Ronika Palace», Kahak
+
+The supplied APKs are the **hotel/hospitality** flavour of Pardik's IPTV client: half of the
+endpoint contract is room service, catering, folio and check-out. The product actually wanted
+here is Pardik's **residential** IPTV for the Ronika Palace complex in Kahak: live **domestic
+(IRIB)** and **satellite** channels from the complex head-end, reached over a **wired Ethernet**
+LAN, with the **unit number** as the subscriber identity. Rather than fork the code base, the
+port now carries both flavours behind one switch and ships the residential one.
+
+## 8.1 The flavour switch
+
+| Layer | Residential (default) | Hotel (`IPTV_MODE=hotel`) |
+|---|---|---|
+| `iptv_backend.APP_MODE` | `residential` | `hotel` |
+| `BRANDING.product` / `title` | `PARDIK IPTV` | `PARDIK SMART IPTV` |
+| `BRANDING.subtitle` | «مجتمع مسکونی رونیکا پالاس کوهک» | *(empty, as in the APK)* |
+| `BRANDING.welcome` | «ساکنین محترم، خوش آمدید» | «میهمانان عزیز» |
+| `BRANDING.unit_label` | «شماره واحد» / *Unit number* | «شماره اتاق» / *Room number* |
+| `BRANDING.install_name` | `PARDIK IPTV - Ronika Palace Kahak` | `PARDIK SMART IPTV` |
+| Menu tiles | live, VOD, playback, scenery, music, settings | + catering, room service, hotel intro, consumption bill |
+| Screens | hotel screens blocked (`HOTEL_SCREENS`) | all screens reachable |
+| Manager signature (`GetAdvImage?type=12`) | not shown | shown on the welcome screen |
+| Installer shortcut / `DisplayName` | `PARDIK IPTV - Ronika Palace` | `PARDIK SMART IPTV` |
+
+* `iptv_backend.py`: `APP_MODE = os.environ.get("IPTV_MODE", "residential")` (only `residential`/`hotel`
+  are accepted) and a `BRANDING` dict per mode; `/api/config` returns `mode` and `branding`.
+* `install/launch.ps1` reads `mode.txt` next to the launcher (`residential` or `hotel`, trimmed and
+  lower-cased, anything else falls back to `residential`) and exports it as `IPTV_MODE` before starting
+  the backend; `install/Setup.bat` copies `mode.txt` into the install root and derives the shortcut /
+  uninstall `DisplayName` from it. `tools/build_package.sh` writes `mode.txt` into the staged copy and
+  names the zip after the flavour (`MODE=hotel` reproduces the old package byte-for-byte in content).
+* `web/app.js`: `applyBranding()` (called from `boot()` after `/api/config`) fills `document.title`,
+  `#boot-title`, `#boot-brand`, `#home-title`, `#home-subtitle`, `#wel-guest`, `#wel-word`,
+  `#wel-sign-label`, `#home-roomlabel` and `#set-room-label` from `S.branding`, so no screen name is
+  hard-coded any more. `buildMenu()` drops the `dinner` / `service` / `hotel` / `consume` tiles unless
+  `S.mode === "hotel"` (and `music` now honours `menuMusicVisible`), `loadManagerSign()` and the
+  `#home-wifi` chip run hotel-only, and `HOTEL_SCREENS` =
+  `[scr-dinner, scr-country, scr-orders, scr-service, scr-svcrecord, scr-rent, scr-wakeup, scr-consume, scr-hotel]`
+  is checked in `onEnter()`, which bounces any attempt to reach those screens back to `scr-home`
+  (so a stale link or an automated test cannot resurrect them).
+* `web/index.html` / `web/styles.css`: `.boot-brand` and `.home-subtitle` carry the complex name on the
+  boot and home screens; `#set-link` (device connection) and `#set-m3u` (channel list) are new settings
+  rows; `#input-hint` gives the m3u dialog a second explanatory line. The `[hidden]{display:none
+  !important;}` rule is still both the first and the last rule of the stylesheet (§7.3).
+
+## 8.2 Wired-Ethernet identity (the MAC the head-end knows)
+
+`IptvUtil.getMacAddress()` in the APK reads `/sys/class/net/eth0/address` and only then `wlan0`; every
+platform call (`GetRoomInfo?mac=`, `GetAdvImage?mac=`, `GetNextAdv?mac=`, `AddAdvHistory?mac=`,
+`GetServiceOrder?mac=`, the `dx-admin` WebSocket path) is keyed on it. A Windows port that reported the
+first adapter it found would hand the head-end a different identity depending on boot order, so the port
+mirrors the APK's preference explicitly:
+
+* `detect_interfaces()` — Windows: `Get-NetAdapter -Physical | Select Name,InterfaceDescription,MacAddress,Status | ConvertTo-Json -Compress`
+  run through `subprocess.run(..., CREATE_NO_WINDOW)`; Linux: `/sys/class/net/*/{address,operstate}`.
+  Each adapter is classified with `WIFI_HINTS` (wireless / wi-fi / wifi / wlan / 802.11) against
+  `WIRED_HINTS` (ethernet / gbe / gigabit / lan / realtek / atheros / intel …), giving
+  `kind ∈ {ethernet, wifi, other}` plus `up`.
+* `detect_network()` ranks `ethernet < wifi < other` and prefers an adapter that is up — i.e. **the
+  cabled link wins**, exactly like `eth0` before `wlan0`. The result is cached in the module-level
+  `NETWORK` and returned by `/api/config` as `network{mac,iface,kind,ip,wired}`;
+  `GET /api/network` re-detects and persists it.
+* `detect_mac()` = `NETWORK["mac"]` or `_mac_fallback()` (`uuid.getnode()`, else `02:00:00:00:00:00`,
+  the same all-zeros-plus-locally-administered pattern the APK falls back to). `Settings.__init__`
+  refreshes `device_mac` on every start unless the result is that fallback, and stores
+  `device_iface` / `device_iface_kind` alongside it (new keys in `DEFAULTS`), so a swapped NIC or a
+  re-cabled wall socket is picked up on the next launch and the UI can say which adapter it used.
+* Settings → «اتصال دستگاه» prints e.g. `کابل شبکه (Ethernet) · eth0 · 10.21.0.47` and marks the value
+  green (`.set-value.ok`) when the link is wired; «اتصال مجدد به سرور» now re-runs `GET /api/network`
+  before reloading.
+
+## 8.3 Channel source: `GetLiveTV` or an m3u playlist
+
+A residential head-end frequently publishes its line-up as a plain playlist instead of answering
+`GetLivePackage`/`GetLiveTV`, so the port accepts both:
+
+* `iptv_backend`: `m3u_file()` (`_userdata/m3u.json`), `parse_m3u(text)` → one record per `#EXTINF`
+  with `{id:"m3u-N", number:N, name, url, group (group-title), logo (tvg-logo)}`, `load_m3u()`,
+  `save_m3u()`, `refresh_m3u()` (fetches `url` through `http_get`, 25 s, or reads `path`; caches the
+  first 200 KB in `text`) and `m3u_public()` for the API. Routes: `GET /api/m3u`,
+  `GET /api/m3u?refresh=1`, `POST /api/m3u {url|path|text, enabled}`; `/api/config` embeds
+  `m3u{enabled,url,path,error,updated,count,groups}`.
+* `web/app.js`: `openM3u()` (Settings row) asks for a URL or path, distinguishes `^https?://` from a
+  local path, posts it, re-reads `/api/m3u` and toasts the channel count; selecting the row again while
+  the playlist is on offers to switch it off through the generic confirm dialog. `m3uPackages()` turns
+  the distinct `group-title` values into bouquets (`id = "m3u:<i>"`), `m3uChannel()` classifies each URL
+  with the existing `classify()` helper (hls / http / rtsp …) so playback keeps using hls.js, native
+  MP4 or the FFmpeg `/stream/play` remux exactly as for server channels, and `loadChannels()` serves the
+  playlist when the requested package id is an `m3u:` one (or `-1` = all).
+* Playlist channels are flagged `_m3u`, and the three platform-id-dependent paths skip them:
+  `startAdCheck()` (no `liveId` for `GetNextAdv`), `pollEpg()` (no id for `GetLiveEPG`) and
+  `reportLiveWatch()`/`S.liveWatch` (no ids for `AddAdvHistory`). Numbering, favourites, the side list,
+  the OSD badge and the keys behave as usual.
+* i18n: six port-only keys (`device_link`, `link_wired`, `link_wifi`, `m3u_source`, `m3u_source_hint`,
+  `unit_number`) plus `channel_count` were appended to the regenerated `web/i18n.generated.js`
+  (**252 keys** × en/fa/zh, no empty cells); `editSetting()` titles `iptv_room_number` as
+  «شمارهٔ واحد» in residential mode and «شماره اتاق» in hotel mode.
+
+## 8.4 Mock head-end, re-themed residential
+
+`tools/mock_iptv_server.py` now serves the residential line-up instead of the hotel demo data:
+
+* `PACKAGES` = «شبکه‌های داخلی» (ids 1–6) and «شبکه‌های ماهواره‌ای» (ids 7–10), `price 0` — the hotel
+  flavour's paid package is gone; `channels()` returns IRIB TV1–4, News and Sport plus TRT World,
+  France 24, Al Jazeera and DW, each with `name` (fa) / `name_1` (en) and a real playable stand-in
+  (`test.ts`, `test.mp4`, `test.m3u8`, `boot.mp4`, `welcome.mp4`), `timeshift` on the IRIB channels.
+  `ADV_LIVE_IDS` still covers ids 1–2, so the pre-roll advert path is exercised on «شبکه یک»/«شبکه دو».
+* `GET /iptv2/residential/channels.m3u` publishes exactly that line-up as a UTF-8 `#EXTM3U` playlist
+  (each `#EXTINF` carries `tvg-id`, `tvg-name` and the bouquet's `group-title`), which is what the
+  client's m3u source is tested against.
+* `CLIENT.hotelName` → «مجتمع مسکونی رونیکا پالاس کوهک» / *Ronika Palace Residential Complex, Kahak*,
+  `wifiName` → `RONIKA-RESIDENTS`, VOD categories and `SCENERY` items are Persian/complex-themed
+  (فیلم سینمایی، سریال؛ محوطهٔ مجتمع، استخر و سونا، سالن اجتماعات، پارکینگ طبقاتی).
+  The hotel endpoints (`GetFoodType`, `AddFoodOrder`, `GetServiceIcon`, `GetClothingType`,
+  `AddClientCheckOutOrder`, `GetWakeUp`, …) are **kept** so the hotel flavour stays testable.
+
+## 8.5 Verification
+
+* `curl`/`urllib` against the running pair (mock on `:8030`, backend on `:8787`): `/api/config` returns
+  `mode=residential`, the Ronika branding, `network{mac:…, iface:"eth0", kind:"ethernet", wired:true}`
+  and `m3u{enabled:false,…}`; `POST /api/m3u {url:"…/residential/channels.m3u", enabled:true}` parses
+  **10 channels in 2 groups** with Persian `group-title` intact; `POST {enabled:false}` switches the
+  source back; `GetLivePackage` / `GetLiveTV?packageId=1|2` return the two bouquets (6 + 4 channels).
+* `tools/smoke/smoke.js` reads `mode` from `/api/config` and branches:
+  * **residential** (default): the menu must contain no catering/service/hotel/bill tile, the home bar
+    must read `PARDIK IPTV` + «مجتمع مسکونی رونیکا پالاس کوهک» and «شماره واحد» (not اتاق), the welcome
+    must not address a guest, the manager signature must stay hidden, the bouquets must include
+    «داخلی», the device-connection row must name a link, and the m3u flow is driven **through the UI**
+    (dialog → hint → URL → row shows `● 10 کانال` → live TV lists the two playlist groups → the
+    satellite bouquet starts a player on `/stream/play` with the OSD badge «تی‌آر‌تی ورلد» and **no**
+    advert overlay → the row is switched off again). The hotel-platform flows are skipped. → **0 errors**.
+  * **hotel** (`IPTV_MODE=hotel`): the full previous run — catering country → types → basket → orders →
+    submit → detail → cancel, service record, one-key check-out confirm, taxi time picker, laundry
+    (`GetClothingType`) — plus the room-service tile assertion. → **0 errors**.
+* Both flavours were run back-to-back against the same mock head-end; the only shared state is
+  `_userdata/m3u.json`, which the harness explicitly disables before the server-list assertions.
+
+## 8.6 Distribution
+
+* `tools/build_package.sh` → **`dist/PARDIK-IPTV-RonikaPalace-Kohak-Win10-x64-2.7.2.06.zip`**,
+  516 entries, 12,378,793 bytes, sha256 `50837932372dc50ec262c0dd40282f22153cfc996b2c025d0ebf52958e2a29a6`
+  (adds `mode.txt`, drops `_userdata/` and `__pycache__`). `MODE=hotel bash tools/build_package.sh`
+  rebuilds `dist/PARDIK-SMART-IPTV-Win10-x64-2.7.2.06.zip`.
+* Docs rewritten for the residential product: `windows_app/README-FA.md` (Persian, primary — install,
+  defaults, wired-Ethernet identity, both channel sources, controls, troubleshooting),
+  `windows_app/README-EN.md`, root `README.md`.

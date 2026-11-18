@@ -1,4 +1,4 @@
-# PARDIK SMART IPTV - launcher (Windows 10 x64)
+# PARDIK IPTV - launcher (Windows 10 x64), Ronika Palace residential flavour
 # Starts the local backend (pure-Python, no pip deps) and opens an Edge "app"
 # window (borderless, native-looking). Falls back to the default browser.
 $ErrorActionPreference = "SilentlyContinue"
@@ -9,6 +9,19 @@ $tools   = Join-Path $root "tools"
 $backend = Join-Path $app "iptv_backend.py"
 $port    = 8787
 $url     = "http://127.0.0.1:$port/"
+
+# --- deployment flavour -----------------------------------------------------
+# Pardik ships the same client for two installations: the residential complex
+# (default, "residential") and the hotel/hospitality platform ("hotel"). The
+# flavour lives in mode.txt next to this launcher so an installer can change it
+# without touching the code; the backend reads it as IPTV_MODE.
+$mode = "residential"
+$modeFile = Join-Path $root "mode.txt"
+if (Test-Path $modeFile) {
+    $m = (Get-Content -Raw -Path $modeFile).Trim().ToLower()
+    if ($m -in @("residential","hotel")) { $mode = $m }
+}
+$env:IPTV_MODE = $mode
 
 function Find-Python {
     foreach ($c in @("py","python","python3")) {
@@ -74,7 +87,7 @@ if (-not $py) {
     $py = Find-Python
 }
 if (-not $py) {
-    [System.Windows.Forms.MessageBox]::Show("Python runtime not found. Run install\Setup.bat first.","PARDIK SMART IPTV")
+    [System.Windows.Forms.MessageBox]::Show("Python runtime not found. Run install\Setup.bat first.","PARDIK IPTV")
     exit 1
 }
 

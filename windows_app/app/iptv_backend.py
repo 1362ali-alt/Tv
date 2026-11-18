@@ -32,6 +32,52 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 APP_VERSION_NAME = "2.7.2.06"
 APP_VERSION_CODE = 20702006
 
+# --------------------------------------------------------------------------- #
+# Deployment flavour
+#   The APK ("PARDIK SMART IPTV", com.dexin.wanchuan.iptv3) is a *platform*: the
+#   vendor ships the same build to hotels and to residential towers and switches
+#   features with server flags. Pardik's own deployment for the Ronika Palace
+#   residential complex in Kahak is a pure IPTV client - live domestic/satellite
+#   channels, VOD, timeshift - so the hotel services (catering, room service,
+#   laundry, taxi, wake-up, check-out, folio, hotel intro) are not part of it.
+#   IPTV_MODE=residential (default) hides them; IPTV_MODE=hotel keeps the full
+#   platform behaviour for parity testing against the APK.
+# --------------------------------------------------------------------------- #
+APP_MODE = (os.environ.get("IPTV_MODE") or "residential").strip().lower()
+if APP_MODE not in ("residential", "hotel"):
+    APP_MODE = "residential"
+
+BRANDING = {
+    "residential": {
+        "product": "PARDIK IPTV",
+        "title": "PARDIK IPTV",
+        "subtitle": "مجتمع مسکونی رونیکا پالاس کوهک",
+        "subtitle_en": "Ronika Palace Residential Complex, Kahak",
+        "welcome": "ساکنین محترم، خوش آمدید",
+        "welcome_en": "Dear residents, welcome",
+        "unit_label": "شماره واحد",
+        "unit_label_en": "Unit number",
+        "welcome_word": "به شبکهٔ تلویزیون اینترنتی مجتمع خوش آمدید؛ کانال‌های زندهٔ داخلی و ماهواره‌ای، آرشیو ویدئو و بازپخش در دسترس شماست.",
+        "welcome_word_en": "Welcome to the residential IPTV service: domestic and satellite live channels, the video archive and catch-up TV.",
+        "vendor": "شرکت پاردیک",
+        "install_name": "PARDIK IPTV - Ronika Palace Kahak",
+    },
+    "hotel": {
+        "product": "PARDIK SMART IPTV",
+        "title": "PARDIK SMART IPTV",
+        "subtitle": "",                     # taken from Settings.hotelName
+        "subtitle_en": "",
+        "welcome": "میهمانان عزیز",
+        "welcome_en": "Respect guests",
+        "unit_label": "شماره اتاق",
+        "unit_label_en": "Room number",
+        "welcome_word": "به هتل ما خوش آمدید. در خدمت شما هستیم!",
+        "welcome_word_en": "Welcome to our hotel. We are at your service!",
+        "vendor": "شرکت پاردیک",
+        "install_name": "PARDIK SMART IPTV",
+    },
+}
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 WEB_DIR = os.path.join(HERE, "web")
 
@@ -63,6 +109,8 @@ DEFAULTS = {
     "layout_style": 4,
     "favourites": [],
     "last_channel": None,
+    "device_iface": "",
+    "device_iface_kind": "unknown",
 }
 
 
@@ -85,9 +133,19 @@ class Settings(object):
         self.d = dict(DEFAULTS)
         self.lock = threading.RLock()
         self.load()
-        if not self.d.get("device_mac"):
-            self.d["device_mac"] = detect_mac()
-            self.save()
+        # IptvUtil.getMacAddress() resolves the identity at run time
+        # (eth0 -> wlan0 -> serial -> 02:00:00:00:00:00) and the platform server
+        # keys the client record by MAC, so refresh it on every start: a box that
+        # was on Wi-Fi yesterday may be cabled today. The stored value is only the
+        # fallback for when no adapter can be read.
+        mac = detect_mac()
+        if mac and mac != "02:00:00:00:00:00":
+            self.d["device_mac"] = mac
+        elif not self.d.get("device_mac"):
+            self.d["device_mac"] = mac or "02:00:00:00:00:00"
+        self.d["device_iface"] = NETWORK.get("iface", "")
+        self.d["device_iface_kind"] = NETWORK.get("kind", "unknown")
+        self.save()
 
     def load(self):
         try:
@@ -136,15 +194,6 @@ class Settings(object):
         return "%s:%s" % (self.get("server_ip"), self.get("server_port"))
 
 
-def detect_mac():
-    try:
-        node = uuid.getnode()
-        mac = "%012x" % node
-        return ":".join(mac[i:i + 2] for i in range(0, 12, 2)).upper()
-    except Exception:
-        return "02:00:00:00:00:00"
-
-
 def detect_local_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -158,6 +207,96 @@ def detect_local_ip():
     finally:
         s.close()
 
+
+def _mac_fallback():
+    try:
+        node = uuid.getnode()
+        mac = "%012x" % node
+        return ":".join(mac[i:i + 2] for i in range(0, 12, 2)).upper()
+    except Exception:
+        return "02:00:00:00:00:00"
+
+
+WIFI_HINTS = ("wireless", "wi-fi", "wifi", "wlan", "802.11")
+WIRED_HINTS = ("ethernet", "gbe", "gigabit", " lan", "lan ", "pci e", "pcie",
+               "realtek", "atheros", "intel(r) eth", "broadcom netxtreme")
+
+
+def detect_interfaces():
+    """Physical adapters as [{name, mac, kind, up}] - kind is ethernet|wifi|other.
+    IptvUtil.getMacAddress() reads eth0 first and only then wlan0, because the
+    set-top boxes (and this deployment) are wired; the same preference applies
+    here so a machine with both a cable and Wi-Fi reports the cable's MAC."""
+    out = []
+    if os.name == "nt":
+        # Get-NetAdapter descriptions are vendor strings, so they survive a
+        # non-English Windows (ipconfig's headers do not).
+        ps = ("Get-NetAdapter -Physical | Select-Object Name,InterfaceDescription,MacAddress,Status "
+              "| ConvertTo-Json -Compress")
+        try:
+            flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+                               capture_output=True, timeout=20, creationflags=flags)
+            txt = (r.stdout or b"").decode("utf-8", "replace").strip()
+            data = json.loads(txt) if txt else []
+            if isinstance(data, dict):
+                data = [data]
+            for a in data:
+                mac = (a.get("MacAddress") or "").replace("-", ":").upper()
+                if not mac or mac.count(":") != 5:
+                    continue
+                low = ((a.get("InterfaceDescription") or "") + " " + (a.get("Name") or "")).lower()
+                kind = "wifi" if any(h in low for h in WIFI_HINTS) else (
+                    "ethernet" if any(h in low for h in WIRED_HINTS) else "other")
+                out.append({"name": a.get("Name") or "", "mac": mac, "kind": kind,
+                            "up": (a.get("Status") or "").lower() == "up"})
+        except Exception:
+            pass
+    if not out:
+        base = "/sys/class/net"
+        try:
+            for n in sorted(os.listdir(base)):
+                if n == "lo":
+                    continue
+                try:
+                    mac = open(os.path.join(base, n, "address")).read().strip().upper()
+                except Exception:
+                    mac = ""
+                if not mac or mac == "00:00:00:00:00:00":
+                    continue
+                try:
+                    up = open(os.path.join(base, n, "operstate")).read().strip() == "up"
+                except Exception:
+                    up = False
+                kind = ("wifi" if n.startswith(("wl", "ra", "ath")) else
+                        "ethernet" if n.startswith(("eth", "en", "usb")) else "other")
+                out.append({"name": n, "mac": mac, "kind": kind, "up": up})
+        except Exception:
+            pass
+    return out
+
+
+def detect_network():
+    """The identity the platform server knows this client by."""
+    rank = {"ethernet": 0, "wifi": 1, "other": 2}
+    ifs = detect_interfaces()
+    up = sorted([i for i in ifs if i["up"]], key=lambda i: rank.get(i["kind"], 3))
+    chosen = up[0] if up else (sorted(ifs, key=lambda i: rank.get(i["kind"], 3))[:1] or [None])[0]
+    ip = detect_local_ip()
+    if not chosen:
+        return {"mac": _mac_fallback(), "iface": "", "kind": "unknown", "ip": ip,
+                "wired": False, "interfaces": ifs}
+    return {"mac": chosen["mac"], "iface": chosen["name"], "kind": chosen["kind"],
+            "ip": ip, "wired": chosen["kind"] == "ethernet", "interfaces": ifs}
+
+
+def detect_mac():
+    return NETWORK["mac"] if NETWORK.get("mac") else _mac_fallback()
+
+
+# Resolved once at start-up (Get-NetAdapter / /sys/class/net); /api/network
+# recomputes it on demand so unplugging the cable is reflected without a restart.
+NETWORK = detect_network()
 
 SETTINGS = Settings()
 
@@ -460,6 +599,92 @@ PARAM_ALIAS = {
 # --------------------------------------------------------------------------- #
 RUN_KEY = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run"
 RUN_NAME = "PARDIK-SMART-IPTV"
+
+
+# --------------------------------------------------------------------------- #
+# Optional external channel list (m3u / m3u8 playlist)
+#   A residential head-end is usually published as a plain playlist rather than
+#   through the platform's GetLiveTV table. When it is enabled, the parsed
+#   entries become the live channel list (group-title -> package) and the server
+#   list is the fallback.
+# --------------------------------------------------------------------------- #
+def m3u_file():
+    return os.path.join(data_dir(), "m3u.json")
+
+
+def parse_m3u(text):
+    out = []
+    name, group, logo = "", "", ""
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.upper().startswith("#EXTINF"):
+            attrs = dict(re.findall(r'([\w-]+)\s*=\s*"([^"]*)"', line))
+            group = attrs.get("group-title") or group or ""
+            logo = attrs.get("tvg-logo") or ""
+            name = attrs.get("tvg-name") or (line.split(",", 1)[1].strip() if "," in line else "")
+        elif line.startswith("#"):
+            continue
+        else:
+            out.append({"id": "m3u-%d" % (len(out) + 1), "number": len(out) + 1,
+                        "name": name or line, "url": line,
+                        "group": group or "Channels", "logo": logo})
+            name, logo = "", ""
+    return out
+
+
+def load_m3u():
+    d = {"enabled": False, "url": "", "path": "", "text": "", "channels": [],
+         "error": "", "updated": 0}
+    try:
+        with open(m3u_file(), "r", encoding="utf-8") as f:
+            d.update(json.load(f))
+    except Exception:
+        pass
+    return d
+
+
+def save_m3u(d):
+    try:
+        tmp = m3u_file() + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, m3u_file())
+    except Exception:
+        pass
+    return d
+
+
+def refresh_m3u(d):
+    """Read the playlist from url / path / pasted text and parse it."""
+    text, err = d.get("text") or "", ""
+    try:
+        if d.get("url"):
+            data, ctype, st = http_get(d["url"], timeout=25)
+            if st != 200:
+                err = "HTTP %s" % st
+            text = data.decode("utf-8", "replace") if isinstance(data, bytes) else (data or "")
+        elif d.get("path"):
+            with open(os.path.expanduser(d["path"]), "r", encoding="utf-8", errors="replace") as f:
+                text = f.read()
+    except Exception as e:
+        err = str(e)
+    chans = parse_m3u(text)
+    d["channels"] = chans
+    d["error"] = err or ("" if chans else "playlist is empty")
+    d["updated"] = int(time.time())
+    if not d.get("text") and text:
+        d["text"] = text[:200000]        # keep a copy so the list survives offline
+    return save_m3u(d)
+
+
+def m3u_public(d):
+    return {"enabled": bool(d.get("enabled")), "url": d.get("url", ""),
+            "path": d.get("path", ""), "error": d.get("error", ""),
+            "updated": d.get("updated", 0), "count": len(d.get("channels") or []),
+            "groups": sorted({c.get("group") or "" for c in (d.get("channels") or [])}),
+            "channels": d.get("channels") or []}
 
 
 def apps_file():
@@ -1097,7 +1322,27 @@ class Handler(BaseHTTPRequestHandler):
                     "vlc_installed": bool(find_vlc()),
                     "autostart": autostart_state(),
                     "apps_selected": load_apps().get("selected", []),
+                    # residential deployment (Pardik / Ronika Palace Kahak)
+                    "mode": APP_MODE,
+                    "branding": BRANDING[APP_MODE],
+                    "network": {k: NETWORK.get(k) for k in ("mac", "iface", "kind", "ip", "wired")},
+                    "m3u": {k: v for k, v in m3u_public(load_m3u()).items() if k != "channels"},
                 })
+            if path == "/api/network":
+                global NETWORK
+                NETWORK = detect_network()
+                mac = NETWORK.get("mac")
+                if mac and mac != "02:00:00:00:00:00":
+                    SETTINGS.d["device_mac"] = mac
+                SETTINGS.d["device_iface"] = NETWORK.get("iface", "")
+                SETTINGS.d["device_iface_kind"] = NETWORK.get("kind", "unknown")
+                SETTINGS.save()
+                return self._json({"ok": True, "network": NETWORK})
+            if path == "/api/m3u":
+                d = load_m3u()
+                if q.get("refresh", ["0"])[0] in ("1", "true"):
+                    d = refresh_m3u(d)
+                return self._json(m3u_public(d))
             if path == "/api/apps":
                 store = load_apps()
                 return self._json({
@@ -1160,6 +1405,15 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/ws/start":
             WS.start()
             return self._json({"ok": True})
+        if u.path == "/api/m3u":
+            d = load_m3u()
+            for k in ("url", "path", "text"):
+                if k in data:
+                    d[k] = str(data.get(k) or "").strip()
+            if "enabled" in data:
+                d["enabled"] = bool(data.get("enabled"))
+            d = refresh_m3u(d)
+            return self._json({"ok": True, "m3u": m3u_public(d)})
         if u.path == "/api/volume":
             if "volume" in data:
                 WS.volume = max(0, min(100, int(data["volume"])))
