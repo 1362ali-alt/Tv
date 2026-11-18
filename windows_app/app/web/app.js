@@ -724,11 +724,13 @@ async function openM3u() {
   $("#input-cancel").onclick = () => { mo.hidden = true; focusFirst("scr-settings"); };
 }
 function m3uChannel(c) {
-  const k = classify(c.url);
+  /* classify() already defaults to "http", so every playlist entry ends up with a
+     playable source: .m3u8 -> hlsUrl (hls.js), anything else -> httpUrl, which
+     playItem() sends through /stream/play (FFmpeg remuxes MPEG-TS to HLS). */
   const o = { id: c.id, number: c.number, name: c.name, url: c.url, liveType: 0, _m3u: true };
   if (c.logo) o.icon = c.logo;
-  if (k === "hls") o.hlsUrl = c.url;
-  else if (k === "http") o.httpUrl = c.url;
+  if (classify(c.url) === "hls") o.hlsUrl = c.url;
+  else o.httpUrl = c.url;
   return o;
 }
 function m3uPackages() {
