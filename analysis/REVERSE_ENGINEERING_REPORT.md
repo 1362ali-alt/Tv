@@ -322,5 +322,23 @@ SQLite `app.db` v1, table `app(_id, package_name, name)`; `database.DeviceHelper
   with `#boot-video` sourced from `GetAdvVideoEM[0]`, an **↑ (volume) key does not leave it**, Enter continues to
   `scr-welcome`, and there the `type=1` slideshow, the `type=12` signature and the background music are all live while
   `#wel-video` stays hidden (`advVideoEM` on) — **0 errors**.
-* Distribution zip: `dist/PARDIK-SMART-IPTV-Win10-x64-2.7.2.06.zip`, 515 entries, 12,369,741 bytes,
-  sha256 `32aac67513db6fdfe11cf01a32b26fc8e0a631513acc4f62a0e0126482c0ab1e`.
+* Port-side defects found and fixed while verifying the boot-advert build:
+  * `web/styles.css` had **no `[hidden]` rule**, so every overlay whose class sets `display:flex`
+    (`.modal` on `#vod-detail`/`#order-detail`/`#input-modal`/`#confirm-modal`, `.epg-panel`, `.vol-osd`,
+    `.player-osd`, `.ch-badge`, `.player-error`, `.tb-wifi`, `.tb-weather`, `.welcome-weather`) was painted
+    on top of the screen even while carrying `hidden` — an author-level `display` beats the browser's own
+    UA rule. `[hidden]{display:none !important;}` is now the **first** rule in the stylesheet and is
+    repeated at the end (jsdom resolves the cascade by source order only and ignores `!important`, so the
+    harness needs the trailing copy); `smoke.js` asserts both the rule's presence in `/web/styles.css` and
+    that no hidden overlay computes to anything but `display:none`.
+  * `install/launch.ps1` → `Ensure-FFmpeg` could never succeed: the hard-coded
+    `files.pythonhosted.org/packages/source/i/imageio-ffmpeg/…-0.6.0-…whl` URL is the legacy **sdist**
+    layout (a wheel lives under `/packages/<xx>/<hash>/…`, so it 404'd) and Windows PowerShell's
+    `Expand-Archive` refuses any extension but `.zip`. It now queries the PyPI JSON API for the current
+    `win_amd64` wheel (pinned `imageio_ffmpeg-0.8.1` as fallback), saves it as `.zip`, and creates
+    `tools\` before copying `ffmpeg.exe` — without ffmpeg, RTSP/UDP/MPEG-TS channels silently do not play.
+  * `install/Setup.bat` copied `app`, `tools`, `install`, `runtime` but **not `app_assets`**, so an
+    installed app answered 404 for every icon/background (`iptv_backend._app_image` resolves
+    `<install>\app_assets\img`).
+* Distribution zip: `dist/PARDIK-SMART-IPTV-Win10-x64-2.7.2.06.zip`, 515 entries, 12,370,993 bytes,
+  sha256 `abd3b4a077b058d4fe0dad3e055b6b8c811c2f3d7ba24b8420206d300f049660`.

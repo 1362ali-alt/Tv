@@ -11,6 +11,10 @@ echo Installing to %DST% ...
 if exist "%DST%" rmdir /s /q "%DST%"
 mkdir "%DST%"
 xcopy "%SRC%\app"     "%DST%\app\"     /e /i /q /y >nul
+rem app_assets holds every icon/background the UI serves from /assets/img/
+rem (iptv_backend._app_image looks in <install>\app_assets\img) - without this
+rem copy the installed app renders with no artwork at all.
+xcopy "%SRC%\app_assets" "%DST%\app_assets\" /e /i /q /y >nul
 xcopy "%SRC%\tools"   "%DST%\tools\"   /e /i /q /y >nul
 xcopy "%SRC%\install" "%DST%\install\" /e /i /q /y >nul
 if exist "%SRC%\runtime" xcopy "%SRC%\runtime" "%DST%\runtime\" /e /i /q /y >nul

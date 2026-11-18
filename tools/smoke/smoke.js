@@ -106,6 +106,28 @@ async function main() {
   const menu = Array.from(doc.querySelectorAll("#home-menu .menu-item")).map(n => n.textContent.trim());
   console.log("menu items =", JSON.stringify(menu));
 
+  /* The overlays are hidden with the `hidden` attribute while their classes set
+     `display:flex`; without `[hidden]{display:none !important}` in styles.css the
+     browser paints empty dialogs/OSDs on top of the screen. The rule is not
+     derived from the APK, so guard both its presence in the stylesheet and its
+     effect on the computed style. */
+  const css = await (await fetch(BASE + "/web/styles.css")).text();
+  const hasHiddenRule = /\[hidden\][^{]*\{\s*display\s*:\s*none\s*!important\s*;?\s*\}/.test(css);
+  console.log("[css] [hidden]{display:none !important} present =", hasHiddenRule,
+    "| occurrences =", (css.match(/\[hidden\]/g) || []).length);
+  if (!hasHiddenRule) errors.push("styles.css lost the [hidden]{display:none !important} rule");
+  const overlays = ["#confirm-modal", "#input-modal", "#vod-detail", "#order-detail", "#epg-panel",
+    "#epg-detail", "#vol-osd", "#player-osd", "#ch-badge", "#player-error", "#toast",
+    "#ad-countdown", "#side-list", "#wel-weather", "#home-wifi", "#home-weather"];
+  let shown = [];
+  overlays.forEach((sel) => {
+    const n = doc.querySelector(sel);
+    if (!n) { shown.push(sel + " (missing)"); return; }
+    if (n.hasAttribute("hidden") && w.getComputedStyle(n).display !== "none") shown.push(sel);
+  });
+  console.log("[css] overlays painted while hidden =", shown.length ? JSON.stringify(shown) : "none");
+  if (shown.length) errors.push("hidden overlays are still displayed: " + shown.join(", "));
+
   // open LIVE
   const liveBtn = Array.from(doc.querySelectorAll("#home-menu .menu-item")).find(n => /زنده|LIVE/i.test(n.textContent));
   if (liveBtn) { liveBtn.click(); await sleep(1500); }

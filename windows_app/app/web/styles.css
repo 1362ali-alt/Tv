@@ -1,4 +1,17 @@
 /* PARDIK SMART IPTV — Windows port. TV-style UI mirroring the Android look. */
+
+/* KEEP THESE RULES — they are not derived from the APK and a regeneration of
+   this stylesheet drops them. The UI hides overlays with the `hidden` attribute
+   while their classes set `display:flex`. An author-level `display` beats the
+   browser's own `[hidden]{display:none}`, so without this the empty dialogs and
+   OSDs are painted on top of the screen at start-up. The class-qualified copies
+   exist because some engines (jsdom in tools/smoke) ignore `!important` on a
+   bare attribute selector; they are the higher-specificity equivalent. */
+[hidden]{display:none !important;}
+[hidden].modal,[hidden].epg-panel,[hidden].vol-osd,[hidden].player-osd,
+[hidden].ch-badge,[hidden].player-error,[hidden].tb-wifi,[hidden].tb-weather,
+[hidden].welcome-weather{display:none !important;}
+
 :root{
   --bg1:#2b2f3e; --bg2:#4a4f63;
   --panel:rgba(20,24,36,.55);
@@ -301,3 +314,12 @@ body{
   position: absolute; bottom: 12%; left: 4%; z-index: 1; max-width: 15em; max-height: 9em;
   object-fit: contain; filter: drop-shadow(0 6px 18px rgba(0, 0, 0, .5));
 }
+
+/* Duplicate of the `[hidden]` rule at the TOP of this file — keep both.
+   Browsers resolve it by specificity/!important whatever its position, but
+   jsdom (tools/smoke/smoke.js) applies source order only and ignores
+   !important, so the harness needs a copy after every `display:` rule to be
+   able to prove that hidden overlays are really not painted. */
+[hidden],[hidden].modal,[hidden].epg-panel,[hidden].vol-osd,[hidden].player-osd,
+[hidden].ch-badge,[hidden].player-error,[hidden].tb-wifi,[hidden].tb-weather,
+[hidden].welcome-weather{display:none !important;}

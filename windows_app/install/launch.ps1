@@ -29,18 +29,41 @@ function Ensure-FFmpeg {
     if (Test-Path $ff) { return $ff }
     $sysff = Get-Command ffmpeg -ErrorAction SilentlyContinue
     if ($sysff) { return $sysff.Source }
-    # download from PyPI (imageio-ffmpeg ships a static ffmpeg build)
+    # No ffmpeg yet. imageio-ffmpeg ships a static Windows build inside its
+    # wheel, so fetch it from PyPI. Two bugs made this always fail before:
+    #   * "files.pythonhosted.org/packages/source/<i>/<pkg>/<file>.whl" is the
+    #     legacy *sdist* layout - wheels live under /packages/<xx>/<hash>/<file>,
+    #     so the hard-coded URL 404'd. Ask the PyPI JSON API for the current
+    #     win_amd64 wheel instead and keep a pinned URL as a fallback.
+    #   * Windows PowerShell's Expand-Archive refuses any extension but .zip, so
+    #     the download has to be saved as .zip (not .whl).
+    $pinned = "https://files.pythonhosted.org/packages/82/0c/a1d49f3dd268bbbd750b4986f8e271ad11f8e729a896070ea25f587b44da8/imageio_ffmpeg-0.8.1-py3-none-win_amd64.whl"
+    $urls = @()
     try {
-        $tmp = Join-Path $env:TEMP "iioff"
-        New-Item -ItemType Directory -Force -Path $tmp | Out-Null
-        $wheel = Join-Path $tmp "iio.whl"
-        Invoke-WebRequest -UseBasicParsing -TimeoutSec 120 `
-          -Uri "https://files.pythonhosted.org/packages/source/i/imageio-ffmpeg/imageio_ffmpeg-0.6.0-py3-none-win_amd64.whl" `
-          -OutFile $wheel
-        Expand-Archive -Force -Path $wheel -DestinationPath (Join-Path $tmp "x")
-        $bin = Get-ChildItem -Recurse (Join-Path $tmp "x") -Filter "ffmpeg*.exe" | Select-Object -First 1
-        if ($bin) { Copy-Item $bin.FullName $ff; return $ff }
+        $json = Invoke-WebRequest -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop `
+                  -Uri "https://pypi.org/pypi/imageio-ffmpeg/json" | Select-Object -ExpandProperty Content
+        $u = ($json | ConvertFrom-Json).urls | Where-Object { $_.filename -like "*win_amd64.whl" } | Select-Object -First 1
+        if ($u -and $u.url) { $urls += $u.url }
     } catch { }
+    $urls += $pinned
+    foreach ($u in $urls) {
+        try {
+            $tmp = Join-Path $env:TEMP "iioff"
+            New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+            $zip = Join-Path $tmp "imageio_ffmpeg.zip"
+            $x   = Join-Path $tmp "x"
+            Invoke-WebRequest -UseBasicParsing -TimeoutSec 600 -ErrorAction Stop -Uri $u -OutFile $zip
+            if (Test-Path $x) { Remove-Item -Recurse -Force $x }
+            Expand-Archive -Force -Path $zip -DestinationPath $x
+            $bin = Get-ChildItem -Recurse $x -Filter "ffmpeg*.exe" | Select-Object -First 1
+            if ($bin) {
+                New-Item -ItemType Directory -Force -Path $tools | Out-Null
+                Copy-Item -Force $bin.FullName $ff
+                Remove-Item $zip -ErrorAction SilentlyContinue
+                if (Test-Path $ff) { return $ff }
+            }
+        } catch { }
+    }
     return $null
 }
 
