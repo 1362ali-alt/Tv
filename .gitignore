@@ -11,7 +11,8 @@ tools/mock_media/
 tools/smoke/node_modules/
 tools/smoke/package-lock.json
 node_modules/
-dist/
+dist/*
+!dist/PARDIK-SMART-IPTV-Win10-x64-2.7.1.71.zip
 analysis/out/dex_strings.txt
 analysis/res_decoded/public.xml
 analysis/res_decoded/values-strings.xml
