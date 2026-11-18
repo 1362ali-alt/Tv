@@ -34,6 +34,9 @@ const S = {
   appsSelected: [],
   basket: {},              // MyOrderActivity: chosen foods (id -> count)
   basketItems: {},
+  ad: null,                // v2: in-player advert {id, canSkip, remains, startedAt, item}
+  adTimer: null,
+  liveWatch: null,         // v2: AddAdvHistory type=1 watch time of the live programme
   vlc: false,
   autostart: false,
   loadAnim: null,
@@ -172,6 +175,15 @@ document.addEventListener("keydown", (e) => {
   const tag = (document.activeElement || {}).tagName;
   const typing = tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA";
   if (e.key === "Escape" || e.key === "Backspace") { if (!typing) { e.preventDefault(); back(); } return; }
+  /* v2.7.2.06: while an advert is playing only BACK and the volume keys work;
+     any other key skips the advert when the server allows it (allowSkip).
+     Like the APK's onKeyDown this is checked before any focus/typing guard. */
+  if (S.ad) {
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); bumpVolume(e.key === "ArrowUp" ? 5 : -5); return; }
+    e.preventDefault();
+    if (S.ad.canSkip) finishAd(2);
+    return;
+  }
   if (typing) return;
   const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
   if (dir) {
@@ -423,7 +435,7 @@ function startPlayer(kind, item, list) {
   playItem(item);
   armOsd();
 }
-function playItem(item) {
+function playItem(item, opts) {
   S.playerCtx.item = item;
   const video = $("#video");
   stopVideo(false);
@@ -475,15 +487,19 @@ function playItem(item) {
     clearTimeout(S._badgeT); S._badgeT = setTimeout(() => badge.hidden = true, 4000);
     pollEpg(item);
     setupEpg(item);   // v2.7.2.06: settings.epg -> LivePlayerWithEpgActivity
+    if (!(opts && opts.noAd)) startAdCheck(item);   // v2.7.2.06: settings.activeAdv
   } else {
     badge.hidden = true;
     $("#osd-title").textContent = item.videoName || nm(item) || item.name || "";
   }
-  // watermark
+  // watermark / advert image (v2: GetAdvImage?type=3 fills water_mark_image_view)
   const wm = $("#watermark");
   wm.onerror = () => { wm.hidden = true; };
-  if (S.settings && S.settings.showWaterMark) { wm.hidden = false; wm.src = imgUrl("res/watermark.png"); }
+  if (S.playerCtx.kind === "live") loadAdImage();
+  else if (S.settings && (S.settings.showWaterMarkVod || S.settings.showWaterMark)) { wm.hidden = false; wm.src = imgUrl("res/watermark.png"); }
   else wm.hidden = true;
+  // v2: report how long the previous live programme was watched (AddAdvHistory type=1)
+  if (S.playerCtx.kind === "live") reportLiveWatch(item);
   applyVolume();
 }
 function stopVideo(hideScreen) {
@@ -602,6 +618,101 @@ function cycleSpeed() {
   applySpeed();
   apiPost("/api/settings", { play_speed: S.speed }).catch(() => {});
   toast(t("play_speed_txt", "سرعت") + ": " + S.speed + "x");
+}
+
+/* ------------- v2.7.2.06: in-player advertising -------------
+   LivePlayerWithEpgActivity: GetAdvImage?type=3 (image in the watermark view),
+   GetNextAdv?mac=&liveId= (pre-roll video, status 200 + resource{url,allowSkip}),
+   a countdown from ad_video_time_remains, and AddAdvHistory?mac=&id=&type=&time=&check=
+   (type 1 = live watch time, type 2 = advert; check 1 = seen to the end, 2 = skipped). */
+async function loadAdImage() {
+  const wm = $("#watermark");
+  try {
+    const list = await apiGet("adv_image", { type: 3 });
+    const arr = Array.isArray(list) ? list : ((list && list.list) || []);
+    if (arr.length) {
+      wm.hidden = false;
+      wm.src = imgUrl(arr[Math.floor(Math.random() * arr.length)]);
+      return;
+    }
+  } catch (e) {}
+  if (S.settings && S.settings.showWaterMark) { wm.hidden = false; wm.src = imgUrl("res/watermark.png"); }
+  else wm.hidden = true;
+}
+async function startAdCheck(item) {
+  if (!(S.settings && S.settings.activeAdv)) return;
+  if (item.liveType === 1) return;              // liveType 1 channels carry no pre-roll
+  let bean = null;
+  try {
+    const list = await apiGet("next_adv", { liveId: item.id });
+    bean = Array.isArray(list) && list.length ? list[0] : null;
+  } catch (e) { return; }
+  if (!bean || bean.status !== 200 || !bean.resource || !bean.resource.url) return;
+  if (!S.ad && S.playerCtx.item === item && S.cur === "scr-player") playAd(bean.resource, item);
+}
+function playAd(res, item) {
+  const video = $("#video");
+  stopVideo(false);
+  S.ad = {
+    id: res.id != null ? res.id : -1, canSkip: !!res.allowSkip, item: item,
+    startedAt: Date.now(), remains: parseInt(res.countTime || "0", 10) || 15,
+  };
+  const base = "http://" + S.config.settings.server_ip + ":" + S.config.settings.server_port;
+  const url = res.url.indexOf("http") === 0 ? res.url : base + (res.url.charAt(0) === "/" ? "" : "/") + res.url;
+  $("#player-loading").style.display = "flex"; startLoadAnim();
+  const kind = classify(url);
+  const playUrl = kind === "hls" ? "/proxy?url=" + enc(url) : "/stream/play?src=" + enc(url);
+  try {
+    if (kind === "hls" && window.Hls && Hls.isSupported()) {
+      S.hls = new Hls({ manifestLoadingTimeOut: 12000, manifestLoadingMaxRetry: 2 });
+      S.hls.loadSource(playUrl); S.hls.attachMedia(video);
+      S.hls.on(Hls.Events.MANIFEST_PARSED, () => { video.play().catch(() => {}); });
+    } else { video.src = playUrl; video.play().catch(() => {}); }
+  } catch (e) { finishAd(2); return; }
+  $("#ad-countdown").hidden = false;
+  paintAdCountdown();
+  clearInterval(S.adTimer);
+  S.adTimer = setInterval(() => {
+    if (!S.ad) return;
+    S.ad.remains -= 1;
+    if (S.ad.remains <= 0) { finishAd(1); return; }   // played to the end
+    paintAdCountdown();
+  }, 1000);
+  video.onloadedmetadata = () => {
+    if (S.ad && video.duration && isFinite(video.duration)) {
+      S.ad.remains = Math.max(1, Math.round(video.duration)); paintAdCountdown();
+    }
+  };
+  video.onplaying = () => { $("#player-loading").style.display = "none"; stopLoadAnim(); };
+  video.onended = () => finishAd(1);
+  video.onerror = () => finishAd(2);
+  $("#osd-title").textContent = res.name || t("ad_video_time_remains", "Ad");
+  $("#ch-badge").hidden = true;
+}
+function paintAdCountdown() {
+  if (!S.ad) return;
+  const n = $("#ad-countdown-txt");
+  if (n) n.innerHTML = t("ad_video_time_remains", "{0}S│Ad countdown").replace("{0}", "<b>" + S.ad.remains + "</b>");
+}
+function finishAd(check) {
+  const ad = S.ad; if (!ad) return;
+  S.ad = null;
+  clearInterval(S.adTimer); S.adTimer = null;
+  const box = $("#ad-countdown"); if (box) box.hidden = true;
+  const video = $("#video");
+  video.onended = null; video.onerror = null; video.onloadedmetadata = null;
+  const elapsed = Date.now() - ad.startedAt;
+  apiPost("/api/post", { ep: "add_adv_history", id: ad.id, type: 2, time: elapsed, check: check }).catch(() => {});
+  playItem(ad.item, { noAd: true });            // back to the channel the guest picked
+}
+/* AddAdvHistory type=1: watch time of the live programme we are leaving */
+function reportLiveWatch(nextItem) {
+  const w = S.liveWatch;
+  if (w && (!nextItem || nextItem.id !== w.id)) {
+    apiPost("/api/post", { ep: "add_adv_history", id: w.id, type: 1, time: Date.now() - w.startedAt, check: 1 }).catch(() => {});
+  }
+  S.liveWatch = (S.playerCtx && S.playerCtx.kind === "live" && nextItem)
+    ? { id: nextItem.id, startedAt: Date.now() } : null;
 }
 
 /* ------------- v2.7.2.06: local apps (SettingAppShowActivity) ------------- */
@@ -1307,6 +1418,8 @@ async function openApps() {
 function onEnter(id) {
   if (id !== "scr-player") {
     clearInterval(S._epgT); stopLoadAnim();
+    if (S.ad) { clearInterval(S.adTimer); S.ad = null; const ac = $("#ad-countdown"); if (ac) ac.hidden = true; }
+    reportLiveWatch(null);
     const ep = $("#epg-panel"), ed = $("#epg-detail");
     if (ep) ep.hidden = true;
     if (ed) ed.hidden = true;

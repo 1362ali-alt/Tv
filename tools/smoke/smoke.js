@@ -35,6 +35,23 @@ async function main() {
   const w = d.window, doc = w.document;
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const active = () => (doc.querySelector(".screen.active") || {}).id;
+  const homeBtn = (re) => Array.from(doc.querySelectorAll("#home-menu .menu-item")).find(n => re.test(n.textContent));
+  // v2.7.2.06: channels 1-2 carry a pre-roll advert (GetNextAdv). Wait for it and skip it.
+  const adBox = () => doc.querySelector("#ad-countdown");
+  const skipAd = async (label) => {
+    for (let i = 0; i < 12; i++) {
+      if (adBox() && !adBox().hidden) break;
+      await sleep(200);
+    }
+    const on = adBox() && !adBox().hidden;
+    console.log("[v2] advert overlay visible =", !!on, on ? "| text = " + adBox().textContent.trim() : "");
+    if (on) {
+      doc.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      await sleep(900);
+      console.log("[v2] after skip: overlay hidden =", adBox().hidden, "| src =", (doc.querySelector("#video").currentSrc || doc.querySelector("#video").src || "").slice(0, 90));
+    }
+    return on;
+  };
 
   await new Promise((resolve) => {
     if (doc.readyState === "complete") return resolve();
@@ -68,6 +85,8 @@ async function main() {
   console.log("video src/currentSrc =", video && (video.currentSrc || video.src));
   console.log("player loading visible =", doc.querySelector("#player-loading").style.display);
   console.log("ch badge =", (doc.querySelector("#ch-name") || {}).textContent);
+  const sawAd = await skipAd();
+  if (!sawAd) errors.push("expected a pre-roll advert on channel 1 (GetNextAdv)");
 
   // back to home, open VOD
   for (let i = 0; i < 3; i++) { doc.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Escape", bubbles: true })); await sleep(400); }
@@ -95,7 +114,6 @@ async function main() {
     "mac =", (doc.querySelector("#set-mac") || {}).textContent);
 
   /* ===================== v2.7.2.06 features ===================== */
-  const homeBtn = (re) => Array.from(doc.querySelectorAll("#home-menu .menu-item")).find(n => re.test(n.textContent));
   const goHome = async () => {
     for (let i = 0; i < 6; i++) {
       if (active() === "scr-home") break;
@@ -134,6 +152,7 @@ async function main() {
   if (liveBtn2) { liveBtn2.click(); await sleep(800); }
   const pkg2 = doc.querySelector("#pkg-list .pkg-item");
   if (pkg2) { pkg2.click(); await sleep(2200); }
+  await skipAd();
   console.log("[v2] player active =", active(), "epg btn hidden =", doc.querySelector("#btn-epg").hidden,
     "speed btn =", (doc.querySelector("#speed-val") || {}).textContent);
   doc.querySelector("#btn-epg").click(); await sleep(900);

@@ -191,7 +191,9 @@ settings password `111999` are unchanged.
 | `AddClientCheckOutOrder` | `mac=` | one-key check-out |
 | `GetWakeUp` | `mac=` | pending wake-up/taxi orders |
 | `GetLiveStatus` | **POST** form `name=&mac=` | `LivePlayerWithEpgActivity` (was GET) |
-| `GetAdvImage` / `GetNextAdv` | `mac=&type=3`, `mac=&liveId=` | in-player advertising |
+| `GetAdvImage` | `mac=&type=3` | `getAdImageInfo()` → a random path is loaded into `water_mark_image_view` (rounded) |
+| `GetNextAdv` | `mac=&liveId=` | pre-roll advert → `List<LiveProgramAdvVideoBean>{status,msg,resource{id,name,url,allowSkip,countTime,count,size,checked}}`; `status 0` = no advert, `200` = play `resource.url` first |
+| `AddAdvHistory` | `mac=&id=&type=&time=&check=` | watch-time report: `type 1` = live programme (`id = liveProgramId`), `type 2` = advert (`id = adVideoProgramId`); `check 1` = seen to the end, `2` = skipped |
 
 ### Room-service id map (`StyleTwoRoomServiceFragment$1.onItemClick`)
 | id | Tile art (`mipmap/pic_style_three_*_service`) | Action |
@@ -208,6 +210,18 @@ settings password `111999` are unchanged.
 
 Order statuses (`MyHistoryOrderDetailActivity`): `0/1` new-accepted (cancellable), `2` finished
 (`order_cannot_cancel_tips`), `3` waiting-to-cancel (`order_repeat_cancel_tips`), `4` cancelled (`order_canceled_tips`).
+
+### In-player advertising (`LivePlayerWithEpgActivity`, gated by `Settings.activeAdv`)
+`playTV(i)` → if `activeAdv` and `LiveTV.liveType != 1`: `programPlayType = 2` and `getAdListData(liveId)`.
+`GetNextAdv` callback (`$6`): `status == 200` → `advVideoCanSkip = resource.allowSkip`, `adVideoProgramId = resource.id`,
+`advVideoUrl = sp.getIPAddress() + <path with every segment URL-encoded>` → `startPlayAdvVideo()`.
+`onPrepared` → `adVideoTimeRemains = duration/1000` → `startAdTimesTimer()` shows `ll_adv_video_times_remains` /
+`txt_adv_video_times_remains` with `ad_video_time_remains` = `"{0}S│Ad countdown"`, decremented every second.
+`onKeyDown` while `programPlayType == 2`: only BACK(4)/VOLUME_UP(24)/VOLUME_DOWN(25) reach the normal handler, every other
+key skips the advert **iff** `advVideoCanSkip` → `adVideoPrgPlayComplete = 2`, `AddAdvHistory(type=2)`, then `startPlay(playUrl)`.
+`onCompletion` (`$9`) → `adVideoPrgPlayComplete = 1`, `AddAdvHistory(type=2)`, `startPlay(playUrl)`.
+Switching channel while a live programme is playing → `AddAdvHistory(type=1, time = now - startPlayTimemills)`.
+Advert art is served from `res/adv/…`; the 48 new `mipmap/aNNN.png` images in v2 are those advert creatives.
 
 ### VLC external playback (`LivePlayerActivity.playWithVlc`)
 `Intent(ACTION_VIEW)`, `data = url`, `type = "video/*"`, `setPackage("org.videolan.vlc")`, extras `title`, `from_start = 1`;
@@ -252,6 +266,7 @@ SQLite `app.db` v1, table `app(_id, package_name, name)`; `database.DeviceHelper
 | `name_1`/`content_1` bilingual beans | `nm()` helper used by every list/detail renderer |
 | strings 343→419 (fa 231→305) | `web/i18n.generated.js` regenerated → **245 keys** × zh/en/fa (41 keys from the new APK strings, 8 updated, plus 16 UI-only keys such as the order-status labels); the new fa placeholders that ship as English in the APK were replaced with real Persian. Every `t("…")` / `data-i18n` key used by the UI resolves — verified by script (0 missing). |
 | `GetRecTV` + `GetEpgRecProgram` | playback screen: channels → dates → programmes |
+| in-player advertising | `get_next_adv` / `add_adv_history` / `adv_image?type=3` in the backend; `#ad-countdown` overlay with the APK's `ad_video_time_remains` text, skip-on-any-key when `allowSkip`, `AddAdvHistory` type 1 (live watch time) and type 2 (`check` 1 finished / 2 skipped), advert image in the watermark slot |
 
 ## 7.3 Verification of the v2 build
 
@@ -262,9 +277,13 @@ SQLite `app.db` v1, table `app(_id, package_name, name)`; `database.DeviceHelper
   when VLC is absent.
 * `tools/mock_iptv_server.py` implements every new/changed endpoint (GET and POST through one `_route()`), so the UI can
   be exercised end-to-end without the hotel server.
+* `curl`: `ep=next_adv&liveId=1` returns the advert bean (`status 200`, `resource.url=/iptv2/vod/ad.mp4`, `allowSkip`),
+  `liveId=3` returns `status 0`; `ep=adv_image&type=3` returns five `res/adv/aNNN.png` creatives that `/api/img` serves
+  from the extracted APK assets; `add_adv_history` returns `{"status":200}` and the mock records the report.
 * `tools/smoke/smoke.js` (jsdom) walks boot → language → home → live → packages → player → VOD → detail → settings gate
   **plus the v2 flows**: VLC/speed/autostart/apps rows, apps screen, EPG panel + detail + timeshift, speed key,
   catering country → types → basket → orders → submit → detail → cancel, service record, one-key checkout confirm,
-  taxi time picker, laundry (`GetClothingType`), playback screen — **0 errors**.
-* Distribution zip: `dist/PARDIK-SMART-IPTV-Win10-x64-2.7.2.06.zip`, 515 entries, 12,361,691 bytes,
-  sha256 `27c456d73749d6712852f74b1a1a32d36da2e0e749be9da8def21a3dc894fc41`.
+  taxi time picker, laundry (`GetClothingType`), playback screen, and the pre-roll advert (overlay appears with the
+  Persian countdown, a key skips it, playback returns to the channel) — **0 errors**.
+* Distribution zip: `dist/PARDIK-SMART-IPTV-Win10-x64-2.7.2.06.zip`, 515 entries, 12,364,382 bytes,
+  sha256 `b5a49864674476d8e7c9250a9beb5252f378b2be8ab577fd0c29ad5cd6bc324f`.

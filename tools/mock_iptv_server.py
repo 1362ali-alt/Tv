@@ -29,7 +29,7 @@ SETTINGS = {
     "timeshiftPlayIp": "127.0.0.1", "timeshiftPlayPort": "8080",
     "timeshiftPlayPath": "/iptv2/vod", "timeshiftPlayProtocol": "http",
     "streamMediaIp": "", "streamMediaPort": 0, "trafficSaveMode": False,
-    "activeAdv": False, "activeXiaodu": False, "advVideoEM": False, "cater": True,
+    "activeAdv": True, "activeXiaodu": False, "advVideoEM": False, "cater": True,
     "checkOutCleanFavorite": False, "operatorNumber": "", "timeFormat": "HH:mm", "timeZone": "",
     "menuSceneryVisible": True, "menuRecVisible": True, "menuAppVisible": True,
     "menuCIBNVisible": False, "menuCaterVisible": True, "menuCheckOutVisible": True,
@@ -134,6 +134,19 @@ FOOD_ORDERS = [
      "food": {"id": 101, "name": "چلوکباب", "name_1": "Chelo Kebab", "price": 12,
               "content": "", "content_1": "", "imagePath": "res/food/kebab.jpg"}},
 ]
+# v2.7.2.06 in-player advertising: GetNextAdv?mac=&liveId= ->
+# List<LiveProgramAdvVideoBean>{status,msg,resource{id,name,url,allowSkip,countTime,...}}
+# status 0 = no advert for this channel, 200 = play resource.url before the channel.
+ADV_VIDEO = {
+    "id": 7001, "name": "Ronika Palace advert", "url": "/iptv2/vod/ad.mp4",
+    "allowSkip": True, "count": 1, "countCheck": 0, "countTime": "6",
+    "size": 0, "checked": True, "remark": "",
+}
+ADV_LIVE_IDS = (1, 2)          # only these channels carry a pre-roll advert
+ADV_IMAGES = ["res/adv/a113.png", "res/adv/a116.png", "res/adv/a119.png",
+              "res/adv/a122.png", "res/adv/a143.png"]
+ADV_HISTORY = []
+
 EPG_PROGRAMS = {}
 
 
@@ -196,6 +209,13 @@ def ensure_media():
                         "testsrc=size=640x360:rate=25:duration=20", "-f", "lavfi", "-i",
                         "sine=frequency=330:duration=20", "-c:v", "libx264", "-preset", "ultrafast",
                         "-c:a", "aac", "-f", "mpegts", ts], check=True)
+    # a short advert clip for GetNextAdv (v2.7.2.06 in-player advertising)
+    ad = os.path.join(MEDIA, "ad.mp4")
+    if not os.path.exists(ad):
+        subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+                        "testsrc2=size=640x360:rate=25:duration=6", "-f", "lavfi", "-i",
+                        "sine=frequency=880:duration=6", "-c:v", "libx264", "-preset", "ultrafast",
+                        "-c:a", "aac", ad], check=True)
     # HLS from the ts
     m3u8 = os.path.join(MEDIA, "test.m3u8")
     if not os.path.exists(m3u8):
@@ -278,7 +298,22 @@ class H(BaseHTTPRequestHandler):
         if p == "/iptv2/manager/UpdateVodClickRate":
             return self._j({"status": 200})
         if p == "/iptv2/manager/GetAdvImage":
+            # type 3 = the image shown in the live player (random pick client-side)
+            if q.get("type", ["0"])[0] == "3":
+                return self._j(ADV_IMAGES if SETTINGS.get("activeAdv") else [])
             return self._j([])
+        if p == "/iptv2/manager/GetNextAdv":
+            if not SETTINGS.get("activeAdv"):
+                return self._j([{"status": 0, "msg": "", "resource": None}])
+            lid = int(q.get("liveId", ["0"])[0] or 0)
+            if lid in ADV_LIVE_IDS:
+                return self._j([{"status": 200, "msg": "成功", "resource": ADV_VIDEO}])
+            return self._j([{"status": 0, "msg": "", "resource": None}])
+        if p == "/iptv2/manager/AddAdvHistory":
+            ADV_HISTORY.append({"mac": q.get("mac", [""])[0], "id": q.get("id", ["0"])[0],
+                                "type": q.get("type", ["0"])[0], "time": q.get("time", ["0"])[0],
+                                "check": q.get("check", ["0"])[0], "at": NOW()})
+            return self._j({"status": 200})
         if p == "/iptv2/manager/GetHomepageIcon":
             return self._j(HOMEPAGE)
         if p == "/iptv2/manager/GetServiceIcon":
@@ -410,6 +445,13 @@ class H(BaseHTTPRequestHandler):
                 ctype = "application/vnd.apple.mpegurl"
             return self._file(fp, ctype)
         if p.startswith("/iptv2/manager/"):
+            # res/adv/<name>.png -> the real advert art extracted from the APK
+            if p.startswith("/iptv2/manager/res/adv/"):
+                name = os.path.basename(p)
+                asset = os.path.join(HERE, "..", "windows_app", "app_assets", "img",
+                                     "mipmap__" + name)
+                if os.path.exists(asset):
+                    return self._file(asset, "image/png")
             # images -> serve a tiny png
             png = os.path.join(HERE, "mock_img.png")
             if os.path.exists(png):

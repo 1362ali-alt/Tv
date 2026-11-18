@@ -273,3 +273,12 @@ body{
 
 /* confirm dialog */
 .confirm-text{color:var(--muted); line-height:1.6; margin:.4em 0 .8em;}
+
+
+/* v2.7.2.06 - in-player advertising countdown (ll_adv_video_times_remains) */
+.ad-countdown {
+  position: absolute; top: 18px; right: 22px; z-index: 12;
+  background: rgba(0, 0, 0, .62); color: #fff; border: 1px solid rgba(255, 255, 255, .28);
+  border-radius: 22px; padding: 7px 18px; font-size: 19px; letter-spacing: .3px;
+}
+.ad-countdown b { color: #ffd27a; font-weight: 700; }

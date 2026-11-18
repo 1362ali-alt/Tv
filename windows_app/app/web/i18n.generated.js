@@ -7,7 +7,7 @@ window.I18N = {
  },
  "ad_video_time_remains": {
   "en": "{0}S│Ad countdown",
-  "fa": "{0}S│Ad countdown",
+  "fa": "{0} ثانیه │ شمارش معکوس آگهی",
   "zh": "{0}S│Ad countdown"
  },
  "air_quality": {

@@ -40,3 +40,12 @@ Edge app window with full D-pad/keyboard navigation.
 Arrows/Tab move · Enter = OK · Esc/Backspace = back (twice in live to exit) ·
 ↑/↓ volume · M mute · F favourite · L channel list · **E** EPG panel ·
 **I** programme details · **S** playback speed · Enter (in player) fullscreen.
+
+When the server enables advertising (`Settings.activeAdv`), live channels carry the
+same pre-roll flow as the APK: `GetAdvImage?type=3` fills the watermark slot with an
+advert creative, `GetNextAdv?mac=&liveId=` returns the advert video
+(`LiveProgramAdvVideoBean{status,resource{id,url,allowSkip,countTime}}`), the countdown
+overlay uses the APK's own `ad_video_time_remains` string, any key skips the advert when
+`allowSkip` is set, and watch time is reported back through
+`AddAdvHistory?mac=&id=&type=&time=&check=` (type 1 = live programme, type 2 = advert;
+check 1 = seen to the end, 2 = skipped).

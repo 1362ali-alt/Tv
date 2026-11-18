@@ -288,6 +288,21 @@ class Api(object):
     def get_adv_image(self, type_):
         return api_get("GetAdvImage", self._m({"type": type_}))
 
+    # ---- v2.7.2.06 in-player advertising (LivePlayerWithEpgActivity) ----
+    def get_next_adv(self, live_id):
+        """GetNextAdv?mac=&liveId= -> List<LiveProgramAdvVideoBean>
+        {status, msg, resource{id,name,url,allowSkip,countTime,count,size,checked}}
+        status 0 = no advert (play the channel), 200 = play resource.url first."""
+        return api_get("GetNextAdv", self._m({"liveId": live_id}))
+
+    def add_adv_history(self, id, type_=2, time=0, check=1):
+        """AddAdvHistory?mac=&id=&type=&time=&check=
+        type 1 = live programme watch time (id = liveProgramId)
+        type 2 = advert video (id = adVideoProgramId), check 1 = played to the
+        end, 2 = skipped by the guest."""
+        return api_get("AddAdvHistory",
+                       self._m({"id": id, "type": type_, "time": time, "check": check}))
+
     def get_homepage_icon(self):
         return api_get("GetHomepageIcon")
 
