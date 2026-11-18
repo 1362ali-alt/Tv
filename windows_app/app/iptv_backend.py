@@ -1631,7 +1631,7 @@ def main():
     WS.start()
     srv = ThreadingHTTPServer((host, port), Handler)
     srv.daemon_threads = True
-    print("PARDIK SMART IPTV backend on http://%s:%d/" % (host, port))
+    print("%s backend on http://%s:%d/ (mode=%s)" % (BRANDING[APP_MODE]["install_name"], host, port, APP_MODE))
     sys.stdout.flush()
     try:
         srv.serve_forever()

@@ -489,9 +489,12 @@ A residential head-end frequently publishes its line-up as a plain playlist inst
 ## 8.6 Distribution
 
 * `tools/build_package.sh` → **`dist/PARDIK-IPTV-RonikaPalace-Kohak-Win10-x64-2.7.2.06.zip`**,
-  516 entries, 12,378,793 bytes, sha256 `50837932372dc50ec262c0dd40282f22153cfc996b2c025d0ebf52958e2a29a6`
+  516 entries, 12,380,844 bytes, sha256 `1a1543bd61ebee30e5ddbd9023a81797d247d54284783f523fda79ea8ea744fd`
   (adds `mode.txt`, drops `_userdata/` and `__pycache__`). `MODE=hotel bash tools/build_package.sh`
-  rebuilds `dist/PARDIK-SMART-IPTV-Win10-x64-2.7.2.06.zip`.
+  rebuilds `dist/PARDIK-SMART-IPTV-Win10-x64-2.7.2.06.zip` (516 entries, 12,380,838 bytes,
+  sha256 `973cd3c2db8b0af827f8becc8aba6d9c359dff2e297a7791c3508101f457c1ab`) — the same code with
+  `mode.txt` = `hotel`. The backend banner now names the flavour it started
+  (`PARDIK IPTV - Ronika Palace Kahak backend on … (mode=residential)`).
 * Docs rewritten for the residential product: `windows_app/README-FA.md` (Persian, primary — install,
   defaults, wired-Ethernet identity, both channel sources, controls, troubleshooting),
   `windows_app/README-EN.md`, root `README.md`.
