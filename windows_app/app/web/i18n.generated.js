@@ -284,6 +284,11 @@ window.I18N = {
   "fa": "خدمات کالا",
   "zh": "借用物品"
  },
+ "head_end": {
+  "en": "Head-end",
+  "fa": "هداند",
+  "zh": "Head-end",
+ },
  "home_service": {
   "en": "Home Service",
   "fa": "خدمات خانه",

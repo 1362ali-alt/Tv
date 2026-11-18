@@ -201,6 +201,10 @@ async function main() {
   console.log("settings active =", active(), "gate shown =", doc.querySelector("#set-gate").style.display);
   const gp = doc.querySelector("#gate-pass");
   if (gp) { gp.value = "111999"; doc.querySelector("#gate-ok").click(); await sleep(500); }
+  console.log("[mode] head-end row =", (doc.querySelector("#set-headend-value") || {}).textContent);
+  if (!/:\d+/.test((doc.querySelector("#set-headend-value") || {}).textContent || "")) {
+    errors.push("the head-end row does not show the configured address: " + (doc.querySelector("#set-headend-value") || {}).textContent);
+  }
   console.log("[mode] device link =", (doc.querySelector("#set-link-value") || {}).textContent,
     "| room/unit label =", (doc.querySelector("#set-room-label") || {}).textContent,
     "| m3u =", (doc.querySelector("#set-m3u-value") || {}).textContent);

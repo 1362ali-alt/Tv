@@ -1822,6 +1822,17 @@ function fillSettings() {
     lv.textContent = kind + (net.iface ? " · " + net.iface : "") + (net.ip ? " · " + net.ip : "");
     lv.classList.toggle("ok", !!net.wired);
   }
+  /* the head-end the live channels come from: address + RTSP port + the source in
+     use, so one glance says whether the defaults are still the factory ones */
+  const hv = $("#set-headend-value");
+  if (hv) {
+    const hl = $("#set-headend-label");
+    if (hl) hl.textContent = t("head_end", "هداند");
+    const sv = S.config.server || {};
+    const m = S.m3u || {};
+    hv.textContent = (sv.address || "-") + " · RTSP " + (c.rtsp_port || "554") + " · " +
+      ((m.enabled && m.count) ? "m3u (" + m.count + ")" : "GetLiveTV");
+  }
   /* live-playback readiness: the remuxer and the one-click pre-flight check */
   const fv = $("#set-ffmpeg-value");
   if (fv) {

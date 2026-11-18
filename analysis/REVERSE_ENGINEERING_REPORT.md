@@ -489,10 +489,10 @@ A residential head-end frequently publishes its line-up as a plain playlist inst
 ## 8.6 Distribution
 
 * `tools/build_package.sh` → **`dist/PARDIK-IPTV-RonikaPalace-Kohak-Win10-x64-2.7.2.06.zip`**,
-  516 entries, 12,388,090 bytes, sha256 `37f3b8c58c17b1a680a0d8d9aa6f68a337eaeec0bd15c09811203f86a36acb72`
+  516 entries, 12,388,306 bytes, sha256 `b0464201df3dd0739c68ed2cf546bd9aa33bda9ce9f46f1eeca35d49e1a0df68`
   (adds `mode.txt`, drops `_userdata/` and `__pycache__`). `MODE=hotel bash tools/build_package.sh`
-  rebuilds `dist/PARDIK-SMART-IPTV-Win10-x64-2.7.2.06.zip` (516 entries, 12,388,084 bytes,
-  sha256 `ff504a4eb1f007de3a8e1c1f408b960efcc975bde7ff2d18e3be56a5bfeb5e38`) — the same code with
+  rebuilds `dist/PARDIK-SMART-IPTV-Win10-x64-2.7.2.06.zip` (516 entries, 12,388,300 bytes,
+  sha256 `f81e8de8577219078094c0e86006af8b908e02f26cb0bde73fed38c1f4868650`) — the same code with
   `mode.txt` = `hotel`. The backend banner now names the flavour it started
   (`PARDIK IPTV - Ronika Palace Kahak backend on … (mode=residential)`).
 * Docs rewritten for the residential product: `windows_app/README-FA.md` (Persian, primary — install,
@@ -522,7 +522,10 @@ a problem; `ok`/`issues[]` summarise the run. The UI reaches it from
 Settings → **«بررسی پخش زنده»** (`runDiagnose()` in `app.js` renders the checks in
 the existing input dialog plus a `≡` sample-channel block, and the row itself
 keeps the verdict: `✓ آماده` / `✗ n`). `closeDiag()` restores the dialog for the
-m3u and `data-edit` rows, which reuse the same modal.
+m3u and `data-edit` rows, which reuse the same modal. Two read-only rows next to it
+keep the facts visible without running anything: **«هداند»**
+(`http://ip:port · RTSP 554 · GetLiveTV|m3u (n)`, i.e. which source is in use) and
+**«FFmpeg (کانال‌های RTSP/TS)»** (`✓ آماده` / `✗ یافت نشد`).
 
 Two playback guarantees that came out of writing this check:
 
