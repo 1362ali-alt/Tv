@@ -1,7 +1,7 @@
 # PARDIK SMART IPTV — Windows 10 (x64) edition
 
 A full, standalone re-implementation of the Android app **PARDIK SMART IPTV**
-(`com.dexin.wanchuan.iptv3`, v2.7.1.71) for Windows 10 64-bit, produced by
+(`com.dexin.wanchuan.iptv3`, **v2.7.2.06** / code 20702006) for Windows 10 64-bit, produced by
 reverse-engineering the supplied APK (see `../analysis/REVERSE_ENGINEERING_REPORT.md`).
 Full Persian documentation: `README-FA.md`.
 
@@ -38,4 +38,5 @@ Edge app window with full D-pad/keyboard navigation.
 
 ## Controls
 Arrows/Tab move · Enter = OK · Esc/Backspace = back (twice in live to exit) ·
-↑/↓ volume · M mute · F favourite · L channel list · Enter (in player) fullscreen.
+↑/↓ volume · M mute · F favourite · L channel list · **E** EPG panel ·
+**I** programme details · **S** playback speed · Enter (in player) fullscreen.

@@ -25,6 +25,18 @@ const S = {
   favourites: [],
   idleTimer: null,
   clockTimer: null,
+  /* v2.7.2.06 */
+  speed: 1.0,              // txt_play_speed
+  speeds: [1, 1.25, 1.5, 2, 0.5, 0.75],
+  epg: [],                 // LiveProgEpgDataBean list of the current channel
+  epgIndex: -1,
+  apps: [],                // SettingAppShowActivity / app.db equivalent
+  appsSelected: [],
+  basket: {},              // MyOrderActivity: chosen foods (id -> count)
+  basketItems: {},
+  vlc: false,
+  autostart: false,
+  loadAnim: null,
 };
 
 /* ----------------------------- i18n ----------------------------- */
@@ -64,6 +76,43 @@ function toast(msg) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => n.hidden = true, 2600);
 }
 
+/* v2.7.2.06: the Android app shows its own dialogs (layout_dialog_new,
+   dialog_order_cancel/commit) instead of the platform confirm(). */
+function askConfirm(title, text, okLabel) {
+  return new Promise((resolve) => {
+    const m = $("#confirm-modal");
+    $("#confirm-title").textContent = title || "";
+    $("#confirm-text").textContent = text || "";
+    $("#confirm-ok").textContent = okLabel || t("ok", "تأیید");
+    m.hidden = false;
+    const done = (v) => { m.hidden = true; $("#confirm-ok").onclick = null; $("#confirm-cancel").onclick = null; resolve(v); focusFirst(S.cur); };
+    $("#confirm-ok").onclick = () => done(true);
+    $("#confirm-cancel").onclick = () => done(false);
+    setTimeout(() => { try { $("#confirm-ok").focus(); } catch (e) {} }, 40);
+  });
+}
+
+/* Android picks the Chinese or the English bean field with
+   `getSelectLanguage() != 0 ? getName() : getName_1()`; v2.7.2.06 added the
+   matching *_1 fields (name_1, content_1, description_1, foodTypeName_1). */
+function nm(o, key) {
+  if (!o) return "";
+  const k = key || "name";
+  const zh = o[k], alt = o[k + "_1"];
+  const preferAlt = (S.config && S.config.settings.select_language_flag === 0) || S.lang === "en";
+  return (preferAlt ? (alt || zh) : (zh || alt)) || o[k + "En"] || o["englishName"] || "";
+}
+
+/* drawable/loading1..8 -> the APK's own buffering animation */
+function startLoadAnim() {
+  const img = $("#load-anim"); if (!img) return;
+  let i = 1; img.src = "/assets/img/drawable__loading1.png";
+  img.onerror = () => { img.hidden = true; };
+  clearInterval(S.loadAnim);
+  S.loadAnim = setInterval(() => { i = (i % 8) + 1; img.src = "/assets/img/drawable__loading" + i + ".png"; }, 110);
+}
+function stopLoadAnim() { clearInterval(S.loadAnim); S.loadAnim = null; }
+
 /* ----------------------------- screens / nav ----------------------------- */
 function show(id, push) {
   const cur = $(".screen.active");
@@ -74,8 +123,12 @@ function show(id, push) {
   focusFirst(id);
 }
 function back() {
+  if ($("#confirm-modal").hidden === false) { $("#confirm-modal").hidden = true; focusFirst(S.cur); return; }
   if ($("#vod-detail").hidden === false) { $("#vod-detail").hidden = true; focusFirst(S.cur); return; }
+  if ($("#order-detail").hidden === false) { $("#order-detail").hidden = true; focusFirst(S.cur); return; }
   if ($("#input-modal").hidden === false) { $("#input-modal").hidden = true; focusFirst(S.cur); return; }
+  if ($("#epg-detail").hidden === false) { $("#epg-detail").hidden = true; focusFirst(S.cur); return; }
+  if ($("#epg-panel").hidden === false) { $("#epg-panel").hidden = true; focusFirst(S.cur); return; }
   if ($("#side-list").hidden === false) { $("#side-list").hidden = true; focusFirst(S.cur); return; }
   if (S.cur === "scr-player" && S.playerCtx && S.playerCtx.kind === "live") {
     // Android: press back twice to exit
@@ -91,7 +144,7 @@ function back() {
 function focusables(id) {
   const scr = document.getElementById(id);
   if (!scr) return [];
-  return $$(".focusable, button, input, select, .menu-item, .pkg-item, .poster, .type-item, .svc-item, .food-item, .side-item, .rec-item, .set-row[data-edit], .hotel-item, .scen-item", scr)
+  return $$(".focusable, button, input, select, .menu-item, .pkg-item, .poster, .type-item, .svc-item, .food-item, .side-item, .rec-item, .set-row[data-edit], .set-row[data-act], .hotel-item, .scen-item, .epg-item, .order-item, .country-item, .app-item", scr)
     .filter(n => n.offsetParent !== null && !n.disabled);
 }
 function focusFirst(id) {
@@ -136,6 +189,9 @@ document.addEventListener("keydown", (e) => {
     if (e.key === "m" || e.key === "M") { toggleMute(); }
     if (e.key === "f" || e.key === "F") { toggleFav(); }
     if (e.key === "l" || e.key === "L") { toggleSideList(); }
+    if (e.key === "e" || e.key === "E") { toggleEpg(); }          // v2: EPG panel
+    if (e.key === "i" || e.key === "I") { showEpgDetail(-1); }    // v2: programme details
+    if (e.key === "s" || e.key === "S") { cycleSpeed(); }         // v2: txt_play_speed
     if (e.key === "Enter") { toggleFullscreen(); }
   }
 });
@@ -161,6 +217,11 @@ async function boot() {
   S.config = await cfg();
   S.lang = S.config.settings.app_language || "fa";
   S.favourites = S.config.settings.favourites || [];
+  /* v2.7.2.06 local preferences */
+  S.speed = Number(S.config.settings.play_speed || 1);
+  S.vlc = !!S.config.settings.use_vlc_paly_live_prg;
+  S.autostart = !!S.config.autostart;
+  S.appsSelected = S.config.apps_selected || [];
   applyI18n();
   const bar = $("#boot-progress"); const msg = $("#boot-msg");
   let tries = 0;
@@ -256,6 +317,16 @@ function buildMenu(st) {
     { id: "consume", label: t("main_menu_consume", "صورتحساب"), icon: "icon_money",   act: () => openConsume(),  show: st.menuConsumeVisible !== false },
     { id: "settings",label: t("settings_system", "تنظیمات"), icon: "icon_settings_large", act: () => openSettings(), show: st.menuSystemVisible !== false },
   ].filter(i => i.show !== false);
+  /* v2.7.2.06: when the server sets appShowInMenu, MainStyleFourthActivity
+     drops the single "third app" tile and adds one tile per chosen local app
+     (addLocalThirdAppInMenu). The Windows port does the same with the apps
+     selected in Settings -> "APP show in menu". */
+  if (st.appShowInMenu && S.appsSelected && S.appsSelected.length) {
+    S.appsSelected.forEach(name => items.push({
+      id: "app:" + name, label: name, icon: "icon_third_app_large",
+      isApp: true, appName: name, act: () => launchApp(name),
+    }));
+  }
   // overlay server-provided icons/labels where present
   apiGet("homepage_icon").then(list => {
     if (Array.isArray(list)) {
@@ -357,8 +428,18 @@ function playItem(item) {
   const video = $("#video");
   stopVideo(false);
   $("#player-loading").style.display = "flex";
+  startLoadAnim();
   $("#player-error").hidden = true;
   const [src, proto] = pickSource(item);
+  /* v2.7.2.06: use_vlc_paly_live_prg hands live playback to the external
+     player (LivePlayerActivity.playWithVlc). If VLC is missing the Android app
+     toasts vlc_player_install_tips and keeps playing internally. */
+  if (S.playerCtx.kind === "live" && S.vlc && src) {
+    apiPost("/api/external_player", { url: src, title: item.name || "" }).then(r => {
+      if (r && r.ok) { toast(t("external_player_on", "پخش به پخش‌کنندهٔ خارجی سپرده شد") + " (VLC)"); }
+      else { toast(t("vlc_player_install_tips", "پخش‌کننده VLC شناسایی نشد. لطفاً ابتدا آن را نصب کنید!")); }
+    }).catch(() => {});
+  }
   const kind = classify(src);
   let playUrl;
   if (kind === "hls") playUrl = "/proxy?url=" + enc(src);
@@ -372,7 +453,7 @@ function playItem(item) {
       S.hls.attachMedia(video);
       S.hls.on(Hls.Events.MANIFEST_PARSED, () => { video.play().catch(() => {}); });
       S.hls.on(Hls.Events.ERROR, (e, d) => {
-        if (d.fatal) { $("#player-loading").style.display = "none"; $("#player-error").hidden = false; }
+        if (d.fatal) { $("#player-loading").style.display = "none"; stopLoadAnim(); $("#player-error").hidden = false; }
       });
     } else {
       video.src = playUrl;
@@ -381,9 +462,9 @@ function playItem(item) {
   } catch (e) {
     $("#player-error").hidden = false;
   }
-  video.onplaying = () => { $("#player-loading").style.display = "none"; $("#player-error").hidden = true; };
-  video.onwaiting = () => { $("#player-loading").style.display = "flex"; };
-  video.onerror = () => { $("#player-loading").style.display = "none"; $("#player-error").hidden = false; };
+  video.onplaying = () => { $("#player-loading").style.display = "none"; stopLoadAnim(); $("#player-error").hidden = true; applySpeed(); };
+  video.onwaiting = () => { $("#player-loading").style.display = "flex"; startLoadAnim(); };
+  video.onerror = () => { $("#player-loading").style.display = "none"; stopLoadAnim(); $("#player-error").hidden = false; };
   // overlays
   const badge = $("#ch-badge");
   if (S.playerCtx.kind === "live") {
@@ -393,6 +474,7 @@ function playItem(item) {
     apiPost("/api/settings", { last_channel: item.id });
     clearTimeout(S._badgeT); S._badgeT = setTimeout(() => badge.hidden = true, 4000);
     pollEpg(item);
+    setupEpg(item);   // v2.7.2.06: settings.epg -> LivePlayerWithEpgActivity
   } else {
     badge.hidden = true;
     $("#osd-title").textContent = item.videoName || item.name || "";
@@ -423,12 +505,121 @@ function pollEpg(item) {
   };
   tick(); S._epgT = setInterval(tick, 30000);
 }
+
+/* ------------- v2.7.2.06: EPG (LivePlayerWithEpgActivity) ------------- */
+async function setupEpg(item) {
+  const btn = $("#btn-epg");
+  const on = !!(S.settings && S.settings.epg) && S.playerCtx && S.playerCtx.kind === "live";
+  if (btn) btn.hidden = !on;
+  S.epg = []; S.epgIndex = -1;
+  if (!on) { $("#epg-panel").hidden = true; $("#epg-detail").hidden = true; return; }
+  try {
+    const list = await apiGet("live_epg", { liveId: item.id });
+    S.epg = Array.isArray(list) ? list : ((list && list.list) || []);
+    const cur = S.epg.findIndex(p => p.playing);
+    S.epgIndex = cur >= 0 ? cur : 0;
+    if (cur >= 0 && S.epg[cur].program) $("#osd-sub").textContent = S.epg[cur].program;
+    renderEpg();
+    if (!$("#epg-panel").hidden) focusFirst("scr-player");
+  } catch (e) { S.epg = []; }
+}
+function renderEpg() {
+  const box = $("#epg-list"); if (!box) return;
+  const it = (S.playerCtx && S.playerCtx.item) || {};
+  $("#epg-ch").textContent = it.name || "";
+  box.innerHTML = "";
+  S.epg.forEach((p, i) => {
+    const d = el("div", "epg-item focusable" + (p.playing ? " now" : (p.timeshift ? " past" : "")));
+    d.appendChild(el("span", "tm", (p.startTime || "") + "–" + (p.endTime || "")));
+    d.appendChild(el("span", "pg", p.program || p.content || ""));
+    if (p.playing) d.appendChild(el("span", "tag", t("now_playing", "در حال پخش")));
+    else if (p.timeshift) d.appendChild(el("span", "tag", t("timeshift_play", "پخش با تأخیر")));
+    d.onclick = () => {
+      S.epgIndex = i;
+      if (p.playing) { $("#epg-panel").hidden = true; $("#epg-detail").hidden = true; focusFirst("scr-player"); return; }
+      if (p.timeshift) { playTimeshift(p); return; }
+      showEpgDetail(i);
+    };
+    box.appendChild(d);
+  });
+  if (!S.epg.length) box.appendChild(el("div", "epg-item", t("no_epg_data", "اطلاعات برنامه‌ها در دسترس نیست")));
+}
+function toggleEpg() {
+  const p = $("#epg-panel");
+  if (!S.epg.length && !(S.settings && S.settings.epg)) return;
+  p.hidden = !p.hidden;
+  $("#epg-detail").hidden = true;
+  if (!p.hidden) { renderEpg(); focusFirst("scr-player"); }
+}
+function showEpgDetail(idx) {
+  if (!S.epg.length) return;
+  let i = idx;
+  if (i == null || i < 0) i = S.epg.findIndex(p => p.playing);
+  if (i < 0) i = S.epgIndex >= 0 ? S.epgIndex : 0;
+  const p = S.epg[i]; if (!p) return;
+  S.epgIndex = i;
+  $("#epg-detail-title").textContent = p.program || "";
+  $("#epg-detail-time").textContent = (p.date || "") + "  " + (p.startTime || "") + "–" + (p.endTime || "");
+  $("#epg-detail-content").textContent = p.content || "";
+  $("#epg-detail").hidden = false;
+  clearTimeout(S._epgDetT);
+  S._epgDetT = setTimeout(() => { $("#epg-detail").hidden = true; }, 9000);
+}
+async function playTimeshift(prog) {
+  /* Android plays a finished programme through the timeshift server
+     (GetEpgRecProgram / GetRecProgram on the same liveId). */
+  const it = (S.playerCtx && S.playerCtx.item) || {};
+  try {
+    const recs = await apiGet("epg_rec_program", { liveId: it.id });
+    const list = Array.isArray(recs) ? recs : ((recs && recs.list) || []);
+    const hit = list.find(r => (r.program || r.name) === (prog.program || prog.name)) || list[0];
+    if (hit && (hit.url || hit.httpUrl || hit.hlsUrl)) {
+      $("#epg-panel").hidden = true;
+      startPlayer("vod", { videoName: (prog.program || hit.name || ""), url: hit.url || hit.httpUrl || hit.hlsUrl });
+      return;
+    }
+  } catch (e) {}
+  toast(t("timeshift_unavailable", "پخش با تأخیر برای این برنامه در دسترس نیست"));
+}
+
+/* ------------- v2.7.2.06: playback speed (txt_play_speed) ------------- */
+function applySpeed() {
+  const v = $("#video");
+  try { v.playbackRate = S.speed; } catch (e) {}
+  const sv = $("#speed-val"); if (sv) sv.textContent = (Math.round(S.speed * 100) / 100) + "x";
+  if (v && v.playbackRate && Math.abs(v.playbackRate - S.speed) > 0.02) {
+    S.speed = 1; try { v.playbackRate = 1; } catch (e) {}
+    if (sv) sv.textContent = "1x";
+    toast(t("play_speed_error", "تنظیم انجام نشد؛ پخش با سرعت عادی ادامه می‌یابد!"));
+  }
+}
+function cycleSpeed() {
+  const v = $("#video");
+  const started = v && v.readyState > 1 && !v.paused;
+  if (!started) { toast(t("play_speed_tips", "لطفاً سرعت پخش را پس از شروع ویدئو تنظیم کنید!")); return; }
+  const i = S.speeds.indexOf(S.speed);
+  S.speed = S.speeds[(i + 1) % S.speeds.length];
+  applySpeed();
+  apiPost("/api/settings", { play_speed: S.speed }).catch(() => {});
+  toast(t("play_speed_txt", "سرعت") + ": " + S.speed + "x");
+}
+
+/* ------------- v2.7.2.06: local apps (SettingAppShowActivity) ------------- */
+async function launchApp(name) {
+  try {
+    const r = await apiPost("/api/launch", { app: name });
+    if (!r || !r.ok) toast(t("app_launch_failed", "اجرای برنامه ناموفق بود") + (r && r.error ? " (" + r.error + ")" : ""));
+  } catch (e) { toast(t("app_launch_failed", "اجرای برنامه ناموفق بود")); }
+}
+
 function armOsd() {
   const osd = $("#player-osd");
   const kick = () => { osd.hidden = false; clearTimeout(S.idleTimer); S.idleTimer = setTimeout(() => { osd.hidden = true; }, 4000); };
   window.onmousemove = kick; kick();
   $("#btn-fav").onclick = toggleFav;
   $("#btn-list").onclick = toggleSideList;
+  $("#btn-epg").onclick = toggleEpg;
+  $("#btn-speed").onclick = cycleSpeed;
   $("#btn-ratio").onclick = () => {
     const v = $("#video");
     v.style.objectFit = v.style.objectFit === "cover" ? "contain" : "cover";
@@ -482,7 +673,7 @@ async function openVod() {
     const tr = $("#vod-types"); tr.innerHTML = "";
     vodTypes.forEach((ty, i) => {
       const d = el("div", "type-item focusable" + (i === 0 ? " active" : ""));
-      d.textContent = ty.name || "";
+      d.textContent = nm(ty) || ty.name || "";
       d.onclick = () => { $$("#vod-types .type-item").forEach(x => x.classList.remove("active")); d.classList.add("active"); loadVodGrid(ty.id); };
       tr.appendChild(d);
     });
@@ -501,7 +692,7 @@ async function loadVodGrid(typeId) {
       img.src = cover ? imgUrl(cover) : imgUrl((v.videoName || v.id) + ".jpg");
       img.onerror = () => { img.src = "/assets/img/mipmap__icon_vod_type_default.png"; img.style.objectFit = "contain"; img.style.padding = "2em"; };
       p.appendChild(img);
-      p.appendChild(el("div", "cap", v.videoName || ""));
+      p.appendChild(el("div", "cap", v.videoName || nm(v) || ""));
       p.onclick = () => openVodDetail(v);
       g.appendChild(p);
     });
@@ -529,25 +720,57 @@ function openVodDetail(v) {
 }
 
 /* ----------------------------- REC / EPG ----------------------------- */
+/* v2.7.2.06: RecordEpgActivity / RecordEpgAllTimeActivity
+   GetRecTV (all recorded channels) -> GetEpgRecProgram?liveId= grouped by date */
+let recProgs = [];
 async function openRec() {
   show("scr-rec");
+  const c1 = $("#rec-channels"), c2 = $("#rec-dates"), c3 = $("#rec-progs");
+  c1.innerHTML = ""; c2.innerHTML = ""; c3.innerHTML = "";
   try {
-    const chs = (await apiGet("live_tv", { packageId: -1 })) || [];
-    const c1 = $("#rec-channels"); c1.innerHTML = "";
-    chs.slice(0, 60).forEach(c => {
-      const d = el("div", "rec-item focusable"); d.textContent = (c.number != null ? c.number + "  " : "") + (c.name || "");
-      d.onclick = async () => {
-        const progs = (await apiGet("epg_rec_program", { liveId: c.id })) || [];
-        const c3 = $("#rec-progs"); c3.innerHTML = "";
-        (Array.isArray(progs) ? progs : []).forEach(p => {
-          const dd = el("div", "rec-item focusable"); dd.textContent = (p.name || "") + (p.url ? "" : "");
-          dd.onclick = () => startPlayer("vod", { videoName: p.name, url: p.url, rtspUrl: p.rtspUrl, hlsUrl: p.hlsUrl, httpUrl: p.httpUrl });
-          c3.appendChild(dd);
-        });
-      };
+    let chs = (await apiGet("rec_tv")) || [];
+    if (!Array.isArray(chs) || !chs.length) chs = (await apiGet("live_tv", { packageId: -1 })) || [];
+    chs.slice(0, 80).forEach(c => {
+      const d = el("div", "rec-item focusable");
+      d.textContent = (c.number != null ? c.number + "  " : "") + (c.name || "");
+      d.onclick = () => loadRecDates(c);
       c1.appendChild(d);
     });
-  } catch (e) {}
+    if (!chs.length) c1.appendChild(el("div", "rec-item", t("no_data", "اطلاعاتی موجود نیست")));
+  } catch (e) { toast(t("loading_failed", "بارگیری ناموفق")); }
+  focusFirst("scr-rec");
+}
+async function loadRecDates(c) {
+  const c2 = $("#rec-dates"), c3 = $("#rec-progs");
+  c2.innerHTML = ""; c3.innerHTML = "";
+  try {
+    const progs = (await apiGet("epg_rec_program", { liveId: c.id })) || [];
+    recProgs = Array.isArray(progs) ? progs : ((progs && progs.list) || []);
+    const dates = [];
+    recProgs.forEach(p => { const k = p.date || ""; if (k && dates.indexOf(k) < 0) dates.push(k); });
+    if (!dates.length) dates.push("");
+    dates.forEach(dt => {
+      const d = el("div", "rec-item focusable", dt || t("all_time", "همه زمان‌ها"));
+      d.onclick = () => renderRecProgs(dt);
+      c2.appendChild(d);
+    });
+    renderRecProgs(dates[0]);
+  } catch (e) { recProgs = []; }
+}
+function renderRecProgs(date) {
+  const c3 = $("#rec-progs"); c3.innerHTML = "";
+  const list = recProgs.filter(p => !date || (p.date || "") === date);
+  list.forEach(p => {
+    const dd = el("div", "rec-item focusable");
+    const tm = (p.startTime && p.endTime) ? (p.startTime + "–" + p.endTime + "  ") : "";
+    dd.textContent = tm + (nm(p, "program") || p.name || p.program || "");
+    dd.onclick = () => startPlayer("vod", {
+      videoName: nm(p, "program") || p.name || p.program || "",
+      url: p.url || p.httpUrl || p.hlsUrl || "",
+    });
+    c3.appendChild(dd);
+  });
+  if (!list.length) c3.appendChild(el("div", "rec-item", t("no_data", "اطلاعاتی موجود نیست")));
 }
 
 /* ----------------------------- SCENERY ----------------------------- */
@@ -568,97 +791,326 @@ async function openScenery() {
 }
 
 /* ----------------------------- DINNER / CATERING ----------------------------- */
+/* v2.7.2.06: when the server sets caterSub, the dining menu opens
+   CateringCountrySelecterActivity first; GetFoodType then returns the food
+   types of the chosen country via ?parentId= */
 async function openDinner() {
+  const st = S.settings || {};
+  if (st.caterSub) { openCountry(); return; }
+  openCatering(null);
+}
+async function openCountry() {
+  show("scr-country");
+  const box = $("#country-list"); box.innerHTML = "";
+  try {
+    const cs = (await apiGet("food_type")) || [];
+    (Array.isArray(cs) ? cs : []).forEach(c => {
+      const d = el("div", "country-item focusable");
+      if (c.imagePath) {
+        const img = el("img"); img.src = imgUrl(c.imagePath);
+        img.onerror = () => img.remove(); d.appendChild(img);
+      }
+      d.appendChild(el("div", null, nm(c) || ""));
+      d.onclick = () => openCatering(c.id);
+      box.appendChild(d);
+    });
+    if (!(Array.isArray(cs) ? cs : []).length) toast(t("no_data", "اطلاعاتی موجود نیست"));
+  } catch (e) { toast(t("loading_failed", "بارگیری ناموفق")); }
+  focusFirst("scr-country");
+}
+async function openCatering(parentId) {
   show("scr-dinner");
   try {
-    const types = (await apiGet("food_type")) || [];
+    const types = (await apiGet("food_type", parentId ? { parentId: parentId } : {})) || [];
     const tr = $("#dinner-types"); tr.innerHTML = "";
-    types.forEach((ty, i) => {
+    (Array.isArray(types) ? types : []).forEach((ty, i) => {
       const d = el("div", "type-item focusable" + (i === 0 ? " active" : ""));
-      d.textContent = ty.name || "";
+      d.textContent = nm(ty) || "";
       d.onclick = () => { $$("#dinner-types .type-item").forEach(x => x.classList.remove("active")); d.classList.add("active"); loadFood(ty.id); };
       tr.appendChild(d);
     });
     if (types.length) loadFood(types[0].id);
-  } catch (e) {}
+  } catch (e) { toast(t("loading_failed", "بارگیری ناموفق")); }
+  $("#dinner-orders").onclick = () => openOrders();
+  const badge = $("#dinner-orders");
+  badge.textContent = t("my_order", "سفارش من") + (basketCount() ? " (" + basketCount() + ")" : "");
+  focusFirst("scr-dinner");
 }
+function basketCount() { return Object.keys(S.basket || {}).reduce((a, k) => a + S.basket[k], 0); }
 async function loadFood(typeId) {
   try {
     const foods = (await apiGet("food", { typeId: typeId })) || [];
     const g = $("#dinner-items"); g.innerHTML = "";
-    foods.forEach(f => {
+    (Array.isArray(foods) ? foods : []).forEach(f => {
       const d = el("div", "food-item focusable");
       const img = el("img"); img.src = imgUrl(f.imagePath || f.cover || "");
       img.onerror = () => img.src = "/assets/img/mipmap__icon_food_count.png";
       d.appendChild(img);
-      d.appendChild(el("div", "cap", f.name || ""));
+      d.appendChild(el("div", "cap", nm(f) || ""));
       d.appendChild(el("div", "price", f.price != null ? String(f.price) : ""));
-      d.onclick = async () => {
-        try { await apiPost("/api/post", { ep: "add_food_order", payload: { foodId: f.id, count: 1 } }); toast(t("submit_success", "ارسال شد")); }
-        catch (e) { toast(t("submit_failed", "ارسال ناموفق")); }
+      d.onclick = () => {
+        S.basket = S.basket || {};
+        const k = String(f.id);
+        S.basket[k] = (S.basket[k] || 0) + 1;
+        S.basketItems = S.basketItems || {};
+        S.basketItems[k] = f;
+        toast((nm(f) || "") + " ×" + S.basket[k]);
+        const b = $("#dinner-orders");
+        if (b) b.textContent = t("my_order", "سفارش من") + " (" + basketCount() + ")";
       };
       g.appendChild(d);
     });
+    if (!(Array.isArray(foods) ? foods : []).length) toast(t("no_data", "اطلاعاتی موجود نیست"));
   } catch (e) {}
 }
 
+/* ---- v2.7.2.06: MyOrderActivity (basket) + MyHistoryOrderList/Detail ---- */
+async function openOrders() {
+  show("scr-orders");
+  const box = $("#order-list"); box.innerHTML = "";
+  // 1) current basket -> AddFoodOrder?countAndIds=&mac=
+  const items = S.basketItems || {};
+  const keys = Object.keys(S.basket || {}).filter(k => S.basket[k] > 0);
+  if (keys.length) {
+    const head = el("div", "order-item");
+    head.appendChild(el("span", "oi-name", t("my_order", "سفارش من")));
+    let total = 0;
+    keys.forEach(k => { total += (Number(items[k] && items[k].price) || 0) * S.basket[k]; });
+    head.appendChild(el("span", "oi-count", keys.map(k => (nm(items[k]) || k) + " ×" + S.basket[k]).join("، ")));
+    const submit = el("button", "btn focusable", t("submit", "ارسال"));
+    submit.onclick = async () => {
+      const countAndIds = keys.map(k => k + ":" + S.basket[k]).join(",");
+      try {
+        await apiPost("/api/post", { ep: "add_food_order", payload: { countAndIds: countAndIds } });
+        S.basket = {}; S.basketItems = {};
+        toast(t("submit_success", "سفارش ثبت شد"));
+        openOrders();
+      } catch (e) { toast(t("submit_failed", "ثبت سفارش ناموفق بود")); }
+    };
+    head.appendChild(submit);
+    box.appendChild(head);
+  }
+  // 2) history -> GetFoodOrder?mac=
+  try {
+    const r = await apiGet("food_order");
+    const list = Array.isArray(r) ? r : ((r && r.list) || []);
+    list.forEach(o => {
+      const f = o.food || {};
+      const d = el("div", "order-item focusable");
+      d.appendChild(el("span", "oi-name", nm(f) || ("#" + (o.orderId || o.id))));
+      d.appendChild(el("span", "oi-count", "×" + (o.count != null ? o.count : 1)));
+      const st = el("span", "oi-status" + (o.status >= 3 ? " cancel" : ""), orderStatusText(o.status));
+      d.appendChild(st);
+      d.onclick = () => openOrderDetail(o);
+      box.appendChild(d);
+    });
+    if (!list.length && !keys.length) box.appendChild(el("div", "order-item", t("no_orders", "سفارشی ثبت نشده است")));
+  } catch (e) {}
+  focusFirst("scr-orders");
+}
+function openOrderDetail(o) {
+  const m = $("#order-detail"); m.hidden = false;
+  const f = o.food || {};
+  const items = $("#od-items"); items.innerHTML = "";
+  const rows = (o.list && o.list.length) ? o.list : [Object.assign({ count: o.count }, f)];
+  let total = 0;
+  rows.forEach(x => {
+    const c = Number(x.count) || 1, pr = Number(x.price) || 0;
+    total += c * pr;
+    const r = el("div", "oi");
+    r.appendChild(el("span", null, (nm(x) || "") + " ×" + c));
+    r.appendChild(el("span", null, pr ? String(pr) : ""));
+    items.appendChild(r);
+  });
+  $("#od-total").textContent = String(total);
+  $("#od-status").textContent = orderStatusText(o.status);
+  const cancelBtn = $("#od-cancel");
+  // Android refuses to cancel finished / already-cancelled / cancelling orders
+  const blocked = o.status === 2 ? t("order_cannot_cancel_tips")
+    : o.status === 4 ? t("order_canceled_tips")
+    : o.status === 3 ? t("order_repeat_cancel_tips") : "";
+  cancelBtn.disabled = !!blocked;
+  cancelBtn.onclick = async () => {
+    if (blocked) { toast(blocked); return; }
+    const name = nm(f) || ("#" + (o.orderId || o.id));
+    const ok = await askConfirm(t("cancel_the_order", "لغو سفارش"),
+      t("cancel_order_dialog_title", "آیا مایل به لغو {0} هستید؟").replace("{0}", name));
+    if (!ok) return;
+    try {
+      // AddFoodOrder (POST) cFlag=1 & id={orderId} & mac=
+      await apiPost("/api/post", { ep: "add_food_order", payload: { cFlag: 1, id: o.orderId || o.id } });
+      toast(t("submit_success", "درخواست لغو ثبت شد"));
+      m.hidden = true; openOrders();
+    } catch (e) { toast(t("submit_failed", "ناموفق")); }
+  };
+  $("#od-close").onclick = () => { m.hidden = true; focusFirst("scr-orders"); };
+  setTimeout(() => { try { cancelBtn.disabled ? $("#od-close").focus() : cancelBtn.focus(); } catch (e) {} }, 40);
+}
+
 /* ----------------------------- SERVICE ----------------------------- */
-function openService() {
+/* v2.7.2.06: the room-service menu is built from GetServiceIcon and each id
+   maps to a fixed action (StyleTwoRoomServiceFragment$1.onItemClick):
+   1 housekeeping, 2 borrow things, 3 laundry, 4 wake-up, 5 bill,
+   6 one-key checkout, 7 TAXI (new), 8 service record (new). */
+const SVC_ICON = {
+  1: "pic_style_three_housekeeper_service", 2: "pic_style_three_borrow_things_service",
+  3: "pic_style_three_wash_clothes_service", 4: "pic_style_three_alarm_service",
+  5: "pic_style_three_service_record", 6: "pic_style_three_one_key_checkout",
+  7: "pic_style_three_taxi_service", 8: "pic_style_three_search_service",
+};
+const SVC_LABEL = {
+  1: "butler_service", 2: "goods_service", 3: "clothes_service", 4: "wake_up_service",
+  5: "main_menu_consume", 6: "checking_out", 7: "hotel_taxi__service", 8: "service_record",
+};
+const DEFAULT_SERVICES = [1, 2, 3, 4, 5, 6, 7, 8].map(id => ({ id: id }));
+
+async function openService() {
   show("scr-service");
   const g = $("#svc-grid"); g.innerHTML = "";
-  const defs = [
-    { ico: "🛎", label: t("butler_service", "خدمات اتاق"), act: () => orderService(1, t("butler_service")) },
-    { ico: "🧺", label: t("clothes_service", "خدمات لباس"), act: () => orderService(2, t("clothes_service")) },
-    { ico: "", label: t("goods_service", "اقلام"), act: () => openRent() },
-    { ico: "⏰", label: t("wake_up_service", "بیدارباش"), act: () => openWakeup() },
-    { ico: "🧾", label: t("main_menu_consume", "صورتحساب"), act: () => openConsume() },
-    { ico: "🚪", label: t("checking_out", "تسویه حساب"), act: () => checkout() },
-  ];
-  defs.forEach(d => {
+  let list = [];
+  try { const r = await apiGet("service_icon"); list = Array.isArray(r) ? r : ((r && r.list) || []); } catch (e) {}
+  if (!list.length) list = DEFAULT_SERVICES;
+  list.forEach(sv => {
+    const id = sv.id != null ? sv.id : 0;
     const b = el("div", "svc-item focusable");
-    b.appendChild(el("div", "ico", d.ico));
-    b.appendChild(el("div", "cap", d.label));
-    b.onclick = d.act;
+    const img = el("img");
+    img.src = sv.image ? imgUrl(sv.image) : ("/assets/img/mipmap__" + (SVC_ICON[id] || "icon_service") + ".png");
+    img.onerror = () => { img.remove(); const i = el("div", "ico", "🛎"); b.insertBefore(i, b.firstChild); };
+    b.appendChild(img);
+    b.appendChild(el("div", "cap", nm(sv) || t(SVC_LABEL[id] || "hotel_service", "خدمات")));
+    b.onclick = () => svcAction(id, nm(sv) || t(SVC_LABEL[id] || "hotel_service", "خدمات"));
     g.appendChild(b);
   });
+  focusFirst("scr-service");
+}
+async function svcAction(id, label) {
+  switch (id) {
+    case 1: {
+      const txt = t("cleaning_ting_tops", "آیا به نظافت {0} نیاز دارید؟").replace("{0}", label || person);
+      if (await askConfirm(t("service_main_page", "خدمات اتاق"), txt)) orderService(1, label);
+      return;
+    }
+    case 2: return openRent(2, label);
+    case 3: return openRent(3, label);
+    case 4: return openWakeup(4, label);
+    case 5: return openConsume();
+    case 6: return checkoutNow();   // checkoutNow() shows the confirm dialog itself
+    case 7: return openWakeup(7, label);           // v2: TAXI uses the wake-up time picker
+    case 8: return openServiceRecord(label);        // v2: GetServiceOrder
+    default: {
+      if (await askConfirm(t("service_main_page", "خدمات اتاق"), label)) orderService(id, label);
+    }
+  }
 }
 async function orderService(typeId, label) {
-  try { await apiPost("/api/post", { ep: "add_goods_order", type_id: typeId }); toast(t("submit_success", "درخواست ثبت شد") + ": " + label); }
-  catch (e) { toast(t("submit_failed", "ناموفق")); }
-}
-async function openRent() {
-  show("scr-rent");
-  $("#rent-title").textContent = t("goods_service", "اقلام");
   try {
-    const goods = (await apiGet("goods")) || [];
+    await apiPost("/api/post", { ep: "add_goods_order", type_id: typeId, wakeupTime: 0 });
+    toast(t("submit_success", "درخواست ثبت شد") + (label ? ": " + label : ""));
+  } catch (e) { toast(t("submit_failed", "ناموفق")); }
+}
+/* v2.7.2.06: RentThingsActivity uses GetGoods for serviceType 2 (borrow things)
+   and the NEW GetClothingType for the laundry service. */
+async function openRent(serviceType, title) {
+  show("scr-rent");
+  const isLaundry = serviceType !== 2;
+  $("#rent-title").textContent = title || t(isLaundry ? "clothes_service" : "goods_service", "اقلام");
+  try {
+    const goods = (await apiGet(isLaundry ? "clothing_type" : "goods")) || [];
     const g = $("#rent-grid"); g.innerHTML = "";
     (Array.isArray(goods) ? goods : []).forEach(it => {
       const d = el("div", "food-item focusable");
       const img = el("img"); img.src = imgUrl(it.imagePath || it.icon || "");
       img.onerror = () => img.src = "/assets/img/mipmap__icon_service.png";
-      d.appendChild(img); d.appendChild(el("div", "cap", it.name || ""));
+      d.appendChild(img);
+      d.appendChild(el("div", "cap", nm(it) || ""));
       d.appendChild(el("div", "price", it.price != null ? String(it.price) : ""));
-      d.onclick = async () => { try { await apiPost("/api/post", { ep: "add_goods_order", type_id: it.id || it.typeId }); toast(t("submit_success", "ثبت شد")); } catch (e) { toast(t("submit_failed", "ناموفق")); } };
+      d.onclick = async () => {
+        const ok = await askConfirm(t("select_things_tip", "برای انتخاب موارد OK را بزنید"), nm(it) || "");
+        if (!ok) return;
+        try { await apiPost("/api/post", { ep: "add_goods_order", type_id: serviceType || it.typeId || it.id, wakeupTime: 0 }); toast(t("submit_success", "ثبت شد")); }
+        catch (e) { toast(t("submit_failed", "ناموفق")); }
+      };
       g.appendChild(d);
     });
-  } catch (e) {}
+    if (!(Array.isArray(goods) ? goods : []).length) toast(t("no_data", "اطلاعاتی موجود نیست"));
+  } catch (e) { toast(t("loading_failed", "بارگیری ناموفق")); }
+  focusFirst("scr-rent");
 }
-function openWakeup() {
+/* v2.7.2.06: WakeUpActivity serves both wake-up (typeId 4) and TAXI (typeId 7);
+   only the title and the time label change. */
+function openWakeup(typeId, title) {
+  typeId = typeId || 4;
   show("scr-wakeup");
+  const isTaxi = typeId !== 4;
+  const h = $("#scr-wakeup .page-head h2");
+  if (h) h.textContent = title || (isTaxi ? t("hotel_taxi__service", "تاکسی") : t("wake_up_service", "بیدارباش"));
+  const lbl = $("#wk-label");
+  if (lbl) lbl.textContent = isTaxi ? t("taxi_service_setting_time", "زمان استفاده از خودرو را تعیین کنید")
+                                    : t("wake_up_setting_time", "تنظیم زمان بیداری:");
   const day = $("#wk-day"), hr = $("#wk-hour"), mn = $("#wk-min");
   if (!day.options.length) {
     for (let i = 0; i < 3; i++) day.add(new Option(t("wake_up_date_day", "روز") + " +" + i, i));
-    for (let h = 0; h < 24; h++) hr.add(new Option(String(h).padStart(2, "0"), h));
+    for (let hh = 0; hh < 24; hh++) hr.add(new Option(String(hh).padStart(2, "0"), hh));
     for (let m = 0; m < 60; m += 5) mn.add(new Option(String(m).padStart(2, "0"), m));
-    hr.value = String(serverNow().getHours());
   }
+  // default to ~5 minutes from now (rounded up to the next 5-minute slot)
+  const soon = new Date(serverNow().getTime() + 5 * 60000);
+  hr.value = String(soon.getHours()).padStart(2, "0");
+  mn.value = String(Math.ceil(soon.getMinutes() / 5) * 5 % 60).padStart(2, "0");
+  day.value = (soon.getHours() < serverNow().getHours()) ? "1" : "0";
   $("#wk-submit").onclick = async () => {
     const when = Date.now() + (+day.value) * 86400000;
     const d = new Date(when); d.setHours(+hr.value, +mn.value, 0, 0);
-    try { await apiPost("/api/post", { ep: "add_goods_order", type_id: 4, wakeupTime: d.getTime() }); toast(t("submit_success", "ثبت شد")); }
-    catch (e) { toast(t("submit_failed", "ناموفق")); }
+    if (d.getTime() <= Date.now()) { toast(t("wake_up_notice", "زمان باید در آینده باشد")); return; }
+    try {
+      // AddGoodsOrder?mac=&typeId=&wakeupTime=
+      await apiPost("/api/post", { ep: "add_goods_order", type_id: typeId, wakeupTime: d.getTime() });
+      toast(t("submit_success", "ثبت شد"));
+      back();
+    } catch (e) { toast(t("submit_failed", "ناموفق")); }
   };
+  focusFirst("scr-wakeup");
 }
+/* v2.7.2.06: StyleThreeServiceRecordActivity -> GetServiceOrder?mac= */
+async function openServiceRecord(title) {
+  show("scr-svcrecord");
+  const h = $("#scr-svcrecord .page-head h2");
+  if (h && title) h.textContent = title;
+  const tb = $("#svcrec-body"); tb.innerHTML = "";
+  try {
+    const rows = await apiGet("service_order");
+    const list = Array.isArray(rows) ? rows : ((rows && rows.list) || []);
+    list.forEach(r => {
+      const tr = el("tr");
+      tr.appendChild(el("td", null, nm(r, "serviceName") || r.serviceName || r.serviceNameEn || ""));
+      tr.appendChild(el("td", null, fmtTime(r.orderTime)));
+      const goods = (r.list || []).map(x => (nm(x) || "") + (x.count > 1 ? " ×" + x.count : "")).filter(Boolean).join("، ");
+      tr.appendChild(el("td", null, goods || nm(r, "gName") || r.gName || r.gNameEn || "—"));
+      tr.appendChild(el("td", null, orderStatusText(r.status)));
+      tb.appendChild(tr);
+    });
+    if (!list.length) tb.appendChild(el("tr")).appendChild(el("td", null, t("no_orders", "سفارشی ثبت نشده است")));
+  } catch (e) { toast(t("loading_failed", "بارگیری ناموفق")); }
+  focusFirst("scr-svcrecord");
+}
+function fmtTime(ms) {
+  if (!ms) return "—";
+  const d = new Date(Number(ms));
+  if (isNaN(d.getTime())) return String(ms);
+  return d.toLocaleDateString(S.lang === "fa" ? "fa-IR" : (S.lang === "zh" ? "zh-CN" : "en-GB")) + " " +
+    String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+}
+function orderStatusText(st) {
+  const m = {
+    0: t("order_status_new", "ثبت شده"),
+    1: t("order_status_accepted", "تأیید شده"),
+    2: t("order_status_finished", "تکمیل شده"),
+    3: t("order_status_wait_cancel", "در انتظار لغو"),
+    4: t("order_status_canceled", "لغو شده"),
+  };
+  return m[st] != null ? m[st] : String(st == null ? "" : st);
+}
+
 async function openConsume() {
   show("scr-consume");
   try {
@@ -675,11 +1127,15 @@ async function openConsume() {
     $("#consume-total").textContent = String(total);
   } catch (e) {}
 }
-async function checkout() {
-  if (!confirm(t("check_out_tip", "آیا مطمئن هستید؟"))) return;
+/* AddClientCheckOutOrder?mac=  (v2: one-key checkout, service id 6) */
+async function checkoutNow() {
+  const ok = await askConfirm(t("checking_out", "تسویه حساب"),
+    t("check_out_tip", "آیا مطمئن هستید؟"), t("ok", "تأیید"));
+  if (!ok) return;
   try { await apiPost("/api/post", { ep: "add_checkout_order" }); toast(t("checkout_success", "تسویه انجام شد")); }
   catch (e) { toast(t("checking_out_failed", "ناموفق")); }
 }
+const checkout = checkoutNow;
 
 /* ----------------------------- HOTEL ----------------------------- */
 async function openHotel() {
@@ -763,6 +1219,33 @@ function fillSettings() {
   $$("#set-body .set-row[data-edit]").forEach(row => {
     row.onclick = () => editSetting(row.dataset.edit);
   });
+  /* ---- v2.7.2.06 rows ---- */
+  $("#set-vlc-value").textContent = S.vlc ? t("enable_vlc", "فعال") : t("not_enabled", "غیرفعال");
+  $("#set-speed-value").textContent = S.speed + "x";
+  $("#set-autostart-value").textContent = S.autostart ? t("enable_vlc", "فعال") : t("not_enabled", "غیرفعال");
+  $("#set-apps-value").textContent = ((S.settings && S.settings.appShowInMenu) ? "● " : "○ ") +
+    (S.appsSelected.length ? S.appsSelected.join("، ") : t("not_enabled", "غیرفعال"));
+  $("#set-vlc").onclick = async () => {
+    S.vlc = !S.vlc;
+    await apiPost("/api/settings", { use_vlc_paly_live_prg: S.vlc });
+    S.config = await cfg();
+    if (S.vlc && !S.config.vlc_installed) toast(t("vlc_player_install_tips", "پخش‌کننده VLC شناسایی نشد. لطفاً ابتدا آن را نصب کنید!"));
+    fillSettings();
+  };
+  $("#set-speed").onclick = () => {
+    const i = S.speeds.indexOf(S.speed);
+    S.speed = S.speeds[(i + 1) % S.speeds.length];
+    apiPost("/api/settings", { play_speed: S.speed }).catch(() => {});
+    applySpeed(); fillSettings();
+  };
+  $("#set-autostart").onclick = async () => {
+    const r = await apiPost("/api/autostart", { enabled: !S.autostart });
+    S.autostart = !!(r && r.enabled);
+    fillSettings();
+    toast(S.autostart ? t("boot_auto_start", "شروع خودکار با ویندوز") + ": " + t("enable_vlc", "فعال")
+                      : t("boot_auto_start", "شروع خودکار با ویندوز") + ": " + t("not_enabled", "غیرفعال"));
+  };
+  $("#set-apps").onclick = () => openApps();
   $("#set-reconnect").onclick = () => location.reload();
   $("#set-lang").parentElement.onclick = () => {
     const order = ["fa", "en", "zh"];
@@ -785,9 +1268,53 @@ function editSetting(key) {
   $("#input-cancel").onclick = () => { m.hidden = true; focusFirst("scr-settings"); };
 }
 
+/* ------------- v2.7.2.06: SettingAppShowActivity (app.db) ------------- */
+async function openApps() {
+  show("scr-apps");
+  const g = $("#app-grid"); g.innerHTML = "";
+  try {
+    const r = await fetch("/api/apps"); const d = await r.json();
+    S.apps = d.installed || [];
+    S.appsSelected = d.selected || [];
+    S.apps.forEach(a => {
+      const on = S.appsSelected.indexOf(a.name) >= 0;
+      const d2 = el("div", "app-item focusable" + (on ? " on" : ""));
+      d2.appendChild(el("span", "bx", on ? "✓" : ""));
+      d2.appendChild(el("span", "nm", a.name));
+      d2.onclick = async () => {
+        const res = await apiPost("/api/apps", { toggle: a.name });
+        S.appsSelected = (res && res.selected) || [];
+        d2.classList.toggle("on", S.appsSelected.indexOf(a.name) >= 0);
+        d2.querySelector(".bx").textContent = S.appsSelected.indexOf(a.name) >= 0 ? "✓" : "";
+        S.config = await cfg();
+      };
+      g.appendChild(d2);
+    });
+    if (!S.apps.length) g.appendChild(el("div", "app-item", t("apps_none_found", "برنامه‌ای یافت نشد")));
+  } catch (e) { toast(t("loading_failed", "بارگیری ناموفق")); }
+  $("#app-add").onclick = async () => {
+    const name = $("#app-name").value.trim(), path = $("#app-path").value.trim();
+    if (!name || !path) { toast(t("input_error", "نام و مسیر را وارد کنید")); return; }
+    const r = await apiPost("/api/apps", { add: { name: name, path: path } });
+    if (r && r.ok) { $("#app-name").value = ""; $("#app-path").value = ""; toast(t("submit_success", "افزوده شد")); openApps(); }
+    else toast(t("submit_failed", "ناموفق"));
+  };
+  $("#app-back").onclick = () => { openSettings(); };
+  focusFirst("scr-apps");
+}
+
 /* ----------------------------- enter-screen hook ----------------------------- */
 function onEnter(id) {
-  if (id !== "scr-player") { clearInterval(S._epgT); }
+  if (id !== "scr-player") {
+    clearInterval(S._epgT); stopLoadAnim();
+    const ep = $("#epg-panel"), ed = $("#epg-detail");
+    if (ep) ep.hidden = true;
+    if (ed) ed.hidden = true;
+  }
+  if (id === "scr-home") {
+    // keep the menu in sync with the apps chosen in Settings
+    cfg().then(c => { S.config = c; S.appsSelected = c.apps_selected || []; buildMenu(S.settings || {}); }).catch(() => {});
+  }
 }
 
 window.addEventListener("load", boot);

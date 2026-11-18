@@ -32,7 +32,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
 
 rem --- uninstall entry ---
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\PARDIK-SMART-IPTV" /v DisplayName /t REG_SZ /d "PARDIK SMART IPTV" /f >nul
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\PARDIK-SMART-IPTV" /v DisplayVersion /t REG_SZ /d "2.7.1.71" /f >nul
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\PARDIK-SMART-IPTV" /v DisplayVersion /t REG_SZ /d "2.7.2.06" /f >nul
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\PARDIK-SMART-IPTV" /v UninstallString /t REG_SZ /d "\"%DST%\install\Uninstall.bat\"" /f >nul
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\PARDIK-SMART-IPTV" /v InstallLocation /t REG_SZ /d "%DST%" /f >nul
 

@@ -2,7 +2,7 @@
 # Build the Windows distribution zip.
 set -e
 cd "$(dirname "$0")/.."
-VER="2.7.1.71"
+VER="2.7.2.06"
 OUT="dist/PARDIK-SMART-IPTV-Win10-x64-${VER}.zip"
 rm -f "$OUT"
 mkdir -p dist

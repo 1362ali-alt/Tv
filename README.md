@@ -1,13 +1,17 @@
 # Tv — PARDIK SMART IPTV: Android → Windows 10 reverse-engineering & port
 
 Reverse-engineered the supplied Android APK (`com.dexin.wanchuan.iptv3` v2.7.1.71,
-"PARDIK SMART IPTV", hotel/ residential-tower IPTV for server `10.21.0.10:8030`)
-and rebuilt it as a standalone, installable **Windows 10 x64** application.
+"PARDIK SMART IPTV", hotel/ residential-tower IPTV for server `10.21.0.10:8030`),
+rebuilt it as a standalone, installable **Windows 10 x64** application, and then
+ported the newer **v2.7.2.06** APK on top of it (EPG-in-player, catering country
+selector, order history + cancel, taxi & service-record room services, VLC
+external playback, playback speed, boot auto-start, local-app launcher).
 
 | Path | What |
 |---|---|
 | `analysis/REVERSE_ENGINEERING_REPORT.md` | Full reverse-engineering report: config defaults (incl. settings password `111999`), complete HTTP API contract, data models, WebSocket channels, app flow, UI language |
-| `analysis/java_src/` | Decompiled Java (all 1,205 app classes, DAD decompiler) |
+| `analysis/java_src/`, `analysis/java_src_v2/` | Decompiled Java (v2.7.1.71: 1,205 classes · v2.7.2.06: 1,298 classes, DAD decompiler) |
+| `analysis/out/v2_realdiff.txt`, `analysis/out/v2_strings_diff.txt` | Version diff of the two APKs (changed classes, new/removed classes, string deltas) |
 | `analysis/ui/`, `analysis/res_decoded/` | Decoded layouts with resolved resources + localized strings (fa/en/zh/…) |
 | `windows_app/` | **The Windows 10 application** (backend + UI + installer). See `windows_app/README-FA.md` / `README-EN.md` |
 | `tools/mock_iptv_server.py` | Local mock of the manager server (test harness only) |
@@ -17,6 +21,7 @@ and rebuilt it as a standalone, installable **Windows 10 x64** application.
 ## Quick start (Windows 10 x64)
 Unzip `dist/PARDIK-SMART-IPTV-Win10-x64-*.zip`, double-click `install\Setup.bat`.
 Defaults: server `10.21.0.10:8030`, settings password `111999`.
+Current app version: **2.7.2.06** (version code 20702006).
 
 ## Develop / test (this repo)
 ```

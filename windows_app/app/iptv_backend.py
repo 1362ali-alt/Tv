@@ -29,8 +29,8 @@ import urllib.request
 import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-APP_VERSION_NAME = "2.7.1.71"
-APP_VERSION_CODE = 20701071
+APP_VERSION_NAME = "2.7.2.06"
+APP_VERSION_CODE = 20702006
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WEB_DIR = os.path.join(HERE, "web")
@@ -46,7 +46,14 @@ DEFAULTS = {
     "password": "111999",
     "need_password": True,
     "iptv_room_number": "",
-    "select_app_style_flag": 4,
+    # v2.7.2.06: IptvSP switched SharedPreferences -> MMKV and renamed the
+    # style key ("select_app_style_flag" -> "app_layout_style", default 0).
+    "app_layout_style": 0,
+    "select_app_style_flag": 4,          # kept for compatibility
+    "use_vlc_paly_live_prg": False,      # v2: hand live playback to VLC
+    "autostart": False,                  # v2: BootReceiver equivalent
+    "selected_apps": [],                 # v2: SettingAppShowActivity / app.db
+    "play_speed": 1.0,                   # v2: txt_play_speed
     "select_language_flag": 1,
     "server_language_flag": 3,
     "server_language_defalut_select_flag": 1,
@@ -302,8 +309,22 @@ class Api(object):
     def get_hotel_information(self):
         return api_get("GetHotelInformation")
 
-    def get_food_type(self):
-        return api_get("GetFoodType")
+    def get_food_type(self, parent_id=None):
+        # v2.7.2.06: "?parentId=" filters the food types of one catering country
+        p = {"parentId": parent_id} if parent_id not in (None, "", -1) else None
+        return api_get("GetFoodType", p)
+
+    def get_clothing_type(self):
+        # v2.7.2.06: laundry service (serviceType != 2) lists clothing types
+        return api_get("GetClothingType")
+
+    def get_service_order(self):
+        # v2.7.2.06: room-service order history (replaces GetGoodsOrder)
+        return api_get("GetServiceOrder", self._m())
+
+    def get_live_epg(self, live_id):
+        # v2.7.2.06: LivePlayerWithEpgActivity programme guide
+        return api_get("GetLiveEPG", {"liveId": live_id})
 
     def get_food(self, type_id):
         return api_get("GetFood", {"typeId": type_id})
@@ -321,14 +342,15 @@ class Api(object):
     def get_goods_order(self):
         return api_get("GetGoodsOrder")
 
-    def add_goods_order(self, type_id, extra=None):
-        p = self._m({"typeId": type_id})
+    def add_goods_order(self, type_id, wakeup_time=0, extra=None):
+        # AddGoodsOrder?mac=&typeId=&wakeupTime=   (typeId 4 = wake-up, 7 = taxi)
+        p = self._m({"typeId": type_id, "wakeupTime": wakeup_time or 0})
         if extra:
             p.update(extra)
         return api_get("AddGoodsOrder", p)
 
     def get_wakeup(self):
-        return api_get("GetWakeUp")
+        return api_get("GetWakeUp", self._m())
 
     def add_checkout_order(self):
         return api_get("AddClientCheckOutOrder", self._m())
@@ -350,8 +372,10 @@ class Api(object):
         return api_get("GetMusicList", {
             "albumId": album_id, "tvType": 0, "languageType": language_type})
 
-    def get_rec_tv(self, live_id):
-        return api_get("GetRecTV", {"liveId": live_id})
+    def get_rec_tv(self, live_id=None):
+        # v2.7.2.06: GetRecTV is called without parameters (all recorded channels)
+        p = {"liveId": live_id} if live_id not in (None, "") else None
+        return api_get("GetRecTV", p)
 
     def get_rec_program(self, live_id):
         return api_get("GetRecProgram", {"liveId": live_id})
@@ -388,6 +412,7 @@ PARAM_ALIAS = {
     "packageId": "package_id",
     "typeId": "type_id",
     "liveId": "live_id",
+    "parentId": "parent_id",
     "albumId": "album_id",
     "vodId": "vod_id",
     "pms_type": "pms_type",
@@ -397,7 +422,154 @@ PARAM_ALIAS = {
     "ids": "ids",
     "keyword": "keyword",
     "type": "type_",
+    "wakeupTime": "wakeup_time",
+    "orderId": "order_id",
 }
+
+# --------------------------------------------------------------------------- #
+# v2.7.2.06 local features
+#   * SettingAppShowActivity + database/app.db  -> "APP show in menu"
+#   * use_vlc_paly_live_prg                     -> hand playback to VLC
+#   * util.BootReceiver                         -> start with Windows
+# --------------------------------------------------------------------------- #
+RUN_KEY = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run"
+RUN_NAME = "PARDIK-SMART-IPTV"
+
+
+def apps_file():
+    return os.path.join(data_dir(), "apps.json")
+
+
+def load_apps():
+    try:
+        with open(apps_file(), "r", encoding="utf-8") as f:
+            d = json.load(f)
+        if isinstance(d, dict):
+            return d
+    except Exception:
+        pass
+    return {"custom": [], "selected": []}
+
+
+def save_apps(d):
+    try:
+        with open(apps_file(), "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False, indent=1)
+    except Exception:
+        pass
+
+
+def installed_apps():
+    """Windows equivalent of PackageManager.queryIntentActivities(MAIN):
+    everything the user can launch from the Start Menu, plus manually added
+    entries (the Android app.db table `app(package_name, name)`)."""
+    out = []
+    seen = set()
+    store = load_apps()
+    for a in store.get("custom", []):
+        n = (a.get("name") or "").strip()
+        p = (a.get("path") or "").strip()
+        if n and p and n not in seen:
+            seen.add(n)
+            out.append({"name": n, "path": p, "custom": True})
+    if os.name == "nt":
+        roots = []
+        for env in ("APPDATA", "ProgramData"):
+            base = os.environ.get(env)
+            if base:
+                roots.append(os.path.join(
+                    base, "Microsoft", "Windows", "Start Menu", "Programs"))
+        for root in roots:
+            for dp, _dn, fn in os.walk(root):
+                for f in fn:
+                    if not f.lower().endswith(".lnk"):
+                        continue
+                    name = os.path.splitext(f)[0]
+                    if name in seen or name.lower().startswith("uninstall"):
+                        continue
+                    seen.add(name)
+                    out.append({"name": name,
+                                "path": os.path.join(dp, f),
+                                "custom": False})
+    out.sort(key=lambda a: a["name"].lower())
+    return out
+
+
+def launch_app(name):
+    for a in installed_apps():
+        if a["name"] == name:
+            if os.name == "nt":
+                os.startfile(a["path"])  # noqa - Windows only
+            else:
+                subprocess.Popen(["xdg-open", a["path"]])
+            return {"ok": True, "app": name}
+    return {"ok": False, "error": "app not found"}
+
+
+def find_vlc():
+    """org.videolan.vlc on Android -> vlc.exe on Windows."""
+    cands = [os.environ.get("IPTV_VLC")] if os.environ.get("IPTV_VLC") else []
+    if os.name == "nt":
+        for base in (os.environ.get("ProgramFiles"),
+                     os.environ.get("ProgramFiles(x86)"),
+                     os.environ.get("LOCALAPPDATA")):
+            if base:
+                cands.append(os.path.join(base, "VideoLAN", "VLC", "vlc.exe"))
+    else:
+        for b in ("/usr/bin/vlc", "/usr/local/bin/vlc", "/snap/bin/vlc"):
+            cands.append(b)
+    for c in cands:
+        if c and os.path.isfile(c):
+            return c
+    return None
+
+
+def play_with_vlc(url, title=""):
+    """Mirrors LivePlayerActivity.playWithVlc(): if VLC is missing the Android
+    app toasts `vlc_player_install_tips` and keeps the internal player."""
+    vlc = find_vlc()
+    if not vlc or not url:
+        return {"ok": False, "installed": bool(vlc), "reason": "not_installed"}
+    args = [vlc, "--play-and-exit", "--no-video-title-show"]
+    if title:
+        args += ["--meta-title=" + title]
+    args.append(url)
+    try:
+        subprocess.Popen(args, close_fds=True)
+        return {"ok": True, "installed": True, "player": vlc}
+    except Exception as e:
+        return {"ok": False, "installed": True, "reason": str(e)}
+
+
+def autostart_state():
+    if os.name != "nt":
+        return bool(SETTINGS.get("autostart"))
+    try:
+        out = subprocess.run(["reg", "query", RUN_KEY, "/v", RUN_NAME],
+                             capture_output=True, timeout=10)
+        return out.returncode == 0
+    except Exception:
+        return bool(SETTINGS.get("autostart"))
+
+
+def set_autostart(on):
+    """util.BootReceiver equivalent: relaunch the app when Windows starts."""
+    SETTINGS.set("autostart", bool(on))
+    if os.name != "nt":
+        return {"ok": True, "enabled": bool(on), "note": "non-windows: stored only"}
+    try:
+        if on:
+            exe = sys.argv[0]
+            cmd = '"%s"' % os.path.abspath(exe)
+            subprocess.run(["reg", "add", RUN_KEY, "/v", RUN_NAME,
+                            "/t", "REG_SZ", "/d", cmd, "/f"],
+                           capture_output=True, timeout=10)
+        else:
+            subprocess.run(["reg", "delete", RUN_KEY, "/v", RUN_NAME, "/f"],
+                           capture_output=True, timeout=10)
+        return {"ok": True, "enabled": autostart_state()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 # --------------------------------------------------------------------------- #
 # FFmpeg stream engine  (RTSP / MPEG-TS / UDP  ->  HLS for the browser)
@@ -881,6 +1053,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/config":
                 return self._json({
                     "version": APP_VERSION_NAME,
+                    "version_code": APP_VERSION_CODE,
                     "settings": {k: v for k, v in SETTINGS.d.items()
                                  if k != "password"},
                     "server": {
@@ -894,7 +1067,20 @@ class Handler(BaseHTTPRequestHandler):
                     "ws": {"prg": bool(WS.prg and WS.prg.connected),
                            "vol": bool(WS.vol and WS.vol.connected),
                            "volume": WS.volume, "muted": WS.muted},
+                    # v2.7.2.06 additions
+                    "vlc_installed": bool(find_vlc()),
+                    "autostart": autostart_state(),
+                    "apps_selected": load_apps().get("selected", []),
                 })
+            if path == "/api/apps":
+                store = load_apps()
+                return self._json({
+                    "installed": installed_apps(),
+                    "selected": store.get("selected", []),
+                    "custom": store.get("custom", []),
+                })
+            if path == "/api/autostart":
+                return self._json({"enabled": autostart_state()})
             if path == "/api/call":
                 ep = q.get("ep", [""])[0]
                 params = {PARAM_ALIAS.get(k, k): v[0] for k, v in q.items() if k != "ep"}
@@ -954,6 +1140,55 @@ class Handler(BaseHTTPRequestHandler):
             if "muted" in data:
                 WS.muted = bool(data["muted"])
             return self._json({"volume": WS.volume, "muted": WS.muted})
+        if u.path == "/api/apps":
+            store = load_apps()
+            if "select" in data:
+                sel = [str(x) for x in (data.get("select") or [])]
+                known = set(a["name"] for a in installed_apps())
+                store["selected"] = [s for s in sel if s in known]
+                save_apps(store)
+                return self._json({"ok": True, "selected": store["selected"]})
+            if "toggle" in data:
+                name = str(data.get("toggle") or "")
+                sel = store.get("selected", [])
+                if name in sel:
+                    sel.remove(name)
+                else:
+                    sel.append(name)
+                store["selected"] = sel
+                save_apps(store)
+                return self._json({"ok": True, "selected": sel})
+            if "add" in data:
+                a = data.get("add") or {}
+                name = (a.get("name") or "").strip()
+                p = (a.get("path") or "").strip()
+                if name and p:
+                    custom = [c for c in store.get("custom", [])
+                              if c.get("name") != name]
+                    custom.append({"name": name, "path": p})
+                    store["custom"] = custom
+                    save_apps(store)
+                    return self._json({"ok": True, "custom": custom})
+                return self._json({"ok": False, "error": "name and path required"})
+            if "remove" in data:
+                name = str(data.get("remove") or "")
+                store["custom"] = [c for c in store.get("custom", [])
+                                   if c.get("name") != name]
+                if name in store.get("selected", []):
+                    store["selected"].remove(name)
+                save_apps(store)
+                return self._json({"ok": True})
+            return self._json({"ok": False, "error": "nothing to do"})
+        if u.path == "/api/launch":
+            try:
+                return self._json(launch_app(str(data.get("app") or "")))
+            except Exception as e:
+                return self._json({"ok": False, "error": str(e)})
+        if u.path == "/api/external_player":
+            return self._json(play_with_vlc(data.get("url") or "",
+                                            data.get("title") or ""))
+        if u.path == "/api/autostart":
+            return self._json(set_autostart(bool(data.get("enabled"))))
         if u.path == "/api/post":
             ep = data.pop("ep", "")
             data = {PARAM_ALIAS.get(k, k): v for k, v in data.items()}

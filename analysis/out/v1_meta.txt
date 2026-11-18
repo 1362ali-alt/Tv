@@ -1,0 +1,123 @@
+### v1: google_drive/iptv3_2.7.1.71_20251223_10.21.0.10_name_PARDIK_SMART_IPTV.apk
+package=com.dexin.wanchuan.iptv3 versionName=2.7.1.71 versionCode=20701071
+minSdk=19 targetSdk=28 maxSdk=None
+app_name=PARDIK SMART IPTV
+permissions=android.permission.ACCESS_NETWORK_STATE, android.permission.ACCESS_NOTIFICATION_POLICY, android.permission.ACCESS_WIFI_STATE, android.permission.CAMERA, android.permission.CHANGE_CONFIGURATION, android.permission.CHANGE_NETWORK_STATE, android.permission.CHANGE_WIFI_MULTICAST_STATE, android.permission.CHANGE_WIFI_STATE, android.permission.DELETE_PACKAGES, android.permission.DISABLE_KEYGUARD, android.permission.FLASHLIGHT, android.permission.INSTALL_PACKAGES, android.permission.INTERNET, android.permission.MODIFY_AUDIO_SETTINGS, android.permission.MOUNT_UNMOUNT_FILESYSTEMS, android.permission.READ_EXTERNAL_STORAGE, android.permission.READ_PHONE_STATE, android.permission.RECEIVE_BOOT_COMPLETED, android.permission.RECORD_AUDIO, android.permission.REPLACE_EXISTING_PACKAGE, android.permission.REQUEST_INSTALL_PACKAGES, android.permission.SET_DEBUG_APP, android.permission.SYSTEM_ALERT_WINDOW, android.permission.WRITE_EXTERNAL_STORAGE, android.permission.WRITE_SETTINGS, com.dexin.wanchuan.iptv3.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+features=android.hardware.camera.autofocus, android.hardware.camera.flash, android.hardware.touchscreen, android.software.leanback
+--- activity (44) ---
+  com.baidu.duer.extend.swan.SwanActivity
+  com.baidu.duer.framework.ui.window.AssistantWindowActivity
+  com.baidu.duer.modules.guide.GuideHomePageActivity
+  com.baidu.duer.modules.guide.GuideVideoActivity
+  com.baidu.duer.modules.videolist.VideoListActivity
+  com.baidu.duer.swan.RenderSwanViewActivity
+  com.blankj.utilcode.util.PermissionUtils$PermissionActivity
+  com.dexin.wanchuan.iptv3.activity.AppActivity
+  com.dexin.wanchuan.iptv3.activity.ConsumeActivity
+  com.dexin.wanchuan.iptv3.activity.PingServerActivity
+  com.dexin.wanchuan.iptv3.activity.PlayForceProgramActivity
+  com.dexin.wanchuan.iptv3.activity.SettingsActivity
+  com.dexin.wanchuan.iptv3.activity.catering.MyHistoryOrderActivity
+  com.dexin.wanchuan.iptv3.activity.catering.MyOrderActivity
+  com.dexin.wanchuan.iptv3.activity.catering.SpecialCateringBackActivity
+  com.dexin.wanchuan.iptv3.activity.hotel.RentThingsActivity
+  com.dexin.wanchuan.iptv3.activity.hotel.StyleThreeServiceRecordActivity
+  com.dexin.wanchuan.iptv3.activity.hotel.WakeUpActivity
+  com.dexin.wanchuan.iptv3.activity.introduce.HotelIntroAlbumActivity
+  com.dexin.wanchuan.iptv3.activity.introduce.HotelIntroduceActivity
+  com.dexin.wanchuan.iptv3.activity.live.LivePackageActivity
+  com.dexin.wanchuan.iptv3.activity.live.LivePlayerActivity
+  com.dexin.wanchuan.iptv3.activity.live.LivePlayerActivity_back
+  com.dexin.wanchuan.iptv3.activity.live.LivePlayerWithPackageActivity
+  com.dexin.wanchuan.iptv3.activity.main.MainStyleFirstActivity
+  com.dexin.wanchuan.iptv3.activity.main.MainStyleFourthActivity
+  com.dexin.wanchuan.iptv3.activity.main.MainStyleSecondActivity
+  com.dexin.wanchuan.iptv3.activity.main.MainStyleThirdActivity
+  com.dexin.wanchuan.iptv3.activity.music.MusicActivity
+  com.dexin.wanchuan.iptv3.activity.music.MusicDetailActivity
+  com.dexin.wanchuan.iptv3.activity.music.StyleThreeMusicActivity
+  com.dexin.wanchuan.iptv3.activity.record.RecEpgPrgPlayerActivity
+  com.dexin.wanchuan.iptv3.activity.record.RecPlayerActivity
+  com.dexin.wanchuan.iptv3.activity.record.RecordActivity
+  com.dexin.wanchuan.iptv3.activity.record.RecordEpgActivity
+  com.dexin.wanchuan.iptv3.activity.scenery.SceneryActivity
+  com.dexin.wanchuan.iptv3.activity.scenery.SceneryDetailActivity
+  com.dexin.wanchuan.iptv3.activity.vod.VodDetailActivity
+  com.dexin.wanchuan.iptv3.activity.vod.VodNewActivity
+  com.dexin.wanchuan.iptv3.activity.vod.VodPlayerActivity
+  com.dexin.wanchuan.iptv3.activity.vod.VodPlayerIjkActivity
+  com.dexin.wanchuan.iptv3.activity.welcome.BootVideoActivity
+  com.dexin.wanchuan.iptv3.activity.welcome.WelcomeStyleOtherActivity
+  com.dexin.wanchuan.iptv3.activity.welcome.WelcomeStyleZeroActivity
+--- service (4) ---
+  com.bytedance.boost_multidex.OptimizeService
+  com.dexin.wanchuan.iptv3.service.MyService
+  com.dexin.wanchuan.iptv3.service.VolumeWebSocketService
+  com.dexin.wanchuan.iptv3.service.WebSocketService
+--- receiver (0) ---
+--- provider (3) ---
+  androidx.core.content.FileProvider
+  androidx.startup.InitializationProvider
+  com.blankj.utilcode.util.Utils$FileProvider4UtilCode
+launcher=com.dexin.wanchuan.iptv3.activity.PingServerActivity
+--- class packages ---
+   2080  com.baidu.duer
+   1445  io.reactivex.internal
+   1205  com.dexin.wanchuan
+   1157  com.google.android
+    972  com.baidu.atomlibrary
+    824  com.mstar.android
+    593  com.bumptech.glide
+    579  com.google.protobuf
+    352  kotlinx.coroutines.flow
+    323  com.baidu.tts
+    291  com.google.zxing
+    252  androidx.core.view
+    246  androidx.appcompat.widget
+    246  com.baidu.turbonet
+    206  androidx.constraintlayout.core
+    203  androidx.recyclerview.widget
+    200  org.w3c.dom
+    188  com.google.gson
+    183  android.support.v4
+    161  jp.co.cyberagent
+    158  androidx.core.app
+    148  com.baidu.speech
+    147  com.blankj.utilcode
+    142  androidx.fragment.app
+    136  kotlinx.coroutines.channels
+    124  androidx.core.content
+    113  com.lzy.okgo
+    110  androidx.emoji2.text
+    109  com.caverock.baiduandroidsvg
+    106  androidx.appcompat.app
+    104  androidx.constraintlayout.motion
+    102  kotlin.jvm.internal
+     94  com.github.penfeizhou
+     93  com.steadystate.css
+     88  com.alibaba.android
+     87  tv.danmaku.ijk
+     82  androidx.core.graphics
+     82  androidx.databinding.adapters
+     79  kotlinx.coroutines.internal
+     76  com.alibaba.fastjson
+     72  com.hisense.hotel
+     66  com.chad.library
+     66  com.owen.tvrecyclerview
+     64  androidx.appcompat.view
+     62  androidx.core.widget
+     57  androidx.core.util
+     55  androidx.core.os
+     53  androidx.core.location
+     50  androidx.activity.result
+     50  androidx.constraintlayout.widget
+     49  org.greenrobot.eventbus
+     43  javazoom.jl.decoder
+     41  com.lzy.okserver
+     41  com.tcl.snack
+     39  com.baidu.crabsdk
+     39  okhttp3.internal.http2
+     38  com.drakeet.multitype
+     37  androidx.core.provider
+     37  androidx.core.text
+     37  com.googlecode.protobuf

@@ -13,7 +13,11 @@ PORT = 8030
 NOW = lambda: int(time.time() * 1000)
 
 SETTINGS = {
-    "protocol": "http", "playerFlag": 0, "layout": 4, "language": 1, "defaultLanguage": 1,
+    # v2.7.2.06 Settings bean adds: epg, caterSub, tfPlayerFlag, appShowInMenu
+    # and changes the built-in defaults layout 4 -> 0, trafficSaveMode 1 -> 0.
+    "epg": True, "caterSub": True, "tfPlayerFlag": 0, "appShowInMenu": True,
+    "serverIpAddress": "10.21.0.10",
+    "protocol": "http", "playerFlag": 0, "layout": 0, "language": 1, "defaultLanguage": 1,
     "hotelName": "هتل رونیکا پالاس", "hotelNameEn": "Ronika Palace Hotel", "city": "Tehran",
     "phone": "021-0000000", "symbol": "$", "chargeMode": 1, "pmsType": 1, "timeout": 1,
     "pictureInterval": 8, "indexArea": 1, "vodFreeMinutes": 5, "apkUpdateType": 1,
@@ -37,8 +41,8 @@ SETTINGS = {
 
 CLIENT = {
     "id": 1, "groupId": 1, "mac": "", "ip": "", "name": "Ronika", "enable": True, "online": True,
-    "money": 0, "costSum": 0.0, "unfinishedOrderCount": 0, "versionCode": 20701071,
-    "versionText": "2.7.1.71", "welcomeWord": "Ronika", "welcomeWordEn": "Ronika",
+    "money": 0, "costSum": 0.0, "unfinishedOrderCount": 0, "versionCode": 20702006,
+    "versionText": "2.7.2.06", "welcomeWord": "Ronika", "welcomeWordEn": "Ronika",
     "wifiName": "RONIKA-GUEST", "wifiPassword": "ronika1234", "wifiStatus": 1,
     "wifiTips": "", "wifiTipsEn": "", "checkInTime": NOW(), "checkPerson": "guest",
     "timeZone": "", "timeMills": NOW(), "goods": [], "checked": False, "nrStatus": False,
@@ -84,11 +88,76 @@ SCENERY = {"items": [
     {"id": 1, "name": "Lobby", "imagePath": "res/scenery/lobby.jpg"},
     {"id": 2, "name": "Pool", "imagePath": "res/scenery/pool.jpg"},
 ]}
-FOOD_TYPES = [{"id": 1, "name": "Iranian"}, {"id": 2, "name": "Fast Food"}]
+# v2.7.2.06: GetFoodType returns catering COUNTRIES at the root and the food
+# types of one country when called with ?parentId=
+FOOD_COUNTRIES = [{"id": 10, "number": 1, "name": "ایران", "name_1": "Iran", "imagePath": ""},
+                  {"id": 20, "number": 2, "name": "ایتالیا", "name_1": "Italy", "imagePath": ""}]
+FOOD_TYPES_BY_COUNTRY = {
+    10: [{"id": 1, "number": 1, "name": "غذای ایرانی", "name_1": "Iranian"},
+         {"id": 3, "number": 2, "name": "کباب", "name_1": "Kebab"}],
+    20: [{"id": 2, "number": 1, "name": "فست فود", "name_1": "Fast Food"}],
+}
+FOOD_TYPES = [{"id": 1, "name": "Iranian", "name_1": "Iranian"},
+              {"id": 2, "name": "Fast Food", "name_1": "Fast Food"},
+              {"id": 3, "name": "Kebab", "name_1": "Kebab"}]
 FOOD = {
     1: [{"id": 101, "name": "Chelo Kebab", "price": 12, "imagePath": "res/food/kebab.jpg"}],
     2: [{"id": 201, "name": "Pizza", "price": 9, "imagePath": "res/food/pizza.jpg"}],
 }
+# v2.7.2.06: GetServiceIcon drives the room-service menu (ids 1..8)
+SERVICE_ICONS = [
+    {"id": 1, "number": 1, "chineseName": "清洁服务", "englishName": "Housekeeping", "image": ""},
+    {"id": 2, "number": 2, "chineseName": "物品借用", "englishName": "Borrow things", "image": ""},
+    {"id": 3, "number": 3, "chineseName": "洗衣服务", "englishName": "Laundry", "image": ""},
+    {"id": 4, "number": 4, "chineseName": "叫醒服务", "englishName": "Wake up", "image": ""},
+    {"id": 5, "number": 5, "chineseName": "账单", "englishName": "Bill", "image": ""},
+    {"id": 6, "number": 6, "chineseName": "一键退房", "englishName": "Check out", "image": ""},
+    {"id": 7, "number": 7, "chineseName": "出租车", "englishName": "Taxi", "image": ""},
+    {"id": 8, "number": 8, "chineseName": "服务记录", "englishName": "Service record", "image": ""},
+]
+CLOTHING = [
+    {"id": 31, "name": "شستشوی کت و شلوار", "name_1": "Suit wash", "price": 8, "imagePath": ""},
+    {"id": 32, "name": "اتو", "name_1": "Ironing", "price": 3, "imagePath": ""},
+]
+SERVICE_NAME = {1: ("清洁服务", "Housekeeping"), 2: ("物品借用", "Borrow things"),
+                3: ("洗衣服务", "Laundry"), 4: ("叫醒服务", "Wake up"),
+                6: ("一键退房", "Check out"), 7: ("出租车", "Taxi")}
+SERVICE_ORDERS = [
+    {"id": 9001, "clientId": 1, "typeId": 4, "gId": 0, "gName": "", "gNameEn": "",
+     "serviceName": "叫醒服务", "serviceNameEn": "Wake up", "status": 2,
+     "orderTime": NOW() - 7200000, "preparedTime": NOW() - 7000000,
+     "responseTime": NOW() - 6900000, "finishTime": NOW() - 6800000,
+     "list": [{"id": 1, "name": "ساعت ۰۷:۰۰", "name_1": "07:00", "count": 1}]},
+]
+FOOD_ORDERS = [
+    {"id": 1, "orderId": 5001, "foodId": 101, "count": 2, "status": 1,
+     "food": {"id": 101, "name": "چلوکباب", "name_1": "Chelo Kebab", "price": 12,
+              "content": "", "content_1": "", "imagePath": "res/food/kebab.jpg"}},
+]
+EPG_PROGRAMS = {}
+
+
+def epg_for(live_id):
+    """GetLiveEPG?liveId= -> List<LiveProgEpgDataBean>"""
+    now = NOW()
+    hour = 3600000
+    out = []
+    titles = [("خبر", "News"), ("فیلم سینمایی", "Movie"), ("مستند", "Documentary"),
+              ("ورزشی", "Sport"), ("سریال", "Series")]
+    for i in range(6):
+        start = now - (2 - i) * hour
+        end = start + hour
+        zh, en = titles[i % len(titles)]
+        out.append({"id": live_id * 100 + i, "liveId": live_id,
+                    "program": zh + " " + str(i + 1), "content": en + " #" + str(i + 1),
+                    "date": time.strftime("%Y-%m-%d", time.localtime(start / 1000)),
+                    "startTime": time.strftime("%H:%M", time.localtime(start / 1000)),
+                    "endTime": time.strftime("%H:%M", time.localtime(end / 1000)),
+                    "playing": start <= now < end,
+                    "timeshift": end <= now and i >= 1})
+    return out
+
+
 GOODS = [{"id": 1, "name": "Extra Towel", "price": 2, "imagePath": ""}, {"id": 2, "name": "Iron", "price": 0, "imagePath": ""}]
 HOTEL = {"items": [
     {"id": 1, "name": "About Us", "content": "Ronika Palace, Koohak", "imagePath": ""},
@@ -103,7 +172,7 @@ HOMEPAGE = [
     {"id": 2, "number": 2, "type": 2, "enabled": True, "packageName": "vod", "englishName": "VOD", "chineseName": "点播"},
 ]
 WEATHER = {"data": {"now": {"temp": 18, "text": "Clear"}, "forecast": []}}
-VERSION = {"versionCode": 20701071, "versionName": "2.7.1.71", "name": "PARDIK", "url": "", "length": 0, "time": ""}
+VERSION = {"versionCode": 20702006, "versionName": "2.7.2.06", "name": "PARDIK", "url": "", "length": 0, "time": ""}
 
 
 def ensure_media():
@@ -171,10 +240,7 @@ class H(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def do_GET(self):
-        u = urllib.parse.urlsplit(self.path)
-        p = u.path
-        q = urllib.parse.parse_qs(u.query)
+    def _route(self, p, q):
         if p == "/iptv2/manager/GetSettings":
             return self._j(SETTINGS)
         if p == "/iptv2/manager/GetClient":
@@ -216,7 +282,7 @@ class H(BaseHTTPRequestHandler):
         if p == "/iptv2/manager/GetHomepageIcon":
             return self._j(HOMEPAGE)
         if p == "/iptv2/manager/GetServiceIcon":
-            return self._j([])
+            return self._j(SERVICE_ICONS)
         if p == "/iptv2/manager/GetScenery":
             return self._j(SCENERY)
         if p in ("/iptv2/manager/GetHotel", "/iptv2/manager/GetHotelInformation"):
@@ -224,11 +290,69 @@ class H(BaseHTTPRequestHandler):
         if p == "/iptv2/manager/GetHotelType":
             return self._j([{"id": 1, "name": "General"}])
         if p == "/iptv2/manager/GetFoodType":
-            return self._j(FOOD_TYPES)
+            parent = q.get("parentId", [None])[0]
+            if parent in (None, "", "-1"):
+                return self._j(FOOD_COUNTRIES)
+            return self._j(FOOD_TYPES_BY_COUNTRY.get(int(parent), FOOD_TYPES))
         if p == "/iptv2/manager/GetFood":
             return self._j(FOOD.get(int(q.get("typeId", ["1"])[0]), []))
         if p == "/iptv2/manager/GetFoodOrder":
-            return self._j([])
+            return self._j({"list": FOOD_ORDERS})
+        # ---- v2.7.2.06 endpoints ----
+        if p == "/iptv2/manager/GetLiveEPG":
+            return self._j(epg_for(int(q.get("liveId", ["1"])[0] or 1)))
+        if p == "/iptv2/manager/GetServiceOrder":
+            return self._j(SERVICE_ORDERS)
+        if p == "/iptv2/manager/GetClothingType":
+            return self._j(CLOTHING)
+        if p == "/iptv2/manager/AddGoodsOrder":
+            tid = int(q.get("typeId", ["0"])[0] or 0)
+            wt = int(q.get("wakeupTime", ["0"])[0] or 0)
+            zh, en = SERVICE_NAME.get(tid, ("服务", "Service"))
+            when = time.strftime("%Y-%m-%d %H:%M", time.localtime(wt / 1000)) if wt else ""
+            SERVICE_ORDERS.insert(0, {
+                "id": 9100 + len(SERVICE_ORDERS), "clientId": 1, "typeId": tid,
+                "gId": 0, "gName": "", "gNameEn": "", "serviceName": zh,
+                "serviceNameEn": en, "status": 0, "orderTime": NOW(),
+                "preparedTime": 0, "responseTime": 0, "finishTime": 0,
+                "list": [{"id": 1, "name": when, "name_1": when, "count": 1}]})
+            return self._j({"status": 200})
+        if p == "/iptv2/manager/AddFoodOrder":
+            if q.get("cFlag", ["0"])[0] == "1":
+                oid = int(q.get("id", ["0"])[0] or 0)
+                for o in FOOD_ORDERS:
+                    if o.get("orderId") == oid:
+                        o["status"] = 3          # waiting to be cancelled
+                return self._j({"status": 200})
+            cai = q.get("countAndIds", [""])[0]
+            n = 0
+            for pair in (cai or "").split(","):
+                if ":" in pair:
+                    try:
+                        fid, cnt = pair.split(":")
+                        fid, cnt = int(fid), int(cnt)
+                        # resolve the ordered food so GetFoodOrder returns names
+                        food = None
+                        for items in FOOD.values():
+                            for f in items:
+                                if f.get("id") == fid:
+                                    food = f
+                                    break
+                            if food:
+                                break
+                        FOOD_ORDERS.append({
+                            "id": len(FOOD_ORDERS) + 1,
+                            "orderId": 5100 + len(FOOD_ORDERS),
+                            "foodId": fid, "count": cnt, "status": 0,
+                            "food": food or {"id": fid, "name": "", "name_1": "",
+                                             "price": 0, "content": "", "content_1": "",
+                                             "imagePath": ""}})
+                        n += cnt
+                    except Exception:
+                        pass
+            return self._j({"status": 200, "count": n})
+        if p == "/iptv2/manager/AddClientCheckOutOrder":
+            return self._j({"status": 200})
         if p == "/iptv2/manager/GetGoods":
             return self._j(GOODS)
         if p == "/iptv2/manager/GetGoodsOrder":
@@ -248,9 +372,19 @@ class H(BaseHTTPRequestHandler):
         if p == "/iptv2/manager/GetRecTV":
             return self._j(channels())
         if p == "/iptv2/manager/GetRecProgram":
-            return self._j([])
+            return self._j([{"id": 1, "name": "Yesterday 20:00 News",
+                             "url": "http://127.0.0.1:%d/iptv2/vod/test.mp4" % PORT}])
         if p == "/iptv2/manager/GetEpgRecProgram":
-            return self._j([{"id": 1, "name": "Yesterday 20:00 News", "url": "http://127.0.0.1:%d/iptv2/vod/test.mp4" % PORT}])
+            # v2.7.2.06 RecordEpgAllTimeActivity: recorded programmes with times
+            out = []
+            for i, prog in enumerate(epg_for(int(q.get("liveId", ["1"])[0] or 1))):
+                if not prog["timeshift"]:
+                    continue
+                d = dict(prog)
+                d["url"] = "http://127.0.0.1:%d/iptv2/vod/test.mp4" % PORT
+                d["name"] = prog["program"]
+                out.append(d)
+            return self._j(out)
         if p == "/iptv2/manager/GetVersion":
             return self._j(VERSION)
         if p == "/iptv2/manager/apk/getWeatherDays":
@@ -282,10 +416,27 @@ class H(BaseHTTPRequestHandler):
                 return self._file(png, "image/png")
         self.send_response(404); self.send_header("Content-Length", "0"); self.end_headers()
 
+    def do_GET(self):
+        u = urllib.parse.urlsplit(self.path)
+        return self._route(u.path, urllib.parse.parse_qs(u.query))
+
     def do_POST(self):
+        u = urllib.parse.urlsplit(self.path)
+        q = urllib.parse.parse_qs(u.query)
         n = int(self.headers.get("Content-Length") or 0)
-        self.rfile.read(n)
-        self._j({"status": 200})
+        body = self.rfile.read(n) if n else b""
+        ctype = (self.headers.get("Content-Type") or "").lower()
+        if body:
+            if "json" in ctype:
+                try:
+                    for k, v in json.loads(body.decode("utf-8")).items():
+                        q[str(k)] = [str(v)]
+                except Exception:
+                    pass
+            else:
+                for k, vs in urllib.parse.parse_qs(body.decode("utf-8", "replace")).items():
+                    q[k] = vs
+        return self._route(u.path, q)
 
 
 if __name__ == "__main__":

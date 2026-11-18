@@ -79,7 +79,7 @@
   <section id="scr-player" class="screen">
     <video id="video" playsinline></video>
     <img id="watermark" class="watermark" alt="" hidden>
-    <div class="player-loading" id="player-loading"><div class="spinner"></div><span data-i18n="brvah_loading">در حال بارگذاری…</span></div>
+    <div class="player-loading" id="player-loading"><img id="load-anim" class="load-anim" alt="" src="/assets/img/drawable__loading1.png"><span data-i18n="brvah_loading">در حال بارگذاری…</span></div>
     <div class="player-error" id="player-error" hidden><span id="player-error-txt" data-i18n="decoding_video_failed">کدگشایی ویدئو ناموفق بود.</span></div>
     <div class="ch-badge" id="ch-badge" hidden><span id="ch-number"></span><span id="ch-name"></span></div>
     <div class="player-osd" id="player-osd" hidden>
@@ -90,10 +90,23 @@
       <div class="osd-right">
         <button class="osdbtn focusable" id="btn-fav" title="F">★</button>
         <button class="osdbtn focusable" id="btn-list" title="L">☰</button>
+        <button class="osdbtn focusable" id="btn-epg" title="E" hidden>📅</button>
+        <button class="osdbtn focusable" id="btn-speed" title="S"><span data-i18n="play_speed_txt">سرعت</span> <b id="speed-val">1x</b></button>
         <button class="osdbtn focusable" id="btn-ratio" title="Z">⤢</button>
       </div>
     </div>
     <aside class="side-list" id="side-list" hidden></aside>
+    <!-- v2.7.2.06: LivePlayerWithEpgActivity programme guide -->
+    <aside class="epg-panel" id="epg-panel" hidden>
+      <div class="epg-head"><span data-i18n="epg_program_list">برنامه‌ها</span><span class="epg-ch" id="epg-ch"></span></div>
+      <div class="epg-list focuslist" id="epg-list"></div>
+      <div class="epg-foot" data-i18n="live_epg_tips">OK = پخش / پخش با تأخیر، ←→ = جزئیات</div>
+    </aside>
+    <div class="epg-detail" id="epg-detail" hidden>
+      <div class="epg-detail-title" id="epg-detail-title"></div>
+      <div class="epg-detail-time" id="epg-detail-time"></div>
+      <div class="epg-detail-content" id="epg-detail-content"></div>
+    </div>
     <div class="vol-osd" id="vol-osd" hidden><span>🔊</span><div class="volbar"><i id="vol-fill"></i></div><span id="vol-num"></span></div>
   </section>
 
@@ -146,8 +159,65 @@
     <div class="page-bg"></div>
     <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="dinner">شام</h2></header>
     <div class="dinner-wrap">
-      <div class="dinner-types focuslist" id="dinner-types"></div>
+      <div class="dinner-side">
+        <div class="dinner-types focuslist" id="dinner-types"></div>
+        <button class="btn focusable dinner-orders" id="dinner-orders" data-i18n="my_order">سفارش من</button>
+      </div>
       <div class="dinner-items focusgrid" id="dinner-items"></div>
+    </div>
+  </section>
+
+  <!-- ============ CATERING: country selector (v2 settings.caterSub) ============ -->
+  <section id="scr-country" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="catering_country">انتخاب کشور</h2></header>
+    <div class="country-tip" data-i18n="tips_of_catering_country">برای مشاهده اطلاعات غذا دکمه OK را بزنید</div>
+    <div class="country-list focusgrid" id="country-list"></div>
+  </section>
+
+  <!-- ============ MY ORDERS (v2 MyHistoryOrderList/Detail) ============ -->
+  <section id="scr-orders" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="my_hostory_order">سفارش‌های من</h2></header>
+    <div class="orders-tip" data-i18n="my_hostory_order_tips">برای لغو سفارش دکمه OK را بزنید</div>
+    <div class="order-list focuslist" id="order-list"></div>
+  </section>
+  <div class="modal" id="order-detail" hidden>
+    <div class="modal-card">
+      <div class="vd-info">
+        <h3 data-i18n="my_order_details">جزئیات سفارش</h3>
+        <div class="order-items" id="od-items"></div>
+        <div class="vd-row"><span data-i18n="total">کل:</span><span id="od-total"></span></div>
+        <div class="vd-row"><span data-i18n="order_status">وضعیت:</span><span id="od-status"></span></div>
+        <div class="vd-actions">
+          <button class="btn focusable" id="od-cancel" data-i18n="cancel_the_order">لغو سفارش</button>
+          <button class="btn focusable" id="od-close" data-i18n="ok">تأیید</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SERVICE RECORD (v2 GetServiceOrder) ============ -->
+  <section id="scr-svcrecord" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="service_record">سوابق خدمات</h2></header>
+    <table class="consume-table"><thead><tr>
+      <th data-i18n="service_name">خدمت</th><th data-i18n="consume_time">زمان</th>
+      <th data-i18n="goods_service">اقلام</th><th data-i18n="order_status">وضعیت</th>
+    </tr></thead><tbody id="svcrec-body"></tbody></table>
+  </section>
+
+  <!-- ============ APP SHOW IN MENU (v2 SettingAppShowActivity / app.db) ============ -->
+  <section id="scr-apps" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="setting_app">تنظیم برنامه</h2></header>
+    <div class="apps-tip" data-i18n="app_show_in_menu">برنامه‌های نمایش داده‌شده در منو را انتخاب کنید</div>
+    <div class="app-grid focusgrid" id="app-grid"></div>
+    <div class="apps-add">
+      <input id="app-name" class="focusable" placeholder="نام برنامه">
+      <input id="app-path" class="focusable" placeholder="مسیر فایل (exe یا lnk)">
+      <button class="btn focusable" id="app-add" data-i18n="submit">افزودن</button>
+      <button class="btn focusable" id="app-back" data-i18n="ok">بازگشت</button>
     </div>
   </section>
 
@@ -168,7 +238,7 @@
     <div class="page-bg"></div>
     <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="wake_up_service">سرویس بیدارباش</h2></header>
     <div class="wakeup-card">
-      <div class="wk-row"><span data-i18n="wake_up_setting_time">تنظیم زمان بیداری:</span></div>
+      <div class="wk-row"><span id="wk-label" data-i18n="wake_up_setting_time">تنظیم زمان بیداری:</span></div>
       <div class="wk-pickers">
         <select id="wk-day" class="focusable"></select>
         <select id="wk-hour" class="focusable"></select>
@@ -226,6 +296,13 @@
       <div class="set-row focusable" data-edit="server_port"><span class="set-label" data-i18n="settings_network_port">پورت سرور</span><span class="set-value" id="set-port"></span></div>
       <div class="set-row" ><span class="set-label" data-i18n="settings_local_network">شبکه محلی</span><span class="set-value" id="set-localip"></span></div>
       <div class="set-row" ><span class="set-label" data-i18n="settings_local_mac">مک محلی</span><span class="set-value" id="set-mac"></span></div>
+      <div class="set-section" data-i18n="settings_play">تنظیمات پخش</div>
+      <!-- v2.7.2.06: setting_vlc_decode_layout / vlc_decode_value -->
+      <div class="set-row focusable" data-act="vlc" id="set-vlc"><span class="set-label" data-i18n="enable_vlc_decoding">کدگشایی با VLC</span><span class="set-value" id="set-vlc-value"></span></div>
+      <div class="set-row focusable" data-act="speed" id="set-speed"><span class="set-label" data-i18n="play_speed_txt">سرعت پخش</span><span class="set-value" id="set-speed-value"></span></div>
+      <div class="set-row focusable" data-act="autostart" id="set-autostart"><span class="set-label" data-i18n="boot_auto_start">شروع خودکار با ویندوز</span><span class="set-value" id="set-autostart-value"></span></div>
+      <div class="set-section" data-i18n="setting_app">تنظیم برنامه</div>
+      <div class="set-row focusable" data-act="apps" id="set-apps"><span class="set-label" data-i18n="app_show_in_menu">برنامه نمایش در منو</span><span class="set-value" id="set-apps-value"></span></div>
       <div class="set-section" data-i18n="settings_other">سایر</div>
       <div class="set-row focusable" data-edit="app_language"><span class="set-label">زبان / Language</span><span class="set-value" id="set-lang"></span></div>
       <div class="set-row focusable" id="set-reconnect"><span class="set-label">اتصال مجدد به سرور</span><span class="set-value">↻</span></div>
@@ -241,6 +318,18 @@
       <div class="vd-actions">
         <button class="btn focusable" id="input-ok" data-i18n="submit">تأیید</button>
         <button class="btn focusable" id="input-cancel" data-i18n="cancel">انصراف</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ generic confirm dialog (v2 layout_dialog_new) ============ -->
+  <div class="modal" id="confirm-modal" hidden>
+    <div class="modal-card small">
+      <h3 id="confirm-title"></h3>
+      <div class="confirm-text" id="confirm-text"></div>
+      <div class="vd-actions">
+        <button class="btn focusable" id="confirm-ok" data-i18n="ok">تأیید</button>
+        <button class="btn focusable" id="confirm-cancel" data-i18n="cancel">انصراف</button>
       </div>
     </div>
   </div>

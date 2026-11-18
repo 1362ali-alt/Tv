@@ -1,0 +1,11 @@
+loaded classes.dex 11.5s
+done classes.dex ok=0 fail=0 11.5s
+loaded classes2.dex 11.5s
+done classes2.dex ok=0 fail=0 11.5s
+loaded classes3.dex 22.4s
+done classes3.dex ok=1298 fail=0 25.8s
+loaded classes4.dex 41.5s
+done classes4.dex ok=1298 fail=0 41.5s
+loaded classes5.dex 48.7s
+done classes5.dex ok=1298 fail=0 48.7s
+TOTAL ok=1298 fail=0
