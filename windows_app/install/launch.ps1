@@ -84,7 +84,9 @@ foreach ($cand in @(
     if (Test-Path $cand) { $edge = $cand; break }
 }
 if ($edge) {
-    Start-Process -FilePath $edge -ArgumentList @("--app=$url", "--new-window", "--start-maximized")
+    # --autoplay-policy: the boot advert video (GetAdvVideoEM) and the welcome
+    # background music start with no user gesture, exactly like the Android box.
+    Start-Process -FilePath $edge -ArgumentList @("--app=$url", "--new-window", "--start-maximized", "--autoplay-policy=no-user-gesture-required")
 } else {
     Start-Process $url
 }

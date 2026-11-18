@@ -110,7 +110,7 @@ All list/object bodies parsed with Gson using **field-name = JSON key** (no `@Se
 
 ## 4. Application flow (Android)
 `PingServerActivity` (ping background from `GetAdvImage?type=11`, start both WebSocket services, 1 s timer) → on success:
-* if `Settings.skipWelcomePage` → straight to main; else `BootVideoActivity` (`GetAdvVideoEM`) or `WelcomeStyleZero/OtherActivity` (language picker zh/en, welcome word from `Client.welcomeWord`, weather `apk/getWeatherDays`, clock/date) → main.
+* if `Settings.advVideoEM` → `BootVideoActivity` plays `GetAdvVideoEM[0]` full screen first (any key but the volume keys, completion or error → welcome); then `WelcomeStyleZero/OtherActivity` (language picker zh/en, welcome word from `Client.welcomeWord`, weather `apk/getWeatherDays`, clock/date, background slideshow or video + music), which itself goes straight to main when `Settings.skipWelcomePage`.
 Main (`MainStyle*Activity`, `LAYOUT_STYLE` in default prefs selects 1..5): top bar = logo, room number, Wi‑Fi name/password, weather, `DigitalClock` (HH:mm + date); body = background banner (`MZBannerView` / background `IjkVideoView`) + horizontal `TvRecyclerView` menu built from `GetHomepageIcon` + `Settings.menu*Visible`.
 Menu → targets: **LIVE** (`LivePackageActivity` if `showPackage` else `LivePlayer*Activity`), **VOD** (`VodNewActivity`), **Playback** (`RecordEpgActivity`), **Scenery**, **Dinner/Catering**, **Service** (popup: room service / wake-up / billing / one-key check-out), **Third APP**, **Hotel** intro, **APPs**, **Settings** (password `111999`).
 Live player: full-screen `IjkVideoView`, protocol chosen from `Settings.protocol` (rtsp→`rtspUrl`/`getLiveRtspUrl(number)`, hls→`hlsUrl`, http→`httpUrl`, udp), optional package side-list, channel number overlay, watermark (`showWaterMark`), loading spinner, ad countdown, "press OK for fullscreen", back-press twice to exit, favourites, `GetLiveStatus` polling for EPG/now-playing.
@@ -128,7 +128,7 @@ Global heartbeat (`BaseApplication.getDataFromServer()`): `GetSettings`, optiona
 ## 6. Windows-port design (what was built)
 * **Runtime:** bundled/installed CPython 3.x (Windows x64) — the app itself is **pure-Python stdlib** (no pip deps) + a bundled FFmpeg for RTSP/MPEG‑TS→HLS remux. UI is an Edge/Chromium `--app` window over a local HTTP server (native look, no browser chrome), with full keyboard/remote navigation.
 * **Playback:** HLS via bundled `hls.js`; HTTP‑MP4 native; RTSP/UDP/MPEG‑TS transparently remuxed to HLS by FFmpeg (`-c copy`, ~0 % CPU) served from `localhost`.
-* **Parity:** same endpoints, same URL builders, same defaults (10.21.0.10:8030, password 111999, RTSP 554), same screens/flow, same icons/backgrounds, Persian-first i18n, both WebSocket control channels, settings with password gate, favourites, EPG polling, watermarks, welcome screen, version check.
+* **Parity:** same endpoints, same URL builders, same defaults (10.21.0.10:8030, password 111999, RTSP 554), same screens/flow, same icons/backgrounds, Persian-first i18n, both WebSocket control channels, settings with password gate, favourites, EPG polling, watermarks, boot advert video + welcome screen advertising, in-player adverts, version check.
 
 ---
 
@@ -194,6 +194,10 @@ settings password `111999` are unchanged.
 | `GetAdvImage` | `mac=&type=3` | `getAdImageInfo()` → a random path is loaded into `water_mark_image_view` (rounded) |
 | `GetNextAdv` | `mac=&liveId=` | pre-roll advert → `List<LiveProgramAdvVideoBean>{status,msg,resource{id,name,url,allowSkip,countTime,count,size,checked}}`; `status 0` = no advert, `200` = play `resource.url` first |
 | `AddAdvHistory` | `mac=&id=&type=&time=&check=` | watch-time report: `type 1` = live programme (`id = liveProgramId`), `type 2` = advert (`id = adVideoProgramId`); `check 1` = seen to the end, `2` = skipped |
+| `GetAdvVideoEM` | `mac=` | `WebTag.TAG_BOOT_VIDEO` → **`List<String>`** of clip paths *relative to `/iptv2/`* (`IptvSP.getUrl`). `BootVideoActivity` plays them full screen before the welcome screen when `Settings.advVideoEM` is set; `WelcomeStyleZero/OtherActivity` plays them as the welcome background when it is not |
+| `GetAdvImage` | `mac=&type=1` | `playPptBGImage()` → welcome background slideshow (`MZBannerView`, `setDelayedTime(5000)`, indicator hidden, no rotation for a single page) |
+| `GetAdvImage` | `mac=&type=12` | `getManagerSignImg()` → a random path (`Uri.encode(x, "/")`) into the hotel-manager signature `ImageView` (hidden when the list is empty) |
+| `apk/getClientBackgroundMusics` | `mac=` | `List<BGMusicBean>{url,description}` → `res/adv/music/<URLEncoder.encode(url)>` played through a `MediaPlayer`, another random track on completion |
 
 ### Room-service id map (`StyleTwoRoomServiceFragment$1.onItemClick`)
 | id | Tile art (`mipmap/pic_style_three_*_service`) | Action |
@@ -222,6 +226,27 @@ key skips the advert **iff** `advVideoCanSkip` → `adVideoPrgPlayComplete = 2`,
 `onCompletion` (`$9`) → `adVideoPrgPlayComplete = 1`, `AddAdvHistory(type=2)`, `startPlay(playUrl)`.
 Switching channel while a live programme is playing → `AddAdvHistory(type=1, time = now - startPlayTimemills)`.
 Advert art is served from `res/adv/…`; the 48 new `mipmap/aNNN.png` images in v2 are those advert creatives.
+
+### Boot advert video (`BootVideoActivity`, gated by `Settings.advVideoEM`)
+`PingServerActivity.openWelcomeActivity(settings.isAdvVideoEM(), layout)` → when the flag is set the boot goes to
+`BootVideoActivity` **before** any welcome screen; otherwise straight to `WelcomeStyleOtherActivity`
+(`app_layout_style != 0 && != 5`) or `WelcomeStyleZeroActivity`.
+* `initData()`: `playerFlag = settings.getPlayerFlag() + 1`, then `getWelcomeVideo()` =
+  `getUrl("GetAdvVideoEM") + "?mac=" + IptvUtil.getMacAddress()` through `HttpUtil.sendOkHttpRequest`.
+* `$1.onResponse` → `Gson` into `List<String>`; **null/empty ⇒ `enterWelcomeActivity()` immediately**. Otherwise every
+  entry that is non-empty and contains a `/` that is not the last character is kept, with only the final segment
+  `URLEncoder.encode`d, then `playWelcomeVideo()` → `setVideoPath(getUrl(strings.get(0)), playerFlag)` on
+  `boot_my_ijkplayer_view` (`isHi3798Box` — `BRAND == "Fiberhome" && Build.ID == "2.337237.04"` — forces flag 2).
+* `onCompletion` **or** `onError` → `enterWelcomeActivity()`; `onKeyDown`: **any key except VOLUME_UP(24)/VOLUME_DOWN(25)**
+  → `enterWelcomeActivity()`. `isLeave` guarantees the transition happens once; it re-reads
+  `settings.getLayout()` into `app_layout_style` and then starts `WelcomeStyleOther`/`WelcomeStyleZero` and `finish()`es.
+* `onPause` pauses, `onResume` restarts, `onDestroy` does `stopPlayback()` + `release(1)`.
+
+The welcome screen itself then re-uses the same endpoint: `initData()` calls
+`settings.isAdvVideoEM() ? playPptBGImage() : getWelcomeVideo()`, i.e. with the boot advert enabled the welcome
+background is the `GetAdvImage?type=1` slideshow, otherwise the `GetAdvVideoEM` clips play behind the welcome card —
+`playWelcomeVideo(0)` first, a **random** clip on each completion, and on error `isPlayVideo = false` + the slideshow.
+`playMusicLoop()` (from `apk/getClientBackgroundMusics`) and `getManagerSignImg()` (`type=12`) run in both cases.
 
 ### VLC external playback (`LivePlayerActivity.playWithVlc`)
 `Intent(ACTION_VIEW)`, `data = url`, `type = "video/*"`, `setPackage("org.videolan.vlc")`, extras `title`, `from_start = 1`;
@@ -264,9 +289,12 @@ SQLite `app.db` v1, table `app(_id, package_name, name)`; `database.DeviceHelper
 | `BootReceiver` | `/api/autostart` writes the `HKCU\…\Run` entry on Windows (stored-only elsewhere), toggled from Settings |
 | `loading1..8` | the APK's own buffering animation in `#load-anim` |
 | `name_1`/`content_1` bilingual beans | `nm()` helper used by every list/detail renderer |
-| strings 343→419 (fa 231→305) | `web/i18n.generated.js` regenerated → **245 keys** × zh/en/fa (41 keys from the new APK strings, 8 updated, plus 16 UI-only keys such as the order-status labels); the new fa placeholders that ship as English in the APK were replaced with real Persian. Every `t("…")` / `data-i18n` key used by the UI resolves — verified by script (0 missing). |
+| strings 343→419 (fa 231→305) | `web/i18n.generated.js` regenerated → **245 keys** × zh/en/fa (41 keys from the new APK strings, 8 updated, plus 16 UI-only keys such as the order-status labels); the new fa placeholders that ship as English in the APK were replaced with real Persian. Every `t("…")` / `data-i18n` key used by the UI resolves — verified by script (0 missing). A later locale audit against `values-zh` / `values-fa` repaired **162 zh cells** that had fallen back to English and translated **43 guest-facing keys** the vendor left in English in `values-fa` (pure debug/technical keys — `app_name`, `mi__selected_*`, `load_cost`, `seek_cost`, `sample`, `miracast` — keep the APK text verbatim). |
 | `GetRecTV` + `GetEpgRecProgram` | playback screen: channels → dates → programmes |
 | in-player advertising | `get_next_adv` / `add_adv_history` / `adv_image?type=3` in the backend; `#ad-countdown` overlay with the APK's `ad_video_time_remains` text, skip-on-any-key when `allowSkip`, `AddAdvHistory` type 1 (live watch time) and type 2 (`check` 1 finished / 2 skipped), advert image in the watermark slot |
+| boot advert video (`BootVideoActivity`) | `get_adv_video_em` in the backend (`/api/call?ep=adv_video_em`); new full-screen `#scr-bootvideo` with `#boot-video`. `boot()` mirrors `PingServerActivity`: `settings.advVideoEM` → boot video → welcome/home. `sanitiseAdvPaths()` applies the APK's filter (non-empty, `/` not last) and encodes only the final segment; `iptvUrl()` is `IptvSP.getUrl()`; completion **or** error → welcome; **every key except ↑/↓** (the port's volume keys = VOLUME_UP/DOWN) leaves the screen; `S.bootLeft` is `isLeave` |
+| welcome background advertising | `advVideoEM` → `GetAdvImage?type=1` slideshow in `#wel-ppt` (5 s a page, fade, no rotation for one page); otherwise the `GetAdvVideoEM` clips loop in `#wel-video` (first clip, then a random one, error → slideshow). `#wel-sign` shows a random `type=12` image, `#bg-music` loops `res/adv/music/<BGMusicBean.url>` from `apk/getClientBackgroundMusics`. All of it is torn down by `onEnter()` when the welcome screen is left |
+| browser autoplay policy | `install/launch.ps1` adds `--autoplay-policy=no-user-gesture-required` to the Edge app window, and `tryPlay()` retries muted if a gesture is still required, so a boot advert is never silently dropped |
 
 ## 7.3 Verification of the v2 build
 
@@ -285,5 +313,14 @@ SQLite `app.db` v1, table `app(_id, package_name, name)`; `database.DeviceHelper
   catering country → types → basket → orders → submit → detail → cancel, service record, one-key checkout confirm,
   taxi time picker, laundry (`GetClothingType`), playback screen, and the pre-roll advert (overlay appears with the
   Persian countdown, a key skips it, playback returns to the channel) — **0 errors**.
-* Distribution zip: `dist/PARDIK-SMART-IPTV-Win10-x64-2.7.2.06.zip`, 515 entries, 12,364,382 bytes,
-  sha256 `b5a49864674476d8e7c9250a9beb5252f378b2be8ab577fd0c29ad5cd6bc324f`.
+* `curl`: `ep=adv_video_em` returns `["vod/boot.mp4","vod/welcome.mp4"]` (paths relative to `/iptv2/`, as `getUrl()`
+  expects); `ep=adv_image&type=1` returns the three welcome-slideshow creatives and `type=12` the manager signature;
+  `ep=bg_musics` returns one `BGMusicBean`. The mock serves `/iptv2/vod/boot.mp4` (4.7 MB), `/iptv2/vod/welcome.mp4`,
+  `/iptv2/res/adv/music/welcome.mp3` (`audio/mpeg`) and, through the port's own proxy,
+  `/stream/play?src=…boot.mp4` → `200 video/mp4`.
+* `tools/smoke/smoke.js` (jsdom) now also asserts the boot path: after `boot()` the active screen is **`scr-bootvideo`**
+  with `#boot-video` sourced from `GetAdvVideoEM[0]`, an **↑ (volume) key does not leave it**, Enter continues to
+  `scr-welcome`, and there the `type=1` slideshow, the `type=12` signature and the background music are all live while
+  `#wel-video` stays hidden (`advVideoEM` on) — **0 errors**.
+* Distribution zip: `dist/PARDIK-SMART-IPTV-Win10-x64-2.7.2.06.zip`, 515 entries, 12,369,529 bytes,
+  sha256 `aa866e80825ed6efde9b12eccd2ae20e2f429a25f35697840e51ac44ed9f0280`.

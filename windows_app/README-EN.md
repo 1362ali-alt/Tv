@@ -41,6 +41,18 @@ Arrows/Tab move · Enter = OK · Esc/Backspace = back (twice in live to exit) ·
 ↑/↓ volume · M mute · F favourite · L channel list · **E** EPG panel ·
 **I** programme details · **S** playback speed · Enter (in player) fullscreen.
 
+When the server sets `Settings.advVideoEM`, start-up follows `BootVideoActivity`:
+`GetAdvVideoEM?mac=` returns a `List<String>` of clips relative to `/iptv2/`, the first one
+plays full screen before the welcome screen, and **any key except the volume keys** (or
+completion, or a playback error) moves on — exactly like the APK's `onKeyDown`. The welcome
+screen then keeps the APK's background advertising: the `GetAdvImage?type=1` slideshow
+(5 s a page), the `type=12` manager signature, and the `apk/getClientBackgroundMusics`
+loop from `res/adv/music/`. With `advVideoEM` off, those same clips play as the welcome
+background video instead (random next clip on completion, slideshow on error). Browsers
+block un-gestured autoplay, so `install/launch.ps1` passes
+`--autoplay-policy=no-user-gesture-required` and the UI retries muted rather than dropping
+an advert.
+
 When the server enables advertising (`Settings.activeAdv`), live channels carry the
 same pre-roll flow as the APK: `GetAdvImage?type=3` fills the watermark slot with an
 advert creative, `GetNextAdv?mac=&liveId=` returns the advert video

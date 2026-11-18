@@ -62,6 +62,40 @@ async function main() {
   console.log("after boot, active screen =", active());
   console.log("boot msg =", (doc.querySelector("#boot-msg") || {}).textContent);
 
+  /* v2.7.2.06: settings.advVideoEM -> PingServerActivity starts BootVideoActivity,
+     which plays GetAdvVideoEM[0] full screen before the welcome screen. */
+  if (active() === "scr-bootvideo") {
+    const bv = doc.querySelector("#boot-video");
+    console.log("[v2] boot advert src =", ((bv && (bv.currentSrc || bv.src)) || "").slice(0, 110));
+    console.log("[v2] boot advert hint =", ((doc.querySelector("#bootvideo-hint") || {}).textContent || "").trim());
+    if (!bv || !/stream\/play|proxy\?url=/.test(bv.src || "")) errors.push("boot advert video has no source (GetAdvVideoEM)");
+    // VOLUME_UP/VOLUME_DOWN must not leave the boot video (BootVideoActivity.onKeyDown)
+    doc.dispatchEvent(new w.KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+    await sleep(300);
+    console.log("[v2] after volume key, active =", active());
+    if (active() !== "scr-bootvideo") errors.push("a volume key left the boot advert video");
+    // any other key -> welcome screen
+    doc.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await sleep(1200);
+    console.log("[v2] after skip key, active =", active());
+    if (active() !== "scr-welcome") errors.push("the boot advert video did not continue to the welcome screen");
+  } else {
+    errors.push("expected the boot advert video screen (settings.advVideoEM)");
+  }
+
+  // welcome background advertising (GetAdvImage type=1 slideshow / type=12 sign / bg music)
+  if (active() === "scr-welcome") {
+    await sleep(900);
+    const ppt = doc.querySelector("#wel-ppt"), sign = doc.querySelector("#wel-sign"), mus = doc.querySelector("#bg-music");
+    console.log("[v2] welcome ppt hidden =", ppt.hidden, "| src =", (ppt.src || "").slice(0, 90));
+    console.log("[v2] welcome sign hidden =", sign.hidden, "| src =", (sign.src || "").slice(0, 90));
+    console.log("[v2] welcome bg music src =", ((mus && mus.src) || "none").slice(0, 90));
+    console.log("[v2] welcome background video hidden =", doc.querySelector("#wel-video").hidden);
+    if (ppt.hidden) errors.push("welcome slideshow (GetAdvImage?type=1) is not showing");
+    if (sign.hidden) errors.push("manager signature (GetAdvImage?type=12) is not showing");
+    if (!mus || !mus.src) errors.push("welcome background music (apk/getClientBackgroundMusics) not started");
+  }
+
   // if welcome is showing, pick Persian
   if (active() === "scr-welcome") {
     const fa = doc.querySelector('#wel-langs .langbtn[data-lang="fa"]');

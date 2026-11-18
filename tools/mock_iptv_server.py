@@ -29,7 +29,7 @@ SETTINGS = {
     "timeshiftPlayIp": "127.0.0.1", "timeshiftPlayPort": "8080",
     "timeshiftPlayPath": "/iptv2/vod", "timeshiftPlayProtocol": "http",
     "streamMediaIp": "", "streamMediaPort": 0, "trafficSaveMode": False,
-    "activeAdv": True, "activeXiaodu": False, "advVideoEM": False, "cater": True,
+    "activeAdv": True, "activeXiaodu": False, "advVideoEM": True, "cater": True,
     "checkOutCleanFavorite": False, "operatorNumber": "", "timeFormat": "HH:mm", "timeZone": "",
     "menuSceneryVisible": True, "menuRecVisible": True, "menuAppVisible": True,
     "menuCIBNVisible": False, "menuCaterVisible": True, "menuCheckOutVisible": True,
@@ -147,6 +147,18 @@ ADV_IMAGES = ["res/adv/a113.png", "res/adv/a116.png", "res/adv/a119.png",
               "res/adv/a122.png", "res/adv/a143.png"]
 ADV_HISTORY = []
 
+# v2.7.2.06 boot advertising (WebTag.TAG_BOOT_VIDEO = "GetAdvVideoEM").
+# Paths are relative to /iptv2/ (IptvSP.getUrl). BootVideoActivity plays entry 0
+# full screen before the welcome screen when settings.advVideoEM is true;
+# WelcomeStyleZero/OtherActivity plays a random entry as the welcome background
+# (and the GetAdvImage?type=1 slideshow) when it is false.
+ADV_BOOT_VIDEOS = ["vod/boot.mp4", "vod/welcome.mp4"]
+ADV_BG_IMAGES = ["res/adv/a113.png", "res/adv/a116.png", "res/adv/a119.png"]   # type=1 welcome PPT
+ADV_SIGN_IMAGES = ["res/adv/a122.png"]                                          # type=12 manager sign
+# apk/getClientBackgroundMusics -> List<BGMusicBean>{url,description}; the file is
+# fetched from res/adv/music/<url> and looped behind the welcome screen.
+BG_MUSICS = [{"url": "welcome.mp3", "description": "Welcome lounge music"}]
+
 EPG_PROGRAMS = {}
 
 
@@ -216,6 +228,26 @@ def ensure_media():
                         "testsrc2=size=640x360:rate=25:duration=6", "-f", "lavfi", "-i",
                         "sine=frequency=880:duration=6", "-c:v", "libx264", "-preset", "ultrafast",
                         "-c:a", "aac", ad], check=True)
+    # boot / welcome advert clips for GetAdvVideoEM (BootVideoActivity)
+    boot = os.path.join(MEDIA, "boot.mp4")
+    if not os.path.exists(boot):
+        subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+                        "testsrc2=size=960x540:rate=25:duration=10", "-f", "lavfi", "-i",
+                        "sine=frequency=660:duration=10", "-c:v", "libx264", "-preset", "ultrafast",
+                        "-c:a", "aac", boot], check=True)
+    welc = os.path.join(MEDIA, "welcome.mp4")
+    if not os.path.exists(welc):
+        subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+                        "smptehdbars=size=960x540:rate=25:duration=12", "-f", "lavfi", "-i",
+                        "sine=frequency=550:duration=12", "-c:v", "libx264", "-preset", "ultrafast",
+                        "-c:a", "aac", welc], check=True)
+    # res/adv/music/<name> - welcome background music (apk/getClientBackgroundMusics)
+    mus = os.path.join(MEDIA, "adv_music.mp3")
+    if not os.path.exists(mus):
+        subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+                        "sine=frequency=440:sample_rate=44100:duration=12", "-af",
+                        "volume=0.22,afade=t=in:d=1,afade=t=out:st=10:d=2",
+                        "-c:a", "libmp3lame", "-q:a", "7", mus], check=True)
     # HLS from the ts
     m3u8 = os.path.join(MEDIA, "test.m3u8")
     if not os.path.exists(m3u8):
@@ -298,10 +330,19 @@ class H(BaseHTTPRequestHandler):
         if p == "/iptv2/manager/UpdateVodClickRate":
             return self._j({"status": 200})
         if p == "/iptv2/manager/GetAdvImage":
+            t = q.get("type", ["0"])[0]
             # type 3 = the image shown in the live player (random pick client-side)
-            if q.get("type", ["0"])[0] == "3":
+            if t == "3":
                 return self._j(ADV_IMAGES if SETTINGS.get("activeAdv") else [])
+            # type 1 = welcome background slideshow, type 12 = manager signature
+            if t == "1":
+                return self._j(ADV_BG_IMAGES)
+            if t == "12":
+                return self._j(ADV_SIGN_IMAGES)
             return self._j([])
+        if p == "/iptv2/manager/GetAdvVideoEM":
+            # BootVideoActivity / welcome background video (List<String>)
+            return self._j(ADV_BOOT_VIDEOS)
         if p == "/iptv2/manager/GetNextAdv":
             if not SETTINGS.get("activeAdv"):
                 return self._j([{"status": 0, "msg": "", "resource": None}])
@@ -425,7 +466,7 @@ class H(BaseHTTPRequestHandler):
         if p == "/iptv2/manager/apk/getWeatherDays":
             return self._j(WEATHER)
         if p == "/iptv2/manager/apk/getClientBackgroundMusics":
-            return self._j([])
+            return self._j(BG_MUSICS)
         if p == "/iptv2/manager/apk/getClientBackgroundVideos":
             return self._j([])
         if p == "/iptv2/manager/GetInStream":
@@ -435,6 +476,11 @@ class H(BaseHTTPRequestHandler):
         if p == "/iptv2/manager/GetSubtitleStyle":
             return self._j({})
         # media
+        if p.startswith("/iptv2/res/adv/music/"):
+            # welcome background music (BGMusicBean.url under res/adv/music/)
+            return self._file(os.path.join(MEDIA, "adv_music.mp3"), "audio/mpeg")
+        if p.startswith("/iptv2/res/adv/video/"):
+            return self._file(os.path.join(MEDIA, os.path.basename(p)), "video/mp4")
         if p.startswith("/iptv2/vod/"):
             fn = os.path.basename(p)
             fp = os.path.join(MEDIA, fn)

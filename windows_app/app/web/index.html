@@ -22,9 +22,19 @@
     </div>
   </section>
 
+  <!-- ============ BOOT ADVERT VIDEO (BootVideoActivity, GetAdvVideoEM) ============ -->
+  <section id="scr-bootvideo" class="screen">
+    <video id="boot-video" class="bootvideo-player" playsinline></video>
+    <div class="bootvideo-hint" id="bootvideo-hint" data-i18n="welcome_alert">برای رد شدن هر کلیدی را بزنید</div>
+  </section>
+
   <!-- ============ WELCOME ============ -->
   <section id="scr-welcome" class="screen">
     <div class="welcome-bg"></div>
+    <!-- advVideoEM=true -> GetAdvImage?type=1 slideshow, else -> GetAdvVideoEM clip -->
+    <video id="wel-video" class="welcome-media" playsinline hidden></video>
+    <img id="wel-ppt" class="welcome-media" alt="" hidden>
+    <img id="wel-sign" class="welcome-sign-img" alt="" hidden>
     <div class="welcome-top">
       <div class="welcome-clock">
         <div id="wel-time" class="clock-time">--:--</div>

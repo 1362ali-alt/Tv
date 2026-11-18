@@ -282,3 +282,22 @@ body{
   border-radius: 22px; padding: 7px 18px; font-size: 19px; letter-spacing: .3px;
 }
 .ad-countdown b { color: #ffd27a; font-weight: 700; }
+
+/* v2.7.2.06 - boot advert video (BootVideoActivity / activity_boot_video) */
+#scr-bootvideo { background: #000; }
+.bootvideo-player { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+.bootvideo-hint {
+  position: absolute; bottom: 4%; width: 100%; text-align: center; z-index: 2;
+  color: rgba(255, 255, 255, .75); font-size: 1.05em; letter-spacing: .3px;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, .8); transition: opacity 1s ease; opacity: 1;
+}
+.bootvideo-hint.fade { opacity: 0; }
+
+/* welcome background advertising: GetAdvVideoEM clip or GetAdvImage?type=1 slideshow */
+.welcome-media { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; object-fit: cover; }
+#wel-ppt { transition: opacity .8s ease; }
+#wel-ppt.switch { opacity: 0; }
+.welcome-sign-img {
+  position: absolute; bottom: 12%; left: 4%; z-index: 1; max-width: 15em; max-height: 9em;
+  object-fit: contain; filter: drop-shadow(0 6px 18px rgba(0, 0, 0, .5));
+}

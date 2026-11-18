@@ -37,6 +37,17 @@ const S = {
   ad: null,                // v2: in-player advert {id, canSkip, remains, startedAt, item}
   adTimer: null,
   liveWatch: null,         // v2: AddAdvHistory type=1 watch time of the live programme
+  bootVideos: [],          // v2: GetAdvVideoEM list (BootVideoActivity)
+  bootVideoIndex: 0,
+  bootLeft: false,         // v2: BootVideoActivity.isLeave - one transition only
+  bootHls: null,
+  bootHintTimer: null,
+  welVideos: [],           // v2: welcome background clips (same endpoint)
+  isPlayVideo: false,      // v2: WelcomeStyleZeroActivity.isPlayVideo
+  pptTimer: null,          // v2: welcome GetAdvImage?type=1 slideshow
+  pptIndex: 0,
+  pptImages: [],
+  bgMusic: null,           // v2: apk/getClientBackgroundMusics loop
   vlc: false,
   autostart: false,
   loadAnim: null,
@@ -71,6 +82,47 @@ async function apiPost(path, body) {
   return r.json();
 }
 const imgUrl = (rel) => "/api/img?path=" + enc(rel || "");
+
+/* IptvSP.getUrl(ep) = getAddress() + "/iptv2/" + ep  (paths from GetAdvVideoEM
+   and res/adv/... are relative to /iptv2/, unlike GetNextAdv's resource.url). */
+function iptvUrl(rel) {
+  const r = rel || "";
+  if (/^https?:\/\//i.test(r)) return r;
+  const s = S.config && S.config.settings ? S.config.settings : {};
+  const base = "http://" + (s.server_ip || "10.21.0.10") + ":" + (s.server_port || 8030);
+  return base + "/iptv2/" + r.replace(/^\/+/, "");
+}
+
+/* BootVideoActivity$1$1 / WelcomeStyleZeroActivity$4: keep the entries that are
+   non-empty and contain a "/" that is not the last character, then URL-encode
+   only the final path segment. */
+function sanitiseAdvPaths(list) {
+  const arr = Array.isArray(list) ? list : ((list && list.list) || []);
+  const out = [];
+  arr.forEach((s) => {
+    if (!s || typeof s !== "string") return;
+    const i = s.lastIndexOf("/");
+    if (i === -1 || i === s.length - 1) return;
+    out.push(s.substring(0, i + 1) + enc(s.substring(i + 1)));
+  });
+  return out;
+}
+
+/* how the browser gets hold of a stream: HLS through the proxy (+hls.js),
+   everything else (mp4/ts/rtsp/udp) through the local remux/proxy endpoint. */
+function mediaSrc(url) {
+  return classify(url) === "hls" ? "/proxy?url=" + enc(url) : "/stream/play?src=" + enc(url);
+}
+
+/* Browsers refuse autoplay with sound until there is a user gesture, while the
+   Android box always plays. Try with sound, fall back to muted so the advert is
+   never lost (install/launch.ps1 also passes --autoplay-policy=...). */
+function tryPlay(el) {
+  try {
+    const p = el.play();
+    if (p && p.catch) p.catch(() => { try { el.muted = true; el.play().catch(() => {}); } catch (e) {} });
+  } catch (e) {}
+}
 
 /* ----------------------------- toast ----------------------------- */
 let toastTimer = null;
@@ -174,7 +226,12 @@ function nearest(from, dx, dy) {
 document.addEventListener("keydown", (e) => {
   const tag = (document.activeElement || {}).tagName;
   const typing = tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA";
-  if (e.key === "Escape" || e.key === "Backspace") { if (!typing) { e.preventDefault(); back(); } return; }
+  if (e.key === "Escape" || e.key === "Backspace") {
+    // the boot advert video treats BACK like any other key: on to the welcome screen
+    if (S.cur === "scr-bootvideo") { e.preventDefault(); leaveBootVideo(); return; }
+    if (!typing) { e.preventDefault(); back(); }
+    return;
+  }
   /* v2.7.2.06: while an advert is playing only BACK and the volume keys work;
      any other key skips the advert when the server allows it (allowSkip).
      Like the APK's onKeyDown this is checked before any focus/typing guard. */
@@ -182,6 +239,14 @@ document.addEventListener("keydown", (e) => {
     if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); bumpVolume(e.key === "ArrowUp" ? 5 : -5); return; }
     e.preventDefault();
     if (S.ad.canSkip) finishAd(2);
+    return;
+  }
+  /* BootVideoActivity.onKeyDown: every key except VOLUME_UP/VOLUME_DOWN leaves
+     the boot advert video and enters the welcome screen. */
+  if (S.cur === "scr-bootvideo") {
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); bumpVolume(e.key === "ArrowUp" ? 5 : -5); return; }
+    e.preventDefault();
+    leaveBootVideo();
     return;
   }
   if (typing) return;
@@ -260,6 +325,66 @@ async function boot() {
   try { const tm = await apiGet("time"); if (tm && tm.timeMills) timeOffset = tm.timeMills - Date.now(); } catch (e) {}
   startClock();
   heartbeat();
+  /* PingServerActivity.openWelcomeActivity(settings.isAdvVideoEM(), layout):
+     advVideoEM -> BootVideoActivity (full-screen advert) -> welcome screen. */
+  if (S.settings && S.settings.advVideoEM) enterBootVideo();
+  else if (S.settings && S.settings.skipWelcomePage) enterHome();
+  else enterWelcome();
+}
+
+/* ------------- v2.7.2.06: boot advert video (BootVideoActivity) -------------
+   GetAdvVideoEM?mac= (WebTag.TAG_BOOT_VIDEO) -> List<String> of clips relative to
+   /iptv2/. The first one plays full screen; onCompletion, onError or any key
+   except VOLUME_UP/VOLUME_DOWN moves on to the welcome screen (isLeave guards a
+   single transition). An empty list goes straight there. */
+async function enterBootVideo() {
+  S.bootLeft = false;
+  S.bootVideoIndex = 0;
+  S.bootVideos = [];
+  show("scr-bootvideo", false);
+  const hint = $("#bootvideo-hint");
+  if (hint) {
+    hint.classList.remove("fade");
+    clearTimeout(S.bootHintTimer);
+    S.bootHintTimer = setTimeout(() => hint.classList.add("fade"), 5000);
+  }
+  try { S.bootVideos = sanitiseAdvPaths(await apiGet("adv_video_em")); }
+  catch (e) { S.bootVideos = []; }
+  if (S.cur !== "scr-bootvideo") return;
+  if (!S.bootVideos.length) { leaveBootVideo(); return; }
+  playBootVideo(0);
+}
+function playBootVideo(i) {
+  const video = $("#boot-video");
+  if (!video || !S.bootVideos[i] || S.cur !== "scr-bootvideo") return;
+  S.bootVideoIndex = i;
+  const url = iptvUrl(S.bootVideos[i]);
+  video.onended = () => leaveBootVideo();
+  video.onerror = () => leaveBootVideo();
+  const src = mediaSrc(url);
+  try {
+    if (classify(url) === "hls" && window.Hls && Hls.isSupported()) {
+      if (S.bootHls) { try { S.bootHls.destroy(); } catch (e) {} }
+      S.bootHls = new Hls({ manifestLoadingTimeOut: 12000, manifestLoadingMaxRetry: 2 });
+      S.bootHls.loadSource(src);
+      S.bootHls.attachMedia(video);
+      S.bootHls.on(Hls.Events.MANIFEST_PARSED, () => tryPlay(video));
+      S.bootHls.on(Hls.Events.ERROR, (e, d) => { if (d.fatal) leaveBootVideo(); });
+    } else { video.src = src; tryPlay(video); }
+  } catch (e) { leaveBootVideo(); }
+}
+function stopBootVideo() {
+  clearTimeout(S.bootHintTimer);
+  if (S.bootHls) { try { S.bootHls.destroy(); } catch (e) {} S.bootHls = null; }
+  const video = $("#boot-video");
+  if (!video) return;
+  video.onended = null; video.onerror = null;
+  try { video.pause(); video.removeAttribute("src"); video.load(); } catch (e) {}
+}
+function leaveBootVideo() {
+  if (S.bootLeft) return;              // BootVideoActivity.isLeave
+  S.bootLeft = true;
+  stopBootVideo();
   if (S.settings && S.settings.skipWelcomePage) enterHome();
   else enterWelcome();
 }
@@ -279,6 +404,7 @@ function enterWelcome() {
   if (name) $("#wel-name").textContent = t("welcome_word_guest_name", "جناب آقای/سرکار خانم {0}").replace("{0}", name);
   $("#wel-hotel").textContent = (S.settings && (S.lang === "en" ? S.settings.hotelNameEn : S.settings.hotelName)) || "";
   loadWeather("#wel-weather", "#wel-weather-img", "#wel-weather-temp", "#wel-weather-txt");
+  loadWelcomeAdv();
   $$("#wel-langs .langbtn").forEach(b => {
     b.onclick = () => { S.lang = b.dataset.lang; apiPost("/api/settings", { app_language: S.lang }); applyI18n(); enterHome(); };
   });
@@ -287,6 +413,115 @@ function enterWelcome() {
     const skip = (e) => { if (S.cur !== "scr-welcome") return; enterHome(); window.removeEventListener("keydown", skip); };
     window.addEventListener("keydown", skip);
   }, 800);
+}
+
+/* ------------- v2.7.2.06: welcome screen advertising -------------
+   WelcomeStyleZero/OtherActivity.initData():
+     settings.advVideoEM ? playPptBGImage()            -> GetAdvImage?type=1, 5 s a page
+                         : getWelcomeVideo()           -> GetAdvVideoEM as background
+   plus getManagerSignImg() (GetAdvImage?type=12) and getBgMusic()
+   (apk/getClientBackgroundMusics -> res/adv/music/<url>, random, looped). */
+async function loadWelcomeAdv() {
+  stopWelcomeAdv();
+  loadManagerSign();
+  loadBgMusic();
+  S.isPlayVideo = false;
+  if (!(S.settings && S.settings.advVideoEM)) {
+    try { S.welVideos = sanitiseAdvPaths(await apiGet("adv_video_em")); } catch (e) { S.welVideos = []; }
+    S.isPlayVideo = S.welVideos.length > 0;
+  }
+  if (S.cur !== "scr-welcome") return;
+  if (S.isPlayVideo) playWelcomeVideo(0);
+  else playWelcomePpt();
+}
+function playWelcomeVideo(i) {
+  const video = $("#wel-video"), ppt = $("#wel-ppt");
+  if (!video || !S.welVideos.length || S.cur !== "scr-welcome") return;
+  const idx = ((i % S.welVideos.length) + S.welVideos.length) % S.welVideos.length;
+  if (ppt) ppt.hidden = true;
+  video.hidden = false;
+  // onCompletion -> another random clip; onError -> fall back to the slideshow
+  video.onended = () => { if (S.cur === "scr-welcome") playWelcomeVideo(Math.floor(Math.random() * S.welVideos.length)); };
+  video.onerror = () => { S.isPlayVideo = false; if (S.cur === "scr-welcome") playWelcomePpt(); };
+  video.src = mediaSrc(iptvUrl(S.welVideos[idx]));
+  tryPlay(video);
+}
+async function playWelcomePpt() {
+  const video = $("#wel-video"), ppt = $("#wel-ppt");
+  if (video) {
+    video.onended = null; video.onerror = null; video.hidden = true;
+    try { video.pause(); video.removeAttribute("src"); video.load(); } catch (e) {}
+  }
+  if (!ppt) return;
+  let list = [];
+  try {
+    const r = await apiGet("adv_image", { type: 1 });
+    list = (Array.isArray(r) ? r : ((r && r.list) || [])).filter(x => x);
+  } catch (e) { list = []; }
+  if (!list.length || S.cur !== "scr-welcome") { ppt.hidden = true; return; }
+  S.pptImages = list; S.pptIndex = 0;
+  ppt.hidden = false;
+  const paint = () => {
+    if (S.cur !== "scr-welcome") return;
+    const src = imgUrl(S.pptImages[S.pptIndex % S.pptImages.length]);
+    S.pptIndex++;
+    ppt.classList.add("switch");
+    setTimeout(() => { ppt.src = src; ppt.classList.remove("switch"); }, 350);
+  };
+  paint();
+  clearInterval(S.pptTimer); S.pptTimer = null;
+  // MZBannerView: a single page is not rotated (setAutoPlay(size != 1))
+  if (list.length > 1) S.pptTimer = setInterval(paint, 5000);
+}
+async function loadManagerSign() {
+  const img = $("#wel-sign");
+  if (!img) return;
+  img.hidden = true;
+  try {
+    const r = await apiGet("adv_image", { type: 12 });
+    const list = (Array.isArray(r) ? r : ((r && r.list) || [])).filter(x => x);
+    if (!list.length || S.cur !== "scr-welcome") return;
+    img.src = imgUrl(list[Math.floor(Math.random() * list.length)]);
+    img.hidden = false;
+  } catch (e) { /* signature optional */ }
+}
+async function loadBgMusic() {
+  let list = [];
+  try {
+    const r = await apiGet("bg_musics");
+    list = (Array.isArray(r) ? r : ((r && r.list) || [])).filter(x => x && x.url);
+  } catch (e) { return; }
+  if (!list.length || S.cur !== "scr-welcome") return;
+  let el = S.bgMusic;
+  if (!el) {
+    el = document.createElement("audio");
+    el.id = "bg-music";
+    document.body.appendChild(el);
+    S.bgMusic = el;
+  }
+  el.onended = () => { if (S.bgMusic && S.cur === "scr-welcome") next(); };   // loop another random track
+  const next = () => {
+    const b = list[Math.floor(Math.random() * list.length)];
+    el.src = mediaSrc(iptvUrl("res/adv/music/" + enc(b.url)));
+    tryPlay(el);
+  };
+  next();
+}
+function stopWelcomeAdv() {
+  clearInterval(S.pptTimer); S.pptTimer = null;
+  const video = $("#wel-video"), ppt = $("#wel-ppt");
+  if (video) {
+    video.onended = null; video.onerror = null; video.hidden = true;
+    try { video.pause(); video.removeAttribute("src"); video.load(); } catch (e) {}
+  }
+  if (ppt) ppt.hidden = true;
+  stopBgMusic();
+}
+function stopBgMusic() {
+  const el = S.bgMusic;
+  if (!el) return;
+  el.onended = null;
+  try { el.pause(); el.removeAttribute("src"); el.load(); } catch (e) {}
 }
 
 async function loadWeather(boxSel, imgSel, tempSel, txtSel) {
@@ -1424,6 +1659,8 @@ function onEnter(id) {
     if (ep) ep.hidden = true;
     if (ed) ed.hidden = true;
   }
+  if (id !== "scr-welcome") stopWelcomeAdv();     // welcome activity finished
+  if (id !== "scr-bootvideo") stopBootVideo();
   if (id === "scr-home") {
     // keep the menu in sync with the apps chosen in Settings
     cfg().then(c => { S.config = c; S.appsSelected = c.apps_selected || []; buildMenu(S.settings || {}); }).catch(() => {});

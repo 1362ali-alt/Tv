@@ -286,7 +286,18 @@ class Api(object):
         return api_get("UpdateVodClickRate", {"vodId": vod_id})
 
     def get_adv_image(self, type_):
+        """GetAdvImage?mac=&type= -> List<String> of paths under /iptv2/manager/
+        (getImagePath). type 1 = welcome background slideshow (PPT),
+        type 3 = live-player watermark, type 12 = hotel-manager signature."""
         return api_get("GetAdvImage", self._m({"type": type_}))
+
+    def get_adv_video_em(self):
+        """GetAdvVideoEM?mac= -> List<String> (WebTag.TAG_BOOT_VIDEO).
+        Paths are relative to /iptv2/ (IptvSP.getUrl), e.g. "res/adv/video/x.mp4".
+        Played full-screen before the welcome screen by BootVideoActivity when
+        settings.advVideoEM is true, and as the welcome background video when it
+        is false. Empty list -> straight to the welcome screen."""
+        return api_get("GetAdvVideoEM", self._m())
 
     # ---- v2.7.2.06 in-player advertising (LivePlayerWithEpgActivity) ----
     def get_next_adv(self, live_id):

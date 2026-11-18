@@ -1,14 +1,16 @@
-// Auto-generated from APK resources (default/zh, en, fa)
+// Auto-generated from APK resources (default/zh, en, fa).
+// The vendor's values-fa leaves some keys in English; those are translated
+// here because Persian is the primary language of this Windows port.
 window.I18N = {
  "account": {
   "en": "SSID: {0}",
-  "fa": "SSID: {0}",
-  "zh": "SSID：{0}"
+  "fa": "نام：{0}",
+  "zh": "名称：{0}"
  },
  "ad_video_time_remains": {
   "en": "{0}S│Ad countdown",
   "fa": "{0} ثانیه │ شمارش معکوس آگهی",
-  "zh": "{0}S│Ad countdown"
+  "zh": "{0}S│广告倒计时"
  },
  "air_quality": {
   "en": "空气质量",
@@ -53,12 +55,12 @@ window.I18N = {
  "butler_service": {
   "en": "Butler Service",
   "fa": "خدمات خدمتکاری",
-  "zh": "Butler Service"
+  "zh": "管家服务"
  },
  "cancel": {
   "en": "Cancel",
   "fa": "انصراف",
-  "zh": "Cancel"
+  "zh": "取消"
  },
  "cancel_order_dialog_title": {
   "en": "Dear Sir/Madam, do you need to cancel {0}?",
@@ -78,32 +80,32 @@ window.I18N = {
  "check_out_tip": {
   "en": "Dear Sir/Madam, are you sure to check out?",
   "fa": "مهمان گرامی، آیا از تسویه حساب مطمئن هستید؟",
-  "zh": "Dear Sir/Madam, are you sure to check out?"
+  "zh": "尊敬的先生/女士，是否确定 退房?"
  },
  "check_service": {
   "en": "Check Service",
   "fa": "خدمات بررسی",
-  "zh": "Check Service"
+  "zh": "服务查询"
  },
  "checking_out": {
   "en": "Checking out",
   "fa": "تسویه حساب",
-  "zh": "Checking out"
+  "zh": "请求退房"
  },
  "checking_out_failed": {
   "en": "Check out failed",
   "fa": "بررسی ناموفق بود",
-  "zh": "Check out failed"
+  "zh": "退房失败"
  },
  "checkout_evaluation": {
   "en": "Thank you for your trust to us, I wish you a happy journey!Welcome to you next time!In order to improve the quality of our service, please put forward valuable advice!",
   "fa": "با تشکر از اعتماد شما به ما! آرزوی سفر خوشی را برایتان دارم! امیدوارم دوباره شما را زیارت کنیم! به منظور بهبود کیفیت خدمات، لطفا توصیه های ارزشمند خود را با ما در میان بگذارید!",
-  "zh": "Thank you for your trust to us, I wish you a happy journey!Welcome to you next time!In order to improve the quality of our service, please put forward valuable advice!"
+  "zh": "感谢您对我们的信任,祝您路途愉快！欢迎下次光临！为了改善我们的服务质量,请您提出宝贵意见!"
  },
  "checkout_success": {
   "en": "Check out successfully",
   "fa": "بررسی موفقیت آمیز بود",
-  "zh": "Check out successfully"
+  "zh": "退房成功"
  },
  "cleaning_ting_tops": {
   "en": "Dear sir/madam,do you need clean {0}?",
@@ -113,57 +115,57 @@ window.I18N = {
  "clothes_service": {
   "en": "Clothes Service",
   "fa": "خدمات لباس",
-  "zh": "Clothes Service"
+  "zh": "洗衣服务"
  },
  "connecting_server_tips": {
   "en": "Getting IP address…",
   "fa": "Getting IP address…",
-  "zh": "Getting IP address…"
+  "zh": "正在获取ip地址,请稍后。。。"
  },
  "consume_content": {
   "en": "Content",
   "fa": "محتوای مصرف",
-  "zh": "Content"
+  "zh": "消费内容"
  },
  "consume_price": {
   "en": "Price",
   "fa": "قیمت",
-  "zh": "Price"
+  "zh": "价格"
  },
  "consume_time": {
   "en": "Time",
   "fa": "زمان",
-  "zh": "Time"
+  "zh": "时间"
  },
  "consume_type": {
   "en": "Type",
   "fa": "نوع",
-  "zh": "Type"
+  "zh": "类别"
  },
  "decoding_video_failed": {
   "en": "Decoding video failed!",
   "fa": "کدگشایی ویدئو ناموفق بود.",
-  "zh": "Decoding video failed!"
+  "zh": "解码视频失败!"
  },
  "dialog_cancel": {
   "en": "Cancel",
-  "fa": "Cancel",
+  "fa": "لغو",
   "zh": "Cancel"
  },
  "dinner": {
   "en": "Dinner",
   "fa": "شام",
-  "zh": "Dinner"
+  "zh": "特色餐饮"
  },
  "director": {
   "en": "Director:",
   "fa": "کارگردان:",
-  "zh": "Director:"
+  "zh": "导演:"
  },
  "duration": {
   "en": "Duration:",
   "fa": "مدت:",
-  "zh": "Duration:"
+  "zh": "时长:"
  },
  "enable_vlc": {
   "en": "Enable",
@@ -182,7 +184,7 @@ window.I18N = {
  },
  "error_tip": {
   "en": "play error, what:%d, extra:%d",
-  "fa": "play error, what:%d, extra:%d",
+  "fa": "خطای پخش، what:%d، extra:%d",
   "zh": "play error, what:%d, extra:%d"
  },
  "external_player_on": {
@@ -193,77 +195,77 @@ window.I18N = {
  "goods_service": {
   "en": "Goods Service",
   "fa": "خدمات کالا",
-  "zh": "Goods Service"
+  "zh": "借用物品"
  },
  "home_service": {
   "en": "Home Service",
   "fa": "خدمات خانه",
-  "zh": "Home Service"
+  "zh": "管家服务"
  },
  "hotel": {
   "en": "Hotel",
   "fa": "هتل",
-  "zh": "Hotel"
+  "zh": "酒店介绍"
  },
  "hotel_catering": {
   "en": "Catering",
   "fa": "کاترینگ",
-  "zh": "Catering"
+  "zh": "酒店餐饮"
  },
  "hotel_consume_food": {
   "en": "Food",
   "fa": "غذا",
-  "zh": "Food"
+  "zh": "餐饮"
  },
  "hotel_consume_live": {
   "en": "Live",
   "fa": "زنده",
-  "zh": "Live"
+  "zh": "直播"
  },
  "hotel_consume_other": {
   "en": "Other",
   "fa": "سایر",
-  "zh": "Other"
+  "zh": "其它"
  },
  "hotel_consume_total": {
   "en": "Total:{0}",
   "fa": "{0}کل:",
-  "zh": "Total:{0}"
+  "zh": "总计消费：{0}"
  },
  "hotel_consume_vod": {
   "en": "Vod",
   "fa": "ویدئو به‌درخواست",
-  "zh": "Vod"
+  "zh": "点播"
  },
  "hotel_enviroment": {
   "en": "Enviroment",
   "fa": "محیط",
-  "zh": "Enviroment"
+  "zh": "酒店环境"
  },
  "hotel_food_order_status": {
   "en": "Status",
   "fa": "وضعیت",
-  "zh": "Status"
+  "zh": "状态"
  },
  "hotel_intro_open_place": {
   "en": "Place:",
   "fa": "محل:",
-  "zh": "Place:"
+  "zh": "地点:"
  },
  "hotel_intro_open_time": {
   "en": "Opening Hours:",
   "fa": "ساعات کاری:",
-  "zh": "Opening Hours:"
+  "zh": "开放时间:"
  },
  "hotel_rental_time": {
   "en": "Rental Time",
   "fa": "زمان اجاره",
-  "zh": "Rental Time"
+  "zh": "租借时间"
  },
  "hotel_service": {
   "en": "Service",
   "fa": "خدمت",
-  "zh": "Service"
+  "zh": "酒店服务"
  },
  "hotel_taxi__service": {
   "en": "TAXI",
@@ -272,13 +274,13 @@ window.I18N = {
  },
  "housekeeper_level": {
   "en": "housekeeper",
-  "fa": "housekeeper",
-  "zh": "housekeeper"
+  "fa": "خدمات نظافت",
+  "zh": "管家"
  },
  "illegal_ipaddress": {
   "en": "Illegal IP address, please try again！",
   "fa": "Illegal IP address, please try again！",
-  "zh": "Illegal IP address, please try again！"
+  "zh": "IP地址非法，请重试！"
  },
  "input_error": {
   "en": "Please fill in both name and path",
@@ -288,12 +290,12 @@ window.I18N = {
  "item_no_more": {
   "en": "No More Item",
   "fa": "مورد دیگری وجود ندارد",
-  "zh": "No More Item"
+  "zh": "没有更多物品"
  },
  "live": {
   "en": "LIVE",
   "fa": "زنده",
-  "zh": "LIVE"
+  "zh": "电视"
  },
  "live_epg_tips": {
   "en": "OK = play or timeshift",
@@ -303,22 +305,22 @@ window.I18N = {
  "live_invalid_number": {
   "en": "Invalid number",
   "fa": "شماره نامعتبر",
-  "zh": "Invalid number"
+  "zh": "没有该节目"
  },
  "live_package_dialog_content": {
   "en": "Please confirm paid {0} to purchase the program?",
   "fa": "لطفاً برای خرید برنامه، پرداخت شد {0} را تأیید کنید.",
-  "zh": "Please confirm paid {0} to purchase the program?"
+  "zh": "确认支付{0}来购买该节目包吗？"
  },
  "live_play_tips": {
   "en": "Press the ”OK“ key to enter full screen",
   "fa": "Press the ”OK“ key to enter full screen",
-  "zh": "Press the ”OK“ key to enter full screen"
+  "zh": "按“OK”键进入全屏播放"
  },
  "live_player_click_exit": {
   "en": "Press again to exit.",
   "fa": "برای خروج، دوباره فشاردهید.",
-  "zh": "Press again to exit."
+  "zh": "再按一次退出."
  },
  "load_cost": {
   "en": "load-cost",
@@ -328,7 +330,7 @@ window.I18N = {
  "loading_error": {
   "en": "Loading failed, please try again later！",
   "fa": "Loading failed, please try again later！",
-  "zh": "Loading failed, please try again later！"
+  "zh": "加载失败，请稍后再试！"
  },
  "loading_failed": {
   "en": "Loading failed",
@@ -338,36 +340,36 @@ window.I18N = {
  "main_house_keeping": {
   "en": "Housekeeping",
   "fa": "خانه داری",
-  "zh": "Housekeeping"
+  "zh": "客房服务"
  },
  "main_menu_app": {
   "en": "APPs",
   "fa": "اپلیکیشن ها",
-  "zh": "APPs"
+  "zh": "更多应用"
  },
  "main_menu_consume": {
   "en": "Billing",
   "fa": "صدور صورتحساب",
-  "zh": "Billing"
+  "zh": "消费查询"
  },
  "main_menu_place": {
   "en": "Sceneries",
   "fa": "صحنه",
-  "zh": "Sceneries"
+  "zh": "著名景点"
  },
  "main_menu_rec": {
   "en": "Playback",
   "fa": "پخش دوباره",
-  "zh": "Playback"
+  "zh": "节目回放"
  },
  "main_room_wifi": {
   "en": "WiFi Info",
   "fa": "اطلاعات وای‌فای",
-  "zh": "WiFi 信息"
+  "zh": "信息"
  },
  "media_information": {
   "en": "Media Information",
-  "fa": "Media Information",
+  "fa": "اطلاعات رسانه",
   "zh": "Media Information"
  },
  "mi__selected_audio_track": {
@@ -387,113 +389,113 @@ window.I18N = {
  },
  "mi_channels": {
   "en": "Channels",
-  "fa": "Channels",
+  "fa": "کانال‌ها",
   "zh": "Channels"
  },
  "mi_codec": {
   "en": "Codec",
-  "fa": "Codec",
+  "fa": "کدک",
   "zh": "Codec"
  },
  "mi_frame_rate": {
   "en": "Frame rate",
-  "fa": "Frame rate",
+  "fa": "نرخ فریم",
   "zh": "Frame rate"
  },
  "mi_language": {
   "en": "Language",
-  "fa": "Language",
+  "fa": "زبان",
   "zh": "Language"
  },
  "mi_length": {
   "en": "Length",
-  "fa": "Length",
+  "fa": "مدت",
   "zh": "Length"
  },
  "mi_media": {
   "en": "Media",
-  "fa": "Media",
+  "fa": "رسانه",
   "zh": "Media"
  },
  "mi_pixel_format": {
   "en": "Pixel format",
-  "fa": "Pixel format",
+  "fa": "قالب پیکسل",
   "zh": "Pixel format"
  },
  "mi_player": {
   "en": "Player",
-  "fa": "Player",
+  "fa": "پخش‌کننده",
   "zh": "Player"
  },
  "mi_profile_level": {
   "en": "Profile level",
-  "fa": "Profile level",
+  "fa": "سطح پروفایل",
   "zh": "Profile level"
  },
  "mi_resolution": {
   "en": "Resolution",
-  "fa": "Resolution",
+  "fa": "وضوح تصویر",
   "zh": "Resolution"
  },
  "mi_sample_rate": {
   "en": "Sample rate",
-  "fa": "Sample rate",
+  "fa": "نرخ نمونه‌برداری",
   "zh": "Sample rate"
  },
  "mi_stream_fmt1": {
   "en": "Stream #%d",
-  "fa": "Stream #%d",
+  "fa": "جریان #%d",
   "zh": "Stream #%d"
  },
  "miracast": {
   "en": "Miracast:",
   "fa": "Miracast:",
-  "zh": "Miracast:"
+  "zh": "手机投屏:"
  },
  "money": {
   "en": "Money",
   "fa": "پول",
-  "zh": "Money"
+  "zh": "消费查询"
  },
  "music_album_list": {
   "en": "Album Single",
-  "fa": "Album Single",
-  "zh": "Album Single"
+  "fa": "آلبوم / تک‌آهنگ",
+  "zh": "专辑单曲"
  },
  "music_detail": {
   "en": "Song Details",
-  "fa": "Song Details",
-  "zh": "Song Details"
+  "fa": "جزئیات آهنگ",
+  "zh": "歌曲详情"
  },
  "music_detail_composition": {
   "en": "Composition：",
   "fa": "Composition：",
-  "zh": "Composition："
+  "zh": "作曲："
  },
  "music_detail_from_album": {
   "en": "Album：",
   "fa": "Album：",
-  "zh": "Album："
+  "zh": "专辑："
  },
  "music_detail_lyrics": {
   "en": "Lyrics：",
   "fa": "Lyrics：",
-  "zh": "Lyrics："
+  "zh": "作词："
  },
  "music_detail_schools": {
   "en": "Schools：",
   "fa": "Schools：",
-  "zh": "Schools："
+  "zh": "流派："
  },
  "music_detail_singer": {
   "en": "Singer：",
   "fa": "Singer：",
-  "zh": "Singer："
+  "zh": "歌手："
  },
  "music_detail_year": {
   "en": "Year：",
   "fa": "Year：",
-  "zh": "Year："
+  "zh": "年份："
  },
  "my_hostory_order": {
   "en": "My orders",
@@ -508,7 +510,7 @@ window.I18N = {
  "my_order": {
   "en": "My Order",
   "fa": "سفارش من",
-  "zh": "My Order"
+  "zh": "我的订单"
  },
  "my_order_details": {
   "en": "Order details",
@@ -523,12 +525,12 @@ window.I18N = {
  "no": {
   "en": "No",
   "fa": "نه",
-  "zh": "No"
+  "zh": "否"
  },
  "no_data": {
   "en": "No data!",
-  "fa": "No data!",
-  "zh": "No data!"
+  "fa": "اطلاعاتی موجود نیست!",
+  "zh": "暂无数据!"
  },
  "no_epg_data": {
   "en": "No programme information available",
@@ -542,8 +544,8 @@ window.I18N = {
  },
  "no_program": {
   "en": "no {0} program",
-  "fa": "no {0} program",
-  "zh": "no {0} program"
+  "fa": "برنامه‌ای برای {0} نیست",
+  "zh": "未找到{0}"
  },
  "not_enabled": {
   "en": "Not enabled",
@@ -557,28 +559,28 @@ window.I18N = {
  },
  "now_serving": {
   "en": "Serving",
-  "fa": "Serving",
-  "zh": "Serving"
+  "fa": "در حال سرویس‌دهی",
+  "zh": "正在服务"
  },
  "ok": {
   "en": "OK",
   "fa": "باشه",
-  "zh": "OK"
+  "zh": "确定"
  },
  "open": {
   "en": "Open",
   "fa": "باز کنید",
-  "zh": "Open"
+  "zh": "开启"
  },
  "open_setting_failed": {
   "en": "Open failed!",
   "fa": "باز نشد!",
-  "zh": "Open failed!"
+  "zh": "打开失败!"
  },
  "open_start_miracast": {
   "en": "Open the video application and start projection",
-  "fa": "Open the video application and start projection",
-  "zh": "Open the video application and start projection"
+  "fa": "برنامهٔ ویدئو را باز کنید و تصویر را ارسال کنید",
+  "zh": "打开手机视频应用开始投屏"
  },
  "open_third_app": {
   "en": "Open third APP",
@@ -598,7 +600,7 @@ window.I18N = {
  "order_done": {
   "en": "Done",
   "fa": "تمام شد",
-  "zh": "Done"
+  "zh": "已完成"
  },
  "order_repeat_cancel_tips": {
   "en": "The order is being canceled and cannot be canceled repeatedly!",
@@ -608,7 +610,7 @@ window.I18N = {
  "order_return": {
   "en": "Returned",
   "fa": "بازگردانده شد",
-  "zh": "Returned"
+  "zh": "已归还"
  },
  "order_status": {
   "en": "Status",
@@ -642,68 +644,68 @@ window.I18N = {
  },
  "password": {
   "en": "PWD: {0}",
-  "fa": "PWD: {0}",
-  "zh": "PWD：{0}"
+  "fa": "رمز：{0}",
+  "zh": "密码：{0}"
  },
  "pay_faild": {
   "en": "Failed",
   "fa": "عملیات موفقیت آمیز نبود",
-  "zh": "Failed"
+  "zh": "购买失败"
  },
  "pay_failed": {
   "en": "Pembayaran Gagal",
-  "fa": "Pembayaran Gagal",
+  "fa": "پرداخت ناموفق",
   "zh": "Pembayaran Gagal"
  },
  "pay_has_paid": {
   "en": "Purchased",
   "fa": "خرید انجام شد.",
-  "zh": "Purchased"
+  "zh": "已购买成功"
  },
  "pay_no_money": {
   "en": "Insufficient account balance",
   "fa": "موجودی حساب ناکافی است.",
-  "zh": "Insufficient account balance"
+  "zh": "余额不足"
  },
  "pay_success": {
   "en": "Success",
   "fa": "انجام شد.",
-  "zh": "Success"
+  "zh": "购买成功"
  },
  "play": {
   "en": "Play",
   "fa": "پخش",
-  "zh": "Play"
+  "zh": "播放"
  },
  "play_all_repeat": {
   "en": "All repeat",
-  "fa": "All repeat",
-  "zh": "All repeat"
+  "fa": "تکرار همه",
+  "zh": "列表循环"
  },
  "play_error": {
   "en": "Play Error!",
-  "fa": "Play Error!",
-  "zh": "Play Error!"
+  "fa": "خطا در پخش!",
+  "zh": "播放错误!"
  },
  "play_music": {
   "en": "Play Music",
-  "fa": "Play Music",
-  "zh": "Play Music"
+  "fa": "پخش موسیقی",
+  "zh": "音乐播放"
  },
  "play_order": {
   "en": "Order",
-  "fa": "Order",
-  "zh": "Order"
+  "fa": "پخش به ترتیب",
+  "zh": "顺序播放"
  },
  "play_repeat_once": {
   "en": "Repeat once",
-  "fa": "Repeat once",
-  "zh": "Repeat once"
+  "fa": "تکرار یک‌بار",
+  "zh": "单曲循环"
  },
  "play_shuffle": {
   "en": "Shuffle",
-  "fa": "Shuffle",
-  "zh": "Shuffle"
+  "fa": "پخش تصادفی",
+  "zh": "随机播放"
  },
  "play_speed_error": {
   "en": "Setting failed, playback will resume at normal speed!",
@@ -723,27 +725,27 @@ window.I18N = {
  "please_look_or_submit_the_bill_after_ordered": {
   "en": "Please look or submit the bill after ordered",
   "fa": "لطفا پس از سفارش، صورتحساب را مشاهده یا ارسال کنید.",
-  "zh": "Please look or submit the bill after ordered"
+  "zh": "请订餐后再查看与提交"
  },
  "pls_input_room_number": {
   "en": "Please input room number!",
-  "fa": "Please input room number!",
-  "zh": "Please input room number!"
+  "fa": "لطفاً شمارهٔ اتاق را وارد کنید!",
+  "zh": "请输入房间号!"
  },
  "pref_language_label": {
   "en": "Language",
-  "fa": "Language",
+  "fa": "زبان",
   "zh": "Language"
  },
  "pref_setting_customize": {
   "en": "Customize",
-  "fa": "Customize",
+  "fa": "سفارشی‌سازی",
   "zh": "Customize"
  },
  "price": {
   "en": "Price:",
   "fa": "قیمت:",
-  "zh": "Price:"
+  "zh": "单价:"
  },
  "program_detail": {
   "en": "Programme details",
@@ -753,12 +755,12 @@ window.I18N = {
  "program_list": {
   "en": "Program List",
   "fa": "فهرست برنامه",
-  "zh": "Program List"
+  "zh": "节目列表"
  },
  "protagonist": {
   "en": "Actors:",
   "fa": "قهرمان داستان:",
-  "zh": "Actors:"
+  "zh": "主演:"
  },
  "real_time": {
   "en": "实时",
@@ -767,7 +769,7 @@ window.I18N = {
  },
  "recent": {
   "en": "Recent",
-  "fa": "Recent",
+  "fa": "اخیر",
   "zh": "Recent"
  },
  "recycleItem_itemTextRecycle_text": {
@@ -778,32 +780,32 @@ window.I18N = {
  "release_date": {
   "en": "Release Date:",
   "fa": "تاریخ انتشار:",
-  "zh": "Release Date:"
+  "zh": "上映时间:"
  },
  "rent_things": {
   "en": "Rent Things",
   "fa": "موارد اجاره ای",
-  "zh": "Rent Things"
+  "zh": "物品租借"
  },
  "rental": {
   "en": "Rental",
   "fa": "اجاره",
-  "zh": "Rental"
+  "zh": "租借"
  },
  "rental_service": {
   "en": "Rental Service",
   "fa": "خدمات اجاره",
-  "zh": "Rental Service"
+  "zh": "物品租借"
  },
  "room": {
   "en": "room",
   "fa": "اتاق",
-  "zh": "room"
+  "zh": "房间"
  },
  "room_number": {
   "en": "Room Number",
-  "fa": "Room Number",
-  "zh": "Room Number"
+  "fa": "شمارهٔ اتاق",
+  "zh": "房间号"
  },
  "sample": {
   "en": "Sample",
@@ -813,32 +815,32 @@ window.I18N = {
  "scan_to_connect": {
   "en": "Scan to connect",
   "fa": "اسکن برای ارتباط",
-  "zh": "Scan to connect"
+  "zh": "扫一扫，免费上网"
  },
  "scanning_code": {
   "en": "Scanning code connection authentication with your phone",
-  "fa": "Scanning code connection authentication with your phone",
-  "zh": "Scanning code connection authentication with your phone"
+  "fa": "اتصال با اسکن کد و احراز هویت با گوشی شما",
+  "zh": "手机扫码连接认证"
  },
  "scenery": {
   "en": "Scenery",
   "fa": "صحنه",
-  "zh": "Scenery"
+  "zh": "著名景点"
  },
  "scheduled_failure_main": {
   "en": "Scheduled failure",
   "fa": "شکست برنامه ریزی شده",
-  "zh": "Scheduled failure"
+  "zh": "预定失败"
  },
  "scheduled_success_main": {
   "en": "Scheduled success",
   "fa": "موفقیت برنامه ریزی شده",
-  "zh": "Scheduled success"
+  "zh": "预定成功"
  },
  "scheduled_time": {
   "en": "Scheduled time",
-  "fa": "Scheduled time",
-  "zh": "Scheduled time"
+  "fa": "زمان تعیین‌شده",
+  "zh": "预定时间"
  },
  "seek_cost": {
   "en": "seek_cost",
@@ -858,22 +860,22 @@ window.I18N = {
  "ser_detail": {
   "en": "Service Detail",
   "fa": "جزئیات سرویس",
-  "zh": "Service Detail"
+  "zh": "服务详情"
  },
  "service": {
   "en": "Service",
   "fa": "خدمت",
-  "zh": "Service"
+  "zh": "综合服务"
  },
  "service_main_page": {
   "en": "Dear Mr/Mrs {0}. Do you need",
   "fa": ". آیا نیاز دارید به{0}آقای/خانم",
-  "zh": "Dear Mr/Mrs {0}. Do you need"
+  "zh": "尊敬的{0}先生/女士，是否需要"
  },
  "service_main_page_checkout": {
   "en": "Dear Mr/Mrs {0}. Do you want to",
   "fa": ". آیا نیاز دارید به{0}آقای/خانم",
-  "zh": "Dear Mr/Mrs {0}. Do you want to"
+  "zh": "尊敬的{0}先生/女士，是否需要"
  },
  "service_name": {
   "en": "Service",
@@ -892,38 +894,38 @@ window.I18N = {
  },
  "settings": {
   "en": "Settings",
-  "fa": "Settings",
+  "fa": "تنظیمات",
   "zh": "Settings"
  },
  "settings_local_mac": {
   "en": "Local MAC",
   "fa": "مک محلی",
-  "zh": "Local MAC"
+  "zh": "本机MAC"
  },
  "settings_local_network": {
   "en": "Local network",
   "fa": "شبکه محلی",
-  "zh": "Local network"
+  "zh": "本机网络"
  },
  "settings_network": {
   "en": "Network setting",
   "fa": "تنظیمات شبکه",
-  "zh": "Network setting"
+  "zh": "网络设置"
  },
  "settings_network_ip": {
   "en": "Server IP",
   "fa": "آی پی سرور",
-  "zh": "Server IP"
+  "zh": "服务器地址"
  },
  "settings_network_port": {
   "en": "Server port",
   "fa": "پورت سرور",
-  "zh": "Server port"
+  "zh": "服务器端口"
  },
  "settings_other": {
   "en": "Other",
   "fa": "سایر",
-  "zh": "Other"
+  "zh": "其他"
  },
  "settings_play": {
   "en": "Playback",
@@ -933,87 +935,87 @@ window.I18N = {
  "settings_system": {
   "en": "System setting",
   "fa": "تنظیمات سیستم",
-  "zh": "System setting"
+  "zh": "系统设置"
  },
  "settings_update": {
   "en": "Version update",
   "fa": "بروز رسانی نسخه",
-  "zh": "Version update"
+  "zh": "版本更新"
  },
  "settings_upgrade_app_not_found": {
   "en": "No install update app!",
   "fa": "آپدیت اپلیکیشن نصب نشد!",
-  "zh": "No install update app!"
+  "zh": "没有找到本地升级控件"
  },
  "settings_version_download_completed": {
   "en": "Downloaded",
   "fa": "دانلود شد.",
-  "zh": "Downloaded"
+  "zh": "文件下载完成"
  },
  "settings_version_downloading": {
   "en": "Downloading ,Please wait……",
   "fa": "درحال دانلود، لطفا صبرکنید...",
-  "zh": "Downloading ,please wait……"
+  "zh": "正在下载中，请稍后……"
  },
  "settings_version_install": {
   "en": "Yes,update",
   "fa": "بله، آپدیت می کنم.",
-  "zh": "Yes,update"
+  "zh": "安装"
  },
  "settings_version_no_update": {
   "en": "No",
   "fa": "نه",
-  "zh": "No"
+  "zh": "暂不更新"
  },
  "settings_version_no_update_notifi": {
   "en": "Lastest version",
   "fa": "آخرین نسخه",
-  "zh": "Lastest version"
+  "zh": "已经是最新版本。"
  },
  "settings_version_notif": {
   "en": "Tips",
   "fa": "موارد مهم",
-  "zh": "Tips"
+  "zh": "提示"
  },
  "sign_text_hotel": {
   "en": "Hotel",
   "fa": "هتل",
-  "zh": "Hotel"
+  "zh": "酒店"
  },
  "special_catering": {
   "en": "Special Catering",
   "fa": "کاترینگ خاص",
-  "zh": "Special Catering"
+  "zh": "特色餐饮"
  },
  "status_disabled": {
   "en": "Not Check-In",
   "fa": "درهتل پذیرش نشده.",
-  "zh": "Not Check-In"
+  "zh": "未登记"
  },
  "status_disconnected": {
   "en": "Disconnect Server!",
   "fa": "سرور قطع شد!",
-  "zh": "Disconnect Server!"
+  "zh": "未连接服务器"
  },
  "submit": {
   "en": "Submit",
   "fa": "ارسال",
-  "zh": "Submit"
+  "zh": "提交"
  },
  "submit_failed": {
   "en": "Submit failed",
   "fa": "ارسال ناموفق!",
-  "zh": "Submit failed"
+  "zh": "提交失败"
  },
  "submit_success": {
   "en": "Submit success",
   "fa": "با موفقیت ارسال شد.",
-  "zh": "Submit success"
+  "zh": "提交成功"
  },
  "synopsis": {
   "en": "Synopsis:",
   "fa": "خلاصه داستان:",
-  "zh": "Synopsis:"
+  "zh": "剧情简介:"
  },
  "taxi_service_setting_time": {
   "en": "Set the time for using the car",
@@ -1023,7 +1025,7 @@ window.I18N = {
  "third_app": {
   "en": "Third APP",
   "fa": "اپلیکیشن سوم",
-  "zh": "Third APP"
+  "zh": "应用空间"
  },
  "timeshift_play": {
   "en": "Timeshift",
@@ -1043,27 +1045,27 @@ window.I18N = {
  "total": {
   "en": "Total:",
   "fa": "کل:",
-  "zh": "Total:"
+  "zh": "总价:"
  },
  "total_price": {
   "en": "Total Price:",
   "fa": "قیمت کل:",
-  "zh": "Total Price:"
+  "zh": "总费用:"
  },
  "valet_service": {
   "en": "Valet Service",
   "fa": "خدمات پیشخدمت",
-  "zh": "Valet Service"
+  "zh": "洗衣服务"
  },
  "version_find_latest": {
   "en": "Discover new version, update?",
   "fa": "نسخه جدید را جستجو می کنید، آنرا آپدیت می کنید؟",
-  "zh": "Discover new version, update?"
+  "zh": "发现新版本，是否更新?"
  },
  "video_detail": {
   "en": "Video Detail",
   "fa": "جزئیات ویدئو",
-  "zh": "Video Detail"
+  "zh": "影片详情"
  },
  "vlc_player_install_tips": {
   "en": "VLC player is not detected. Please install it first!",
@@ -1073,107 +1075,107 @@ window.I18N = {
  "vod": {
   "en": "VOD",
   "fa": "ویدئو به‌درخواست",
-  "zh": "VOD"
+  "zh": "电影"
  },
  "vod_loading_failed": {
   "en": "Load failure",
   "fa": "بارگیری ناموفق بود.",
-  "zh": "Load failure"
+  "zh": "加载失败"
  },
  "vod_no_video": {
   "en": "Please upload file",
   "fa": "لطفا فایل را آپلود کنید",
-  "zh": "Please upload file"
+  "zh": "没有上传视频文件"
  },
  "vod_player_null": {
   "en": "Null list",
   "fa": "هیچکدام",
-  "zh": "Null list"
+  "zh": "节目为空"
  },
  "vod_price": {
   "en": "Price:",
   "fa": "قیمت:",
-  "zh": "Price:"
+  "zh": "价格:"
  },
  "vod_program_first": {
   "en": "First program",
   "fa": "برنامه اول",
-  "zh": "First program"
+  "zh": "已经是第一集"
  },
  "vod_program_last": {
   "en": "Last program",
   "fa": "برنامه آخر",
-  "zh": "Last program"
+  "zh": "已经是最后一集"
  },
  "vod_select_num": {
   "en": "Selection to play",
   "fa": "انتخاب جهت نمایش",
-  "zh": "Selection to play"
+  "zh": "选集"
  },
  "vod_type": {
   "en": "VOD Type",
-  "fa": "VOD Type",
-  "zh": "VOD Type"
+  "fa": "دستهٔ ویدئو",
+  "zh": "点播类型"
  },
  "wake_service": {
   "en": "Wake Service",
   "fa": "خدمات بیداری",
-  "zh": "Wake Service"
+  "zh": "叫醒服务"
  },
  "wake_up_date_day": {
   "en": "Day",
   "fa": "روز",
-  "zh": "Day"
+  "zh": "日"
  },
  "wake_up_date_hour": {
   "en": "hour",
   "fa": "ساعت",
-  "zh": "hour"
+  "zh": "时"
  },
  "wake_up_date_minute": {
   "en": "minute",
   "fa": "دقیقه",
-  "zh": "minute"
+  "zh": "分"
  },
  "wake_up_date_month": {
   "en": "Mon",
   "fa": "ماه",
-  "zh": "Mon"
+  "zh": "月"
  },
  "wake_up_date_year": {
   "en": "Year",
   "fa": "سال",
-  "zh": "Year"
+  "zh": "年"
  },
  "wake_up_notice": {
   "en": "Please note that the time limit is 24 hours.",
   "fa": "لطفاً توجه داشته باشید که محدودهٔ زمانی ۲۴ ساعت است.",
-  "zh": "Please note that the time limit is 24 hours."
+  "zh": "请知悉：时间为24小时制."
  },
  "wake_up_service": {
   "en": "Wake_up Service",
   "fa": "خدمات پس از بیداری",
-  "zh": "Wake_up Service"
+  "zh": "叫醒服务"
  },
  "wake_up_setting_time": {
   "en": "Setting Wake_up time:",
   "fa": "تنظیم زمان بیدار شدن",
-  "zh": "Setting Wake_up time:"
+  "zh": "设置叫醒时间:"
  },
  "wake_up_time": {
   "en": "Wake_up Time",
   "fa": "زمان بیداری",
-  "zh": "Wake_up Time"
+  "zh": "叫醒时间"
  },
  "welcome_alert": {
   "en": "Press any key to skip",
-  "fa": "Press any key to skip",
-  "zh": "Press any key to skip"
+  "fa": "برای رد شدن هر کلیدی را بزنید",
+  "zh": "按任意键跳过"
  },
  "welcome_text_en": {
   "en": "Welcome to our hotel, we will serve you wholeheartedly!",
   "fa": "به هتل ما خوش آمدید. در خدمت شما هستیم!",
-  "zh": "Welcome to our hotel, we will serve you wholeheartedly!"
+  "zh": "欢迎您下榻本酒店，我们将竭诚为您服务!"
  },
  "welcome_text_zh": {
   "en": "欢迎您下榻本酒店，我们将竭诚为您服务！",
@@ -1182,47 +1184,47 @@ window.I18N = {
  },
  "welcome_tips_info": {
   "en": "Press 'OK' to enter home page",
-  "fa": "Press 'OK' to enter home page",
-  "zh": "Press 'OK' to enter home page"
+  "fa": "برای ورود به صفحهٔ اصلی OK را بزنید",
+  "zh": "按 'OK' 键进入主页"
  },
  "welcome_title_text_default": {
   "en": "Respect Guests:",
   "fa": "میهمانان عزیز:",
-  "zh": "Respect guests:"
+  "zh": "尊敬的宾客："
  },
  "welcome_title_text_default_cur": {
   "en": "Guests:",
-  "fa": "Guests:",
-  "zh": "Guests:"
+  "fa": "مهمانان عزیز:",
+  "zh": "宾客:"
  },
  "welcome_title_text_default_en": {
   "en": "Guests:",
-  "fa": "Guests:",
+  "fa": "مهمانان عزیز:",
   "zh": "Guests:"
  },
  "welcome_word_guest_name": {
   "en": "Dear Mr/Mrs. {0}",
   "fa": "آقای/خانم . {0}",
-  "zh": "Dear Mr/Mrs. {0}"
+  "zh": "尊敬的 {0} 先生/女士"
  },
  "welcome_word_guest_name_no_male": {
   "en": "Dear. {0}",
-  "fa": "Dear. {0} ",
-  "zh": "Dear. {0}"
+  "fa": "جناب آقای/سرکار خانم {0}",
+  "zh": "尊敬的 {0}"
  },
  "wifi_name": {
   "en": "SSID: {0}",
-  "fa": "SSID: {0}",
-  "zh": "SSID：{0}"
+  "fa": " نام وای فای: {0}",
+  "zh": "WIFI： {0}"
  },
  "wifi_passwd": {
   "en": "PWD: {0}",
-  "fa": "PWD: {0}",
-  "zh": "PWD：{0}"
+  "fa": "رمزعبور: {0}",
+  "zh": "密码： {0}"
  },
  "yes": {
   "en": "Yes",
   "fa": "بله",
-  "zh": "Yes"
+  "zh": "是"
  }
 };
