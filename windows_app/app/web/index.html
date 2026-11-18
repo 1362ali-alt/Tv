@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PARDIK SMART IPTV</title>
+<link rel="icon" href="/assets/img/mipmap__ic_launcher.png">
+<link rel="stylesheet" href="/web/styles.css">
+</head>
+<body>
+<div id="app" class="app">
+
+  <!-- ============ BOOT / PING ============ -->
+  <section id="scr-boot" class="screen active">
+    <div class="boot-bg"></div>
+    <div class="boot-center">
+      <img class="boot-logo" src="/assets/img/mipmap__ic_launcher.png" alt="">
+      <div class="boot-title">PARDIK SMART IPTV</div>
+      <div class="boot-sub" data-i18n="connecting_server_tips">در حال دریافت آدرس سرور…</div>
+      <div class="boot-bar"><i id="boot-progress"></i></div>
+      <div class="boot-msg" id="boot-msg"></div>
+    </div>
+  </section>
+
+  <!-- ============ WELCOME ============ -->
+  <section id="scr-welcome" class="screen">
+    <div class="welcome-bg"></div>
+    <div class="welcome-top">
+      <div class="welcome-clock">
+        <div id="wel-time" class="clock-time">--:--</div>
+        <div id="wel-date" class="clock-date"></div>
+      </div>
+      <div class="welcome-weather" id="wel-weather" hidden>
+        <img id="wel-weather-img" src="" alt="">
+        <div><div id="wel-weather-temp"></div><div id="wel-weather-txt"></div></div>
+      </div>
+    </div>
+    <div class="welcome-card">
+      <div class="welcome-title" id="wel-guest" data-i18n="welcome_title_text_default">میهمانان عزیز:</div>
+      <div class="welcome-name" id="wel-name"></div>
+      <div class="welcome-word" id="wel-word" data-i18n="welcome_text_en">به هتل ما خوش آمدید. در خدمت شما هستیم!</div>
+      <div class="welcome-sign"><span data-i18n="sign_text_hotel">هتل</span> · <span id="wel-hotel"></span></div>
+    </div>
+    <div class="welcome-langs" id="wel-langs">
+      <button class="langbtn focusable" data-lang="fa">فارسی</button>
+      <button class="langbtn focusable" data-lang="en">English</button>
+      <button class="langbtn focusable" data-lang="zh">中文</button>
+    </div>
+    <div class="welcome-tip" data-i18n="welcome_alert">برای رد شدن هر کلیدی را بزنید</div>
+  </section>
+
+  <!-- ============ HOME ============ -->
+  <section id="scr-home" class="screen">
+    <div class="home-bg" id="home-bg"></div>
+    <header class="topbar">
+      <div class="tb-left">
+        <img class="tb-logo" src="/assets/img/mipmap__ic_launcher.png" alt="">
+        <div class="tb-room"><span id="home-room"></span><span class="tb-roomlabel" data-i18n="room_number">شماره اتاق</span></div>
+      </div>
+      <div class="tb-right">
+        <div class="tb-wifi" id="home-wifi" hidden><span id="home-wifi-name"></span><span id="home-wifi-pass"></span></div>
+        <div class="tb-weather" id="home-weather" hidden><img id="home-weather-img" src="" alt=""><span id="home-weather-txt"></span></div>
+        <div class="tb-clock"><div id="home-time" class="clock-time">--:--</div><div id="home-date" class="clock-date"></div></div>
+      </div>
+    </header>
+    <div class="home-title" id="home-title">PARDIK SMART IPTV</div>
+    <nav class="menu" id="home-menu"></nav>
+    <div class="home-hint" data-i18n="welcome_tips_info">برای ورود به صفحه اصلی OK را بزنید</div>
+  </section>
+
+  <!-- ============ LIVE: packages ============ -->
+  <section id="scr-livepkg" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="live">پخش زنده</h2></header>
+    <div class="pkg-list focuslist" id="pkg-list"></div>
+  </section>
+
+  <!-- ============ PLAYER (live & vod) ============ -->
+  <section id="scr-player" class="screen">
+    <video id="video" playsinline></video>
+    <img id="watermark" class="watermark" alt="" hidden>
+    <div class="player-loading" id="player-loading"><div class="spinner"></div><span data-i18n="brvah_loading">در حال بارگذاری…</span></div>
+    <div class="player-error" id="player-error" hidden><span id="player-error-txt" data-i18n="decoding_video_failed">کدگشایی ویدئو ناموفق بود.</span></div>
+    <div class="ch-badge" id="ch-badge" hidden><span id="ch-number"></span><span id="ch-name"></span></div>
+    <div class="player-osd" id="player-osd" hidden>
+      <div class="osd-left">
+        <div class="osd-title" id="osd-title"></div>
+        <div class="osd-sub" id="osd-sub"></div>
+      </div>
+      <div class="osd-right">
+        <button class="osdbtn focusable" id="btn-fav" title="F">★</button>
+        <button class="osdbtn focusable" id="btn-list" title="L">☰</button>
+        <button class="osdbtn focusable" id="btn-ratio" title="Z">⤢</button>
+      </div>
+    </div>
+    <aside class="side-list" id="side-list" hidden></aside>
+    <div class="vol-osd" id="vol-osd" hidden><span>🔊</span><div class="volbar"><i id="vol-fill"></i></div><span id="vol-num"></span></div>
+  </section>
+
+  <!-- ============ VOD ============ -->
+  <section id="scr-vod" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="vod">ویدئو به‌درخواست</h2></header>
+    <div class="vod-types focuslist" id="vod-types"></div>
+    <div class="vod-grid focusgrid" id="vod-grid"></div>
+  </section>
+
+  <!-- ============ VOD detail modal ============ -->
+  <div class="modal" id="vod-detail" hidden>
+    <div class="modal-card">
+      <img class="vd-poster" id="vd-poster" alt="">
+      <div class="vd-info">
+        <h3 id="vd-title"></h3>
+        <div class="vd-row"><span data-i18n="synopsis">خلاصه داستان:</span><span id="vd-syn"></span></div>
+        <div class="vd-row"><span data-i18n="director">کارگردان:</span><span id="vd-dir"></span></div>
+        <div class="vd-row"><span data-i18n="duration">مدت:</span><span id="vd-dur"></span></div>
+        <div class="vd-row"><span data-i18n="vod_price">قیمت:</span><span id="vd-price"></span></div>
+        <div class="vd-actions">
+          <button class="btn focusable" id="vd-play" data-i18n="vod_select_num">انتخاب جهت نمایش</button>
+          <button class="btn focusable" id="vd-close" data-i18n="cancel">انصراف</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ PLAYBACK / EPG ============ -->
+  <section id="scr-rec" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="main_menu_rec">پخش دوباره</h2></header>
+    <div class="rec-cols">
+      <div class="rec-col focuslist" id="rec-channels"></div>
+      <div class="rec-col focuslist" id="rec-dates"></div>
+      <div class="rec-col focuslist" id="rec-progs"></div>
+    </div>
+  </section>
+
+  <!-- ============ SCENERY ============ -->
+  <section id="scr-scenery" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="scenery">صحنه</h2></header>
+    <div class="scen-grid focusgrid" id="scen-grid"></div>
+  </section>
+
+  <!-- ============ CATERING ============ -->
+  <section id="scr-dinner" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="dinner">شام</h2></header>
+    <div class="dinner-wrap">
+      <div class="dinner-types focuslist" id="dinner-types"></div>
+      <div class="dinner-items focusgrid" id="dinner-items"></div>
+    </div>
+  </section>
+
+  <!-- ============ SERVICE ============ -->
+  <section id="scr-service" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="hotel_service">خدمات</h2></header>
+    <div class="svc-grid focusgrid" id="svc-grid"></div>
+  </section>
+
+  <!-- ============ SERVICE sub-screens ============ -->
+  <section id="scr-rent" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 id="rent-title">خدمات</h2></header>
+    <div class="rent-grid focusgrid" id="rent-grid"></div>
+  </section>
+  <section id="scr-wakeup" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="wake_up_service">سرویس بیدارباش</h2></header>
+    <div class="wakeup-card">
+      <div class="wk-row"><span data-i18n="wake_up_setting_time">تنظیم زمان بیداری:</span></div>
+      <div class="wk-pickers">
+        <select id="wk-day" class="focusable"></select>
+        <select id="wk-hour" class="focusable"></select>
+        <select id="wk-min" class="focusable"></select>
+      </div>
+      <div class="wk-note" data-i18n="wake_up_notice">لطفاً توجه کنید محدودیت زمانی ۲۴ ساعت است.</div>
+      <button class="btn focusable" id="wk-submit" data-i18n="submit">ارسال</button>
+    </div>
+  </section>
+  <section id="scr-consume" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="main_menu_consume">صورتحساب</h2></header>
+    <table class="consume-table"><thead><tr>
+      <th data-i18n="consume_time">زمان</th><th data-i18n="consume_type">نوع</th>
+      <th data-i18n="consume_content">محتوا</th><th data-i18n="consume_price">قیمت</th>
+    </tr></thead><tbody id="consume-body"></tbody></table>
+    <div class="consume-total"><span data-i18n="total">کل:</span><span id="consume-total"></span></div>
+  </section>
+
+  <!-- ============ HOTEL INTRO ============ -->
+  <section id="scr-hotel" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="hotel">هتل</h2></header>
+    <div class="hotel-wrap" id="hotel-wrap"></div>
+  </section>
+
+  <!-- ============ MUSIC ============ -->
+  <section id="scr-music" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2>موسیقی</h2></header>
+    <div class="music-types focuslist" id="music-types"></div>
+    <div class="music-grid focusgrid" id="music-grid"></div>
+    <audio id="audio"></audio>
+  </section>
+
+  <!-- ============ SETTINGS ============ -->
+  <section id="scr-settings" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="settings_system">تنظیمات سیستم</h2></header>
+    <div class="set-gate" id="set-gate">
+      <div class="gate-card">
+        <div class="gate-title">رمز تنظیمات</div>
+        <input id="gate-pass" class="focusable gate-input" type="password" inputmode="numeric" autocomplete="off">
+        <div class="gate-actions">
+          <button class="btn focusable" id="gate-ok" data-i18n="submit">تأیید</button>
+          <button class="btn focusable" id="gate-cancel" data-i18n="cancel">انصراف</button>
+        </div>
+        <div class="gate-err" id="gate-err" hidden>رمز نادرست است</div>
+      </div>
+    </div>
+    <div class="set-body" id="set-body" hidden>
+      <div class="set-section" data-i18n="settings_network">تنظیمات شبکه</div>
+      <div class="set-row focusable" data-edit="iptv_room_number"><span class="set-label" data-i18n="room_number">شماره اتاق</span><span class="set-value" id="set-room"></span></div>
+      <div class="set-row focusable" data-edit="server_ip"><span class="set-label" data-i18n="settings_network_ip">آی‌پی سرور</span><span class="set-value" id="set-ip"></span></div>
+      <div class="set-row focusable" data-edit="server_port"><span class="set-label" data-i18n="settings_network_port">پورت سرور</span><span class="set-value" id="set-port"></span></div>
+      <div class="set-row" ><span class="set-label" data-i18n="settings_local_network">شبکه محلی</span><span class="set-value" id="set-localip"></span></div>
+      <div class="set-row" ><span class="set-label" data-i18n="settings_local_mac">مک محلی</span><span class="set-value" id="set-mac"></span></div>
+      <div class="set-section" data-i18n="settings_other">سایر</div>
+      <div class="set-row focusable" data-edit="app_language"><span class="set-label">زبان / Language</span><span class="set-value" id="set-lang"></span></div>
+      <div class="set-row focusable" id="set-reconnect"><span class="set-label">اتصال مجدد به سرور</span><span class="set-value">↻</span></div>
+      <div class="set-row" ><span class="set-label" data-i18n="settings_update">بروزرسانی نسخه</span><span class="set-value" id="set-version"></span></div>
+    </div>
+  </section>
+
+  <!-- ============ generic input dialog ============ -->
+  <div class="modal" id="input-modal" hidden>
+    <div class="modal-card small">
+      <h3 id="input-title"></h3>
+      <input id="input-field" class="focusable">
+      <div class="vd-actions">
+        <button class="btn focusable" id="input-ok" data-i18n="submit">تأیید</button>
+        <button class="btn focusable" id="input-cancel" data-i18n="cancel">انصراف</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+</div>
+<script src="/web/vendor/hls.min.js"></script>
+<script src="/web/i18n.generated.js"></script>
+<script src="/web/app.js"></script>
+</body>
+</html>

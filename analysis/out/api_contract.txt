@@ -1,0 +1,306 @@
+================================================================================
+ENDPOINT: AddAdvHistory
+  from: com.dexin.wanchuan.iptv3.activity.live.LivePlayerActivity
+    literal pieces: ['?mac=', '&id=', '&type=', '&time=', '&check=', ' AddAdvHistory request url == ']
+================================================================================
+ENDPOINT: AddClientCheckOutOrder
+  from: com.dexin.wanchuan.iptv3.activity.main.MainStyleFourthActivity
+    literal pieces: ['?mac=']
+  from: com.dexin.wanchuan.iptv3.fragment.StyleOneRoomServiceFragment
+    literal pieces: []
+================================================================================
+ENDPOINT: AddConsume
+  from: com.dexin.wanchuan.iptv3.activity.vod.VodDetailActivity
+    literal pieces: ['?mac=', '&consumeId=', '&typeId=2']
+================================================================================
+ENDPOINT: AddFoodOrder
+  from: com.dexin.wanchuan.iptv3.activity.catering.MyOrderActivity
+    literal pieces: []
+================================================================================
+ENDPOINT: AddGoodsOrder
+  from: com.dexin.wanchuan.iptv3.activity.hotel.RentThingsActivity
+    literal pieces: []
+  from: com.dexin.wanchuan.iptv3.activity.hotel.WakeUpActivity
+    literal pieces: ['?mac=', '&typeId=', '&wakeupTime=']
+  from: com.dexin.wanchuan.iptv3.activity.main.MainStyleFourthActivity
+    literal pieces: ['?mac=', '&typeId=1']
+  from: com.dexin.wanchuan.iptv3.activity.main.MainStyleFourthActivity
+    literal pieces: ['?mac=', '&typeId=3']
+================================================================================
+ENDPOINT: AddVodRecord
+  from: com.dexin.wanchuan.iptv3.activity.vod.VodPlayerActivity
+    literal pieces: ['?clientId=', '&vodName=', '&duration=', '----------------request VOD ----Url == ']
+================================================================================
+ENDPOINT: GetAPK
+  from: com.dexin.wanchuan.iptv3.activity.main.MainStyleFirstActivity
+    literal pieces: []
+================================================================================
+ENDPOINT: GetAdvImage
+  from: com.dexin.wanchuan.iptv3.activity.live.LivePlayerActivity
+    literal pieces: ['?mac=', '&type=3', '?mac=']
+  from: com.dexin.wanchuan.iptv3.activity.main.MainStyleFirstActivity
+    literal pieces: ['?mac=', '&type=0']
+  from: com.dexin.wanchuan.iptv3.activity.main.MainStyleFirstActivity
+    literal pieces: []
+  from: com.dexin.wanchuan.iptv3.activity.main.MainStyleFourthActivity
+    literal pieces: ['?mac=', '?mac=', '&type=0', '?mac=']
+  from: com.dexin.wanchuan.iptv3.activity.main.MainStyleFourthActivity
+    literal pieces: ['?mac=', '&type=2']
+  from: com.dexin.wanchuan.iptv3.activity.record.RecEpgPrgPlayerActivity
+    literal pieces: ['?mac=', '&type=']
+  from: com.dexin.wanchuan.iptv3.activity.welcome.WelcomeStyleOtherActivity
+    literal pieces: ['?mac=', '?mac=', '&type=1', '?mac=']
+  from: com.dexin.wanchuan.iptv3.activity.welcome.WelcomeStyleOtherActivity
+    literal pieces: ['?mac=', '&type=1', '?mac=', '&type=12']
+  from: com.dexin.wanchuan.iptv3.activity.welcome.WelcomeStyleOtherActivity
+    literal pieces: ['GetWelcomWord?mac=', '?mac=', '&type=17']
+  from: com.dexin.wanchuan.iptv3.application.BaseApplication
+    literal pieces: ['?mac=', '&type=11']
+================================================================================
+ENDPOINT: GetAdvVideo
+  from: com.dexin.wanchuan.iptv3.fragment.StyleOneHomePageFragment
+    literal pieces: []
+================================================================================
+ENDPOINT: GetAdvVideoEM
+  from: com.dexin.wanchuan.iptv3.activity.welcome.BootVideoActivity
+    literal pieces: ['?mac=']
+  from: com.dexin.wanchuan.iptv3.activity.welcome.WelcomeStyleOtherActivity
+    literal pieces: ['?mac=', 'GetClient?mac=']
+================================================================================
+ENDPOINT: GetAlbum
+  from: com.dexin.wanchuan.iptv3.activity.music.MusicActivity
+    literal pieces: ['?typeId=', '?mac=']
+================================================================================
+ENDPOINT: GetClient
+  from: com.dexin.wanchuan.iptv3.application.BaseApplication
+    literal pieces: ['?mac=']
+  from: com.dexin.wanchuan.iptv3.fragment.StyleOneHomePageFragment
+    literal pieces: []
+================================================================================
+ENDPOINT: GetConsume
+  from: com.dexin.wanchuan.iptv3.activity.vod.VodDetailActivity
+    literal pieces: ['?mac=', '?isHot=1&mac=']
+================================================================================
+ENDPOINT: GetCurrentTimeAndZone
+  from: com.dexin.wanchuan.iptv3.application.BaseApplication
+    literal pieces: []
+================================================================================
+ENDPOINT: GetEpgRecProgram
+  from: com.dexin.wanchuan.iptv3.activity.record.RecordEpgActivity
+    literal pieces: ['?liveId=', '?liveId=']
+================================================================================
+ENDPOINT: GetFolio
+  from: com.dexin.wanchuan.iptv3.activity.ConsumeActivity
+    literal pieces: ['?mac=', '&PmsType=']
+================================================================================
+ENDPOINT: GetFood
+  from: com.dexin.wanchuan.iptv3.activity.catering.SpecialCateringBackActivity
+    literal pieces: ['?typeId=']
+================================================================================
+ENDPOINT: GetFoodCover
+  from: com.dexin.wanchuan.iptv3.fragment.StyleOneSpecialDiningFragment
+    literal pieces: []
+================================================================================
+ENDPOINT: GetFoodOrder
+  from: com.dexin.wanchuan.iptv3.activity.catering.MyHistoryOrderActivity
+    literal pieces: ['?mac=']
+================================================================================
+ENDPOINT: GetFoodType
+  from: com.dexin.wanchuan.iptv3.activity.catering.SpecialCateringBackActivity
+    literal pieces: []
+================================================================================
+ENDPOINT: GetGoods
+  from: com.dexin.wanchuan.iptv3.activity.hotel.RentThingsActivity
+    literal pieces: []
+================================================================================
+ENDPOINT: GetGoodsOrder
+  from: com.dexin.wanchuan.iptv3.activity.hotel.StyleThreeServiceRecordActivity
+    literal pieces: []
+================================================================================
+ENDPOINT: GetHomepageIcon
+  from: com.dexin.wanchuan.iptv3.activity.main.MainStyleFirstActivity
+    literal pieces: []
+  from: com.dexin.wanchuan.iptv3.activity.main.MainStyleFourthActivity
+    literal pieces: ['?packageId=', '&mac=']
+================================================================================
+ENDPOINT: GetHotel
+  from: com.dexin.wanchuan.iptv3.activity.introduce.HotelIntroAlbumActivity
+    literal pieces: []
+  from: com.dexin.wanchuan.iptv3.activity.introduce.HotelIntroduceActivity
+    literal pieces: ['?mac=']
+================================================================================
+ENDPOINT: GetHotelInformation
+  from: com.dexin.wanchuan.iptv3.fragment.StyleOneHotelGuideFragment
+    literal pieces: []
+================================================================================
+ENDPOINT: GetHotelType
+  from: com.dexin.wanchuan.iptv3.fragment.StyleOneHotelGuideFragment
+    literal pieces: []
+================================================================================
+ENDPOINT: GetInStream
+  from: com.dexin.wanchuan.iptv3.application.BaseApplication
+    literal pieces: ['?mac=']
+================================================================================
+ENDPOINT: GetLivePackage
+  from: com.dexin.wanchuan.iptv3.activity.live.LivePackageActivity
+    literal pieces: ['?mac=']
+  from: com.dexin.wanchuan.iptv3.activity.live.LivePlayerActivity
+    literal pieces: ['?mac=', '&liveId=', '?mac=', '?packageId=', '&mac=']
+  from: com.dexin.wanchuan.iptv3.activity.live.LivePlayerWithPackageActivity
+    literal pieces: ['?mac=', '&type=3', '?mac=', '?packageId=', '&mac=']
+================================================================================
+ENDPOINT: GetLiveStart
+  from: com.dexin.wanchuan.iptv3.activity.live.LivePlayerActivity
+    literal pieces: ['GetLiveStatus url == ', ' getProgramStatusTimes == ', 'GetLiveStart url == ']
+  from: com.dexin.wanchuan.iptv3.activity.live.LivePlayerWithPackageActivity
+    literal pieces: ['GetLiveStart url == ']
+================================================================================
+ENDPOINT: GetLiveStatus
+  from: com.dexin.wanchuan.iptv3.activity.live.LivePlayerActivity
+    literal pieces: [' getLiveTVList url == ', 'GetLiveStatus url == ', ' getProgramStatusTimes == ']
+  from: com.dexin.wanchuan.iptv3.activity.live.LivePlayerWithPackageActivity
+    literal pieces: ['?packageId=', '&mac=', 'GetLiveStatus url == ', ' getProgramStatusTimes == ']
+  from: com.dexin.wanchuan.iptv3.fragment.StyleOneTvLiveFragment
+    literal pieces: ['?mac=', 'GetLiveStatus url == ', ' getProgramStatusTimes == ']
+================================================================================
+ENDPOINT: GetLiveTV
+  from: com.dexin.wanchuan.iptv3.activity.live.LivePlayerActivity
+    literal pieces: ['?mac=', '?packageId=', '&mac=', ' getLiveTVList url == ']
+  from: com.dexin.wanchuan.iptv3.activity.live.LivePlayerActivity_back
+    literal pieces: ['?packageId=', '&mac=']
+  from: com.dexin.wanchuan.iptv3.activity.live.LivePlayerWithPackageActivity
+    literal pieces: ['?mac=', '?packageId=', '&mac=']
+  from: com.dexin.wanchuan.iptv3.directive.XTVLiveDirectiveHandler
+    literal pieces: ['?packageId=-1&mac=', 'XTVLiveDirectiveHandler ------ getLiveTVList() url === ']
+  from: com.dexin.wanchuan.iptv3.fragment.StyleOneHomePageFragment
+    literal pieces: []
+  from: com.dexin.wanchuan.iptv3.fragment.StyleOneTvLiveFragment
+    literal pieces: [' getProgramStatusTimes == ']
+================================================================================
+ENDPOINT: GetMusicCategory
+  from: com.dexin.wanchuan.iptv3.activity.music.MusicActivity
+    literal pieces: ['?typeId=', '?mac=']
+  from: com.dexin.wanchuan.iptv3.fragment.StyleOneEnjoyMusicFragment
+    literal pieces: ['?mac=']
+================================================================================
+ENDPOINT: GetMusicList
+  from: com.dexin.wanchuan.iptv3.activity.music.MusicDetailActivity
+    literal pieces: ['?albumId=', '&tvType=0&languageType=']
+  from: com.dexin.wanchuan.iptv3.activity.music.StyleThreeMusicActivity
+    literal pieces: []
+================================================================================
+ENDPOINT: GetNextAdv
+  from: com.dexin.wanchuan.iptv3.activity.live.LivePlayerActivity
+    literal pieces: ['?mac=', '&type=3', '?mac=', '&liveId=', '?mac=']
+================================================================================
+ENDPOINT: GetRecProgram
+  from: com.dexin.wanchuan.iptv3.activity.record.RecordActivity
+    literal pieces: ['?liveId=']
+  from: com.dexin.wanchuan.iptv3.activity.record.RecordEpgActivity
+    literal pieces: ['?liveId=', '?liveId=']
+  from: com.dexin.wanchuan.iptv3.fragment.StyleFourProgramRecFragment
+    literal pieces: []
+================================================================================
+ENDPOINT: GetRecTV
+  from: com.dexin.wanchuan.iptv3.activity.record.RecordActivity
+    literal pieces: ['?liveId=']
+  from: com.dexin.wanchuan.iptv3.fragment.StyleFourProgramRecFragment
+    literal pieces: []
+================================================================================
+ENDPOINT: GetRoomInfo
+  from: com.dexin.wanchuan.iptv3.application.BaseApplication
+    literal pieces: ['?mac=', '&ip=', '&online=', '&versionCode=']
+================================================================================
+ENDPOINT: GetScenery
+  from: com.dexin.wanchuan.iptv3.activity.scenery.SceneryActivity
+    literal pieces: []
+================================================================================
+ENDPOINT: GetServiceIcon
+  from: com.dexin.wanchuan.iptv3.activity.main.MainStyleFourthActivity
+    literal pieces: ['?mac=', '?packageId=', '&mac=']
+  from: com.dexin.wanchuan.iptv3.fragment.StyleOneRoomServiceFragment
+    literal pieces: []
+================================================================================
+ENDPOINT: GetSettings
+  from: com.dexin.wanchuan.iptv3.activity.PingServerActivity
+    literal pieces: []
+================================================================================
+ENDPOINT: GetSubtitleStyle
+  from: com.dexin.wanchuan.iptv3.service.MyService
+    literal pieces: ['----getSubtitleStytle url == ', '?mac=']
+================================================================================
+ENDPOINT: GetSubtitles
+  from: com.dexin.wanchuan.iptv3.service.MyService
+    literal pieces: ['----getSubtitleStytle url == ', '?mac=', '----getSubtitles url == ']
+================================================================================
+ENDPOINT: GetVersion
+  from: com.dexin.wanchuan.iptv3.activity.SettingsActivity
+    literal pieces: []
+================================================================================
+ENDPOINT: GetVod
+  from: com.dexin.wanchuan.iptv3.activity.vod.VodDetailActivity
+    literal pieces: ['?mac=', '?isHot=1&mac=', 'GetVod?ids=']
+  from: com.dexin.wanchuan.iptv3.activity.vod.VodNewActivity
+    literal pieces: ['?typeId=']
+  from: com.dexin.wanchuan.iptv3.directive.SearchVideoDirectiveHandler
+    literal pieces: ['?keyword=']
+================================================================================
+ENDPOINT: GetVodCover
+  from: com.dexin.wanchuan.iptv3.fragment.StyleOneMovieVodFragment
+    literal pieces: []
+================================================================================
+ENDPOINT: GetVodType
+  from: com.dexin.wanchuan.iptv3.activity.vod.VodNewActivity
+    literal pieces: ['?mac=']
+================================================================================
+ENDPOINT: GetWakeUp
+  from: com.dexin.wanchuan.iptv3.fragment.StyleTwoHomePageFragment
+    literal pieces: []
+================================================================================
+ENDPOINT: UpdateClient
+  from: com.dexin.wanchuan.iptv3.application.BaseApplication
+    literal pieces: ['?mac=', '&ip=', '&online=', '&versionCode=']
+================================================================================
+ENDPOINT: UpdateRoomInfo
+  from: com.dexin.wanchuan.iptv3.activity.SettingsActivity
+    literal pieces: ['?mac=', '&roomNumber=']
+================================================================================
+ENDPOINT: UpdateVodClickRate
+  from: com.dexin.wanchuan.iptv3.activity.vod.VodDetailActivity
+    literal pieces: ['?vodId=']
+================================================================================
+ENDPOINT: apk/getClientBackgroundMusics
+  from: com.dexin.wanchuan.iptv3.activity.introduce.HotelIntroduceActivity
+    literal pieces: ['?mac=']
+  from: com.dexin.wanchuan.iptv3.activity.main.MainStyleFirstActivity
+    literal pieces: ['?mac=', '&type=0']
+  from: com.dexin.wanchuan.iptv3.activity.main.MainStyleFourthActivity
+    literal pieces: ['?mac=', '?mac=', '&type=0']
+  from: com.dexin.wanchuan.iptv3.activity.welcome.WelcomeStyleOtherActivity
+    literal pieces: ['?mac=', '?mac=', '&type=1']
+================================================================================
+ENDPOINT: apk/getClientBackgroundVideos
+  from: com.dexin.wanchuan.iptv3.activity.main.MainStyleFourthActivity
+    literal pieces: ['?mac=', '&type=0', '?mac=']
+================================================================================
+ENDPOINT: apk/getWeatherDays
+  from: com.dexin.wanchuan.iptv3.activity.welcome.WelcomeStyleOtherActivity
+    literal pieces: ['?mac=', '&type=12', '?mac=']
+  from: com.dexin.wanchuan.iptv3.application.BaseApplication
+    literal pieces: ['&versionCode=', '&versionName=']
+================================================================================
+ENDPOINT: res/adv/music/
+  from: com.dexin.wanchuan.iptv3.activity.introduce.HotelIntroduceActivity$2
+    literal pieces: []
+================================================================================
+ENDPOINT: res/adv/video/
+  from: com.dexin.wanchuan.iptv3.activity.main.MainStyleFourthActivity
+    literal pieces: []
+================================================================================
+ENDPOINT: res/client/apk/iqiyi.apk
+  from: com.dexin.wanchuan.iptv3.service.MyService
+    literal pieces: []
+================================================================================
+ENDPOINT: res/client/apk/mgtv.apk
+  from: com.dexin.wanchuan.iptv3.service.MyService
+    literal pieces: []
