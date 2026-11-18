@@ -3,9 +3,10 @@
 Reverse-engineered the supplied Android APK (`com.dexin.wanchuan.iptv3` v2.7.1.71,
 "PARDIK SMART IPTV", hotel/ residential-tower IPTV for server `10.21.0.10:8030`),
 rebuilt it as a standalone, installable **Windows 10 x64** application, and then
-ported the newer **v2.7.2.06** APK on top of it (EPG-in-player, catering country
-selector, order history + cancel, taxi & service-record room services, VLC
-external playback, playback speed, boot auto-start, local-app launcher).
+ported the newer **v2.7.2.06** APK on top of it (EPG-in-player, in-player
+advertising with countdown/skip/watch-time reporting, catering country selector,
+order history + cancel, taxi & service-record room services, VLC external
+playback, playback speed, boot auto-start, local-app launcher).
 
 | Path | What |
 |---|---|
