@@ -9,6 +9,12 @@ setlocal
 set "SRC=%~dp0.."
 set "DST=%LOCALAPPDATA%\PARDIK-SMART-IPTV"
 echo Installing to %DST% ...
+rem a RUNNING install locks its own files: rmdir would silently leave
+rem the old code behind and the next launch keeps the old build - the
+rem exact symptom of "nothing changed". Stop everything first.
+taskkill /f /fi "WINDOWTITLE eq PARDIK IPTV*" >nul 2>&1
+powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*iptv_backend.py*' -or $_.CommandLine -like '*PARDIK-SMART-IPTV*launch.ps1*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+timeout /t 2 /nobreak >nul
 if exist "%DST%" rmdir /s /q "%DST%"
 mkdir "%DST%"
 xcopy "%SRC%\app"     "%DST%\app\"     /e /i /q /y >nul
