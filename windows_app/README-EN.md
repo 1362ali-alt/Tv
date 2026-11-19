@@ -112,7 +112,14 @@ Live state for support: `GET /api/connection` (`phase`, `ping_times/ping_max`,
 `server_settings`, `discovery`, `sweep`, 40 log lines) and
 `POST /api/connection/{retry,skip,sweep,announce,playing}`. Settings shows three
 rows for it: **head-end connection status**, **find the head-end (UDP 27777)**
-and **reconnect to the server**.
+and **reconnect to the server**. The main menu also ends with a visible
+**Settings** tile (still gated by the `111999` password, which is shown as a
+hint until it is changed), and every log line of the engine is mirrored to
+`%APPDATA%\PARDIK-SMART-IPTV\backend.log` for remote diagnosis. If a previous
+install is still running it holds port 8787 with old code; `launch.ps1` now
+detects that (it probes `/api/connection`, not just the port), kills the stale
+process and starts the current one — and the boot screen refuses to trap
+anyone: any key/click skips, and after 50 s it continues on its own.
 
 ## What it does
 Boot/ping (`PingServerActivity`) → boot advert (`BootVideoActivity`) → welcome

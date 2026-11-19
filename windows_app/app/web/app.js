@@ -508,19 +508,64 @@ function enterPingServer() {
   const bg = $("#ping-bg");
   if (bg && S.conn && S.conn.ping_bg) bg.style.backgroundImage = 'url("' + imgUrl(S.conn.ping_bg) + '")';
   clearInterval(S.connTimer);
+  S.bootAt = Date.now();
+  S.badConn = 0;
   pollConnection();
   S.connTimer = setInterval(pollConnection, 700);
+  /* mouse users: a click on the boot screen is "any key" as well */
+  const scr = $("#scr-boot");
+  if (scr) scr.onclick = () => skipPing();
 }
 
 async function pollConnection() {
   let c = null;
-  try { c = await (await fetch("/api/connection")).json(); } catch (e) { return; }
+  try { c = await (await fetch("/api/connection")).json(); } catch (e) { c = null; }
+  if (!c || c.ping_max == null) {
+    /* A process that answers /api/connection without the engine shape is an
+       OLD backend left over from a previous install (it keeps the port and
+       serves the new web files from disk). Say so, and offer the local escape
+       hatch instead of freezing at "attempt 0 of 20" forever. */
+    S.badConn = (S.badConn || 0) + 1;
+    renderPingState(Object.assign({}, c || {}, { stale_backend: true }));
+    if (S.badConn >= 2) bootStaleHint(true);
+    if (S.bootAt && Date.now() - S.bootAt > 20000) localWelcome();
+    return;
+  }
+  S.badConn = 0;
   applyConnection(c);
   renderPingState(c);
   if (c.welcome) {
     clearInterval(S.connTimer); S.connTimer = null;
     openWelcomeActivity(c.welcome);
+    return;
   }
+  /* PingServerActivity leaves at attempt 20 even with no answer; if the engine
+     itself is gone (crashed thread, old process, ...), the 50 s wall clock is
+     the last resort so a user can never be trapped on the boot screen. */
+  if (S.bootAt && !c.connected && Date.now() - S.bootAt > 50000) localWelcome();
+}
+
+function bootStaleHint(on) {
+  const tips = $("#ping-tips");
+  if (tips && on) {
+    tips.textContent = S.lang === "fa" || !S.lang
+      ? "بک‌اند قدیمی روی پورت 8787 پاسخ می‌دهد؛ هر کلیدی بزنید تا بدون سرور ادامه دهید"
+      : "An old backend answers on port 8787; press any key to continue without it";
+  }
+}
+
+/* openWelcomeActivity() without a head-end: the APK's own offline path once
+   PingServerActivity gave up - welcome card first, main menu from
+   addDefaultMenu(), and Settings reachable to fix the server address. */
+function localWelcome() {
+  if (S.welcome || S.cur !== "scr-boot") return;
+  const st = S.serverSettings || {};
+  const style = Number(st.layout != null ? st.layout
+    : ((S.config.settings || {}).app_layout_style || 0));
+  clearInterval(S.connTimer); S.connTimer = null;
+  openWelcomeActivity({ advVideoEM: false, layout: style, language: null,
+    screen: (style === 0 || style === 5) ? "welcome_zero" : "welcome_other",
+    connected: false, main: style === 0 ? "MainStyleThird" : "MainStyleFourth" });
 }
 
 /* BaseApplication.getInstance(): the screens read the handshake from here. */
@@ -557,6 +602,11 @@ function renderPingState(c) {
   }
   h += row("واحد/اتاق", c.unit || "-", "");
   if (c.last_error) h += row("آخرین خطا", c.last_error, "bad");
+  if (c.stale_backend) {
+    h += row("هشدار", "پاسخ‌دهندهٔ 8787 موتور اتصال ندارد (بک‌اند قدیمی؟)", "bad");
+    h += row("راه‌حل", "هر کلیدی بزنید؛ سپس از تنظیمات آی‌پی سرور را بنویسید", "");
+  }
+  if (c.engine_error) h += row("خطای موتور", c.engine_error, "bad");
   box.innerHTML = h;
 }
 
@@ -1244,6 +1294,7 @@ function addDefaultMenu() {
     () => openThirdAppPopup(), false));
   m.push(MainMenu(4, "", "", "hotel", t("hotel", "هتل"), "activity_title_name_hotel_intro",
     () => openHotel(), true));
+  m.push(settingsMenuItem());
   if ((S.loacalThirdApkBeans || []).length && S.isShowAppInMenu) addLocalThirdAppInMenu();
   renderMainMenu();
 }
@@ -1316,8 +1367,17 @@ function addMenuItemData(list) {
       default: break;
     }
   });
+  m.push(settingsMenuItem());
   if ((S.loacalThirdApkBeans || []).length && S.isShowAppInMenu) addLocalThirdAppInMenu();
   renderMainMenu();
+}
+
+/* The APK reaches SettingsActivity only through the 111999 digit buffer; the
+   Windows port keeps that, and adds a discoverable gear tile at the end of the
+   menu (still password-gated, exactly like the activity). */
+function settingsMenuItem() {
+  return MainMenu(99, "", "", "settings", t("settings", "تنظیمات"), "settings",
+    () => openSettings(false), true);
 }
 
 /* addLocalThirdAppInMenu(): readLocalThirdAppDatas() - the apps the installer
@@ -2668,12 +2728,24 @@ function openSettings(unlocked) {
   $("#gate-ok").onclick = tryGate;
   $("#gate-cancel").onclick = () => back();
   $("#gate-pass").onkeydown = (e) => { if (e.key === "Enter") tryGate(); };
-  if (need) setTimeout(() => $("#gate-pass").focus(), 50);
+  if (need) {
+    const hint = $("#gate-hint");
+    if (hint) {
+      const pass = String((S.config.settings || {}).password || "111999");
+      hint.hidden = pass !== "111999";
+    }
+    setTimeout(() => $("#gate-pass").focus(), 50);
+  }
 }
 function tryGate() {
   const v = $("#gate-pass").value;
   if (v === String(S.config.settings.password || "111999")) {
-    $("#set-gate").style.display = "none"; $("#set-body").hidden = false; fillSettings(); focusFirst("scr-settings");
+    $("#set-gate").style.display = "none"; $("#set-body").hidden = false; fillSettings();
+    /* the password input must not keep focus once the gate is gone: while an
+       INPUT is active the key handler treats every key as typing, so BACK
+       would be swallowed (and the hidden input can never be left by D-pad). */
+    try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch (e) {}
+    focusFirst("scr-settings");
   } else { $("#gate-err").hidden = false; }
 }
 function fillSettings() {

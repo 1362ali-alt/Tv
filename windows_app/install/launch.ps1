@@ -93,21 +93,40 @@ if (-not $py) {
 
 $ff = Ensure-FFmpeg
 
-# --- single instance: if backend already up, just open the window ---
-$up = $false
-try {
-    $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 -Uri ($url + "api/config")
-    $up = ($r.StatusCode -eq 200)
-} catch { }
-
+# --- single instance, but NEVER a stale one ---------------------------------
+# An older install that is still running (auto-started at logon by the boot
+# receiver, or left over from the previous session) keeps port 8787 and serves
+# the NEW web files from disk while answering /api/connection with a 404 - the
+# boot screen then freezes at "attempt 0 of 20" forever. So probe the ENGINE
+# endpoint instead of the port: only a backend that answers /api/connection
+# (the BaseApplication/PingServerActivity state) is allowed to stay alive.
+function Stop-StaleBackend {
+    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -like "*iptv_backend.py*" } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    try {
+        Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty OwningProcess -Unique |
+            ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
+    } catch { }
+}
+function Test-BackendEngine {
+    try {
+        $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 -Uri ($url + "api/connection")
+        return ($r.StatusCode -eq 200)
+    } catch { return $false }
+}
+$up = Test-BackendEngine
 if (-not $up) {
+    Stop-StaleBackend
+    Start-Sleep -Milliseconds 800
     $env:IPTV_HOST = "127.0.0.1"
     $env:IPTV_PORT = "$port"
     if ($ff) { $env:IPTV_FFMPEG = $ff }
     Start-Process -WindowStyle Hidden -FilePath $py -ArgumentList @("`"$backend`"") -WorkingDirectory $app
     for ($i = 0; $i -lt 40; $i++) {
         Start-Sleep -Milliseconds 400
-        try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 -Uri ($url + "api/config") | Out-Null; $up = $true; break } catch { }
+        if (Test-BackendEngine) { $up = $true; break }
     }
 }
 

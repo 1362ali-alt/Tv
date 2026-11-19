@@ -310,6 +310,30 @@ async function main() {
       await sleep(120);
       const focused = ((t0.querySelector("img") || {}).src || "").replace(/^.*\//, "");
       console.log("[main] focused icon =", focused);
+
+  /* The APK opens SettingsActivity only by typing 111999; the port adds a
+     discoverable gear tile at the end of the menu - still password-gated. */
+  const setTile = tiles().find(n => /تنظیمات|Settings|设置/i.test(n.textContent));
+  if (!setTile) errors.push("the main menu has no visible settings tile");
+  else {
+    setTile.click(); await sleep(600);
+    const gate = doc.querySelector("#set-gate");
+    console.log("[main] settings tile -> active =", active(), "| gate shown =",
+      gate.style.display !== "none", "| factory hint hidden =", (doc.querySelector("#gate-hint") || {}).hidden);
+    if (active() !== "scr-settings") errors.push("the settings tile did not open SettingsActivity: " + active());
+    if (gate.style.display === "none") errors.push("the settings tile skipped the password gate");
+    if ((doc.querySelector("#gate-hint") || {}).hidden !== false) {
+      errors.push("the gate hides the factory-password hint while the password is unchanged");
+    }
+    doc.querySelector("#gate-pass").value = "111999";
+    doc.querySelector("#gate-ok").click(); await sleep(500);
+    if (doc.querySelector("#set-body").hidden) errors.push("the gate rejected the factory password 111999");
+    for (let i = 0; i < 6 && active() !== "scr-home"; i++) {
+      doc.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      await sleep(250);
+    }
+    if (active() !== "scr-home") errors.push("could not leave SettingsActivity back to the menu");
+  }
       if (focused !== "mipmap__icon_live_large.png") errors.push("onItemSelected did not swap to icon_live_large: " + focused);
       t0.dispatchEvent(new w.FocusEvent("blur"));
       await sleep(80);

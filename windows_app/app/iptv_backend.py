@@ -30,6 +30,18 @@ import urllib.request
 import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+# A Windows console runs an OEM code page (cp720 / cp437 / ...) that cannot
+# encode the Persian strings this backend logs; one unguarded print() would
+# raise UnicodeEncodeError and silently kill the calling thread (which is how
+# a box can freeze on the boot screen with ping_times stuck at 0). Make stdio
+# lossy-safe once, at import, and mirror every log line to backend.log so a
+# remote install can be diagnosed from a file instead of a screenshot.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(errors="backslashreplace")
+    except Exception:
+        pass
+
 APP_VERSION_NAME = "2.7.2.06"
 APP_VERSION_CODE = 20702006
 
@@ -305,16 +317,35 @@ NETWORK = detect_network()
 
 SETTINGS = Settings()
 
+
+def append_log(line):
+    """backend.log in the data dir: the only forensic trail a headless install
+    leaves behind (the console window is hidden by design)."""
+    try:
+        p = os.path.join(data_dir(), "backend.log")
+        if os.path.exists(p) and os.path.getsize(p) > 900000:
+            os.replace(p, p + ".old")
+        with open(p, "a", encoding="utf-8", errors="replace") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
+
 # --------------------------------------------------------------------------- #
 # HTTP API client (mirrors HttpUtil / OkGo usage)
 # --------------------------------------------------------------------------- #
 TIMEOUT = 8.0
 
 
+# OkHttp in the APK never consults the Windows system proxy; urllib does, and a
+# machine behind a PAC/proxy would otherwise send every head-end call (even to
+# 10.x LAN addresses) into the proxy and time out. Pin the opener to direct.
+_NO_PROXY = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
 def http_get(url, timeout=TIMEOUT, binary=False, headers=None):
     req = urllib.request.Request(url, headers=headers or {
         "User-Agent": "PARDIK-SMART-IPTV-Win/%s" % APP_VERSION_NAME})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    with _NO_PROXY.open(req, timeout=timeout) as r:
         data = r.read()
         ctype = r.headers.get("Content-Type", "")
     if binary:
@@ -837,10 +868,25 @@ class ConnectionEngine(object):
         line = "[%s] %s" % (time.strftime("%H:%M:%S"), msg)
         with self.lock:
             self.log.append(line)
-        print("CONNECTION " + line)
-        sys.stdout.flush()
+        try:
+            print("CONNECTION " + line)
+            sys.stdout.flush()
+        except Exception:
+            pass                      # a dead/odd console must never kill a thread
+        append_log("CONNECTION " + line)
 
     def state(self):
+        try:
+            return self._state()
+        except Exception as e:                         # a broken state() must not
+            return {"connected": bool(self.connected),  # freeze the boot screen
+                    "phase": self.phase, "ping_times": self.ping_times,
+                    "ping_max": PING_MAX_ATTEMPTS, "welcome": self.welcome,
+                    "settings_ok": bool(self.settings), "engine_error": str(e),
+                    "last_error": "state(): %s" % e,
+                    "log": list(self.log)[-40:]}
+
+    def _state(self):
         with self.lock:
             st = self.settings or {}
             return {
@@ -1202,7 +1248,12 @@ class ConnectionEngine(object):
     def ping_loop(self):
         time.sleep(PING_INTERVAL)                    # the first tick sleeps 2 s
         while not self._stop.is_set() and self.welcome is None:
-            if self.ping_tick():
+            try:
+                done = self.ping_tick()
+            except Exception as e:
+                self._fail("ping tick", e)
+                done = False
+            if done:
                 break
             self._stop.wait(PING_INTERVAL)
 
@@ -1233,19 +1284,26 @@ class ConnectionEngine(object):
         self.note("onCreate: mac=%s iface=%s ip=%s server=%s"
                   % (SETTINGS.get("device_mac"), NETWORK.get("iface"),
                      NETWORK.get("ip"), SETTINGS.address()))
-        self.get_pms_status()
-        self.get_client_from_server()
-        self.get_data_from_server()
-        self.start_server_ip_thread()
-        self.get_time_from_server()
-        WS.start()                                   # WebSocketService + VolumeWebSocketService
+        # BaseApplication runs these in order, but on a real Windows box any one
+        # of them can throw (odd adapter, proxy, code page, ...); a dead step
+        # must never stop the chain or the PingServerActivity timers.
+        for step in (self.get_pms_status, self.get_client_from_server,
+                     self.get_data_from_server, self.start_server_ip_thread,
+                     self.get_time_from_server, WS.start):
+            try:
+                step()
+            except Exception as e:
+                self._fail("onCreate:%s" % getattr(step, "__name__", "step"), e)
         self.phase = "ping"
         for target, name in ((self.app_loop, "iptv-app-timer"),
                              (self.ping_loop, "iptv-ping-timer"),
                              (self.sweep_loop, "iptv-sweep")):
-            th = threading.Thread(target=target, daemon=True, name=name)
-            th.start()
-            self._threads.append(th)
+            try:
+                th = threading.Thread(target=target, daemon=True, name=name)
+                th.start()
+                self._threads.append(th)
+            except Exception as e:
+                self._fail("thread:%s" % name, e)
 
     def start_server_ip_thread(self):
         """BaseApplication.startServerIpThread() - at most 180 listener threads."""
@@ -1279,6 +1337,21 @@ class ConnectionEngine(object):
 
 
 CONNECTION = ConnectionEngine()
+
+
+def _thread_excepthook(args):
+    """A thread that dies silently is exactly how the boot screen froze on the
+    field: log it into the engine (and backend.log) instead."""
+    import traceback
+    name = getattr(args.thread, "name", "?")
+    CONNECTION.note("thread %s died: %r" % (name, args.exc_value))
+    tb = "".join(traceback.format_exception(args.exc_type, args.exc_value,
+                                            args.traceback)).strip()
+    if tb:
+        CONNECTION.note(tb[-900:])
+
+
+threading.excepthook = _thread_excepthook
 
 
 # --------------------------------------------------------------------------- #
@@ -2514,7 +2587,28 @@ def main():
     # BaseApplication.onCreate(): the handshake, the UDP 27777 announce listener
     # and the 5 s maintenance loop all start before the first request is served.
     CONNECTION.on_create()
-    srv = ThreadingHTTPServer((host, port), Handler)
+    srv = None
+    for attempt in range(1, 11):
+        try:
+            srv = ThreadingHTTPServer((host, port), Handler)
+            break
+        except OSError as e:
+            # An older install that is still running holds the port; serving
+            # nothing is better than exiting silently and leaving the OLD code
+            # (which has no /api/connection) answering the NEW web UI.
+            CONNECTION.note("port %d busy (%s) - retry %d/10" % (port, e, attempt))
+            time.sleep(1.0)
+    if srv is None:
+        msg = ("FATAL: port %d is held by another process (an older PARDIK IPTV "
+               "instance?). Close it (Task Manager) or reboot, then start again."
+               % port)
+        CONNECTION.note(msg)
+        append_log(msg)
+        try:
+            print(msg)
+        except Exception:
+            pass
+        return
     srv.daemon_threads = True
     print("%s backend on http://%s:%d/ (mode=%s)" % (BRANDING[APP_MODE]["install_name"], host, port, APP_MODE))
     sys.stdout.flush()
