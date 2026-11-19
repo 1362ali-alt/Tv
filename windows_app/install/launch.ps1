@@ -2,6 +2,9 @@
 # Starts the local backend (pure-Python, no pip deps) and opens an Edge "app"
 # window (borderless, native-looking). Falls back to the default browser.
 $ErrorActionPreference = "SilentlyContinue"
+# MessageBox below must not fail silently: without the assembly loaded the
+# "runtime missing" popup never appeared and the launcher died invisibly.
+try { Add-Type -AssemblyName System.Windows.Forms } catch { }
 # Windows PowerShell 5.1 still defaults to SSL3/TLS1.0, and PyPI/GitHub reject
 # those handshakes - this single line is why the FFmpeg auto-download used to
 # fail silently on older Windows 10 builds.
@@ -13,6 +16,23 @@ $tools   = Join-Path $root "tools"
 $backend = Join-Path $app "iptv_backend.py"
 $port    = 8787
 $url     = "http://127.0.0.1:$port/"
+# Every launch leaves a trace - a hidden launcher that fails looks exactly
+# like "the new version did nothing", which is what the field kept reporting.
+$logfile = Join-Path $root "launch.log"
+function Log($msg) {
+    $line = "[{0}] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $msg
+    Write-Host $line
+    try { Add-Content -Path $logfile -Value $line -Encoding UTF8 } catch { }
+}
+function Fail($msg) {
+    Log "FATAL: $msg"
+    try {
+        [System.Windows.Forms.MessageBox]::Show(
+            "$msg`n`nDetails: $logfile", "PARDIK IPTV - launch failed") | Out-Null
+    } catch { }
+    exit 2
+}
+Log "launch start (root=$root)"
 
 # --- deployment flavour -----------------------------------------------------
 # Pardik ships the same client for two installations: the residential complex
@@ -41,6 +61,10 @@ if (Test-Path $headFile) {
 }
 
 function Find-Python {
+    # A portable folder ships its own runtime and must NEVER pick up some
+    # system python of unknown age/state - bundled first, always.
+    $bundled = Join-Path $root "runtime\python\python.exe"
+    if (Test-Path $bundled) { return $bundled }
     foreach ($c in @("py","python","python3")) {
         $p = Get-Command $c -ErrorAction SilentlyContinue
         if ($p) {
@@ -48,8 +72,6 @@ function Find-Python {
             if ($LASTEXITCODE -eq 0 -and [int]$v -ge 38) { return $p.Source }
         }
     }
-    $emb = Join-Path $root "runtime\python\python.exe"
-    if (Test-Path $emb) { return $emb }
     return $null
 }
 
@@ -118,11 +140,12 @@ if (-not $py) {
     $py = Find-Python
 }
 if (-not $py) {
-    [System.Windows.Forms.MessageBox]::Show("Python runtime not found. Run install\Setup.bat first.","PARDIK IPTV")
-    exit 1
+    Fail "Python runtime not found. Extract the full zip again (or run install\Setup.bat for the installed edition)."
 }
+Log "python: $py"
 
 $ff = Ensure-FFmpeg
+Log $(if ($ff) { "ffmpeg: $ff" } else { "ffmpeg: NOT AVAILABLE (RTSP/UDP playback will not work)" })
 
 # --- single instance, but NEVER a stale one ---------------------------------
 # An older install that is still running (auto-started at logon by the boot
@@ -161,8 +184,21 @@ $biFile = Join-Path $root "build_info.json"
 if (Test-Path $biFile) {
     try { $wantBuild = [string]((Get-Content -Raw $biFile | ConvertFrom-Json).commit) } catch { }
 }
+function Start-OurBackend {
+    $env:IPTV_HOST = "127.0.0.1"
+    $env:IPTV_PORT = "$port"
+    if ($ff) { $env:IPTV_FFMPEG = $ff }
+    Log "starting backend: $py $backend"
+    Start-Process -WindowStyle Hidden -FilePath $py -ArgumentList @("`"$backend`"") -WorkingDirectory $app
+    for ($i = 0; $i -lt 40; $i++) {
+        Start-Sleep -Milliseconds 400
+        if (Test-BackendEngine) { return $true }
+    }
+    return $false
+}
 $up = Test-BackendEngine
 if ($up -and $wantBuild -and ((Get-BackendBuild) -ne $wantBuild)) {
+    Log "stale backend answers (build '$(Get-BackendBuild)' != '$wantBuild') - replacing"
     Stop-StaleBackend
     Start-Sleep -Milliseconds 800
     $up = Test-BackendEngine
@@ -170,14 +206,29 @@ if ($up -and $wantBuild -and ((Get-BackendBuild) -ne $wantBuild)) {
 if (-not $up) {
     Stop-StaleBackend
     Start-Sleep -Milliseconds 800
-    $env:IPTV_HOST = "127.0.0.1"
-    $env:IPTV_PORT = "$port"
-    if ($ff) { $env:IPTV_FFMPEG = $ff }
-    Start-Process -WindowStyle Hidden -FilePath $py -ArgumentList @("`"$backend`"") -WorkingDirectory $app
-    for ($i = 0; $i -lt 40; $i++) {
-        Start-Sleep -Milliseconds 400
-        if (Test-BackendEngine) { $up = $true; break }
+    $up = Start-OurBackend
+}
+# The check that was missing in every failed field round: what answers on
+# 8787 must be THIS build. Opening the UI against a stale backend shows the
+# resident "the same old messages" and hides every fix that was shipped.
+if ($wantBuild) {
+    $got = Get-BackendBuild
+    if ($got -ne $wantBuild) {
+        Log "build mismatch after start (got '$got', want '$wantBuild') - hard kill and retry"
+        Stop-StaleBackend
+        Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty OwningProcess -Unique |
+            ForEach-Object { & taskkill /F /PID $_ 2>$null | Out-Null }
+        Start-Sleep -Milliseconds 800
+        $up = Start-OurBackend
+        $got = Get-BackendBuild
     }
+    if ($got -ne $wantBuild) {
+        Fail "Another program is holding port $port and could not be replaced (found build '$got', this package is '$wantBuild'). Restart Windows once, then run PORTABLE.bat again."
+    }
+    Log "backend verified: build $got on port $port"
+} elseif (-not $up) {
+    Fail "The backend did not answer on port $port within 16 seconds. See $logfile and _userdata\backend.log."
 }
 
 # --- open UI in an Edge app window (native look), else default browser ---
@@ -196,8 +247,11 @@ foreach ($cand in @(
 if ($edge) {
     # --autoplay-policy: the boot advert video (GetAdvVideoEM) and the welcome
     # background music start with no user gesture, exactly like the Android box.
+    Log "opening Edge app window: $url"
     Start-Process -FilePath $edge -ArgumentList @("--app=$url", "--new-window", "--start-maximized", "--autoplay-policy=no-user-gesture-required")
 } else {
+    Log "Edge not found - opening default browser: $url"
     Start-Process $url
 }
+Log "launch ok"
 exit 0

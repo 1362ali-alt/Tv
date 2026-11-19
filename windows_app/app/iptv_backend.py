@@ -3164,6 +3164,48 @@ class Handler(BaseHTTPRequestHandler):
                                     "Access-Control-Allow-Methods": "GET,POST,OPTIONS"})
 
 
+def _kill_port_owner(port):
+    """The field failure this exists for: an OLD backend (an install from
+    rounds ago, auto-started at logon) holds 8787, the new one cannot bind,
+    and the freshly opened Edge window is served by the OLD code - the user
+    sees "the same old messages" and concludes nothing was updated. The
+    launcher kills stale processes too, but when that misses (fast re-launch,
+    permission timing) the backend must take its own port: find the LISTENING
+    owner via netstat and taskkill it. Same-user processes need no elevation.
+    """
+    if os.name != "nt":
+        return False
+    try:
+        out = subprocess.run(["netstat", "-ano", "-p", "tcp"],
+                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                             timeout=15).stdout.decode("utf-8", "replace")
+    except Exception as e:
+        CONNECTION.note("port-kill: netstat failed %r" % (e,))
+        return False
+    pids = set()
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) >= 5 and parts[3] == "LISTENING" \
+                and parts[1].endswith(":%d" % port):
+            pids.add(parts[4])
+    pids.discard(str(os.getpid()))
+    killed = False
+    for pid in pids:
+        try:
+            r = subprocess.run(["taskkill", "/F", "/PID", pid],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                               timeout=15)
+            CONNECTION.note("port-kill: PID %s holding :%d -> taskkill rc=%d"
+                            % (pid, port, r.returncode))
+            append_log("PORT-KILL pid=%s rc=%d" % (pid, r.returncode))
+            killed = killed or r.returncode == 0
+        except Exception as e:
+            CONNECTION.note("port-kill: PID %s failed %r" % (pid, e))
+    return killed
+
+
 def main():
     port = int(os.environ.get("IPTV_PORT", "8787"))
     host = os.environ.get("IPTV_HOST", "127.0.0.1")
@@ -3180,6 +3222,9 @@ def main():
             # nothing is better than exiting silently and leaving the OLD code
             # (which has no /api/connection) answering the NEW web UI.
             CONNECTION.note("port %d busy (%s) - retry %d/10" % (port, e, attempt))
+            if attempt == 2:
+                # second failure: stop waiting politely and take the port
+                _kill_port_owner(port)
             time.sleep(1.0)
     if srv is None:
         msg = ("FATAL: port %d is held by another process (an older PARDIK IPTV "
