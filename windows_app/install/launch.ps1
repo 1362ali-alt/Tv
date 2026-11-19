@@ -2,6 +2,10 @@
 # Starts the local backend (pure-Python, no pip deps) and opens an Edge "app"
 # window (borderless, native-looking). Falls back to the default browser.
 $ErrorActionPreference = "SilentlyContinue"
+# Windows PowerShell 5.1 still defaults to SSL3/TLS1.0, and PyPI/GitHub reject
+# those handshakes - this single line is why the FFmpeg auto-download used to
+# fail silently on older Windows 10 builds.
+try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
 $root = Split-Path -Parent $PSScriptRoot
 if (-not (Test-Path (Join-Path $root "app\iptv_backend.py"))) { $root = Split-Path -Parent $MyInvocation.MyCommand.Path; $root = Split-Path -Parent $root }
 $app    = Join-Path $root "app"
@@ -49,6 +53,20 @@ function Find-Python {
     return $null
 }
 
+function Download-File($url, $out) {
+    # curl.exe ships with Windows 10 1803+ and handles modern TLS reliably;
+    # Invoke-WebRequest stays as the fallback.
+    $curl = Join-Path $env:SystemRoot "System32\curl.exe"
+    if (Test-Path $curl) {
+        & $curl -sSL --tlsv1.2 --retry 2 -o $out $url
+        if ($LASTEXITCODE -eq 0 -and (Test-Path $out)) { return $true }
+    }
+    try {
+        Invoke-WebRequest -UseBasicParsing -TimeoutSec 600 -ErrorAction Stop -Uri $url -OutFile $out
+        return $true
+    } catch { return $false }
+}
+
 # --- ensure ffmpeg (only needed for RTSP / MPEG-TS / UDP sources) ---
 function Ensure-FFmpeg {
     $ff = Join-Path $tools "ffmpeg.exe"
@@ -78,7 +96,7 @@ function Ensure-FFmpeg {
             New-Item -ItemType Directory -Force -Path $tmp | Out-Null
             $zip = Join-Path $tmp "imageio_ffmpeg.zip"
             $x   = Join-Path $tmp "x"
-            Invoke-WebRequest -UseBasicParsing -TimeoutSec 600 -ErrorAction Stop -Uri $u -OutFile $zip
+            if (-not (Download-File $u $zip)) { continue }
             if (Test-Path $x) { Remove-Item -Recurse -Force $x }
             Expand-Archive -Force -Path $zip -DestinationPath $x
             $bin = Get-ChildItem -Recurse $x -Filter "ffmpeg*.exe" | Select-Object -First 1

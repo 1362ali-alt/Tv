@@ -1892,6 +1892,7 @@ function playItem(item, opts) {
       pet.textContent = t("ffmpeg_missing_long",
         "این کانال برای پخش به FFmpeg نیاز دارد (tools\\ffmpeg.exe) و FFmpeg پیدا نشد.");
     }
+    healFfmpeg(item);
     return;
   }
   try {
@@ -1914,6 +1915,30 @@ function playItem(item, opts) {
   video.onwaiting = () => { $("#player-loading").style.display = "flex"; startLoadAnim(); };
   video.onerror = () => { $("#player-loading").style.display = "none"; stopLoadAnim(); $("#player-error").hidden = false; };
 }
+/* The installer's PowerShell download can die on old TLS stacks or an offline
+   install day; the backend fetches the same static Windows build through
+   Python's own TLS while the app runs. Ask it to, poll /api/config, and replay
+   the channel the moment tools\ffmpeg.exe lands - no restart, no user action. */
+function healFfmpeg(item) {
+  if (!(S.config.ffmpeg_fetch || {}).enabled) return;
+  apiPost("/api/ffmpeg/ensure", {}).catch(() => {});
+  clearInterval(S.ffHealTimer);
+  let tries = 0;
+  S.ffHealTimer = setInterval(async () => {
+    tries += 1;
+    let cfg = null;
+    try { cfg = await (await fetch("/api/config")).json(); } catch (e) { cfg = null; }
+    if (cfg && cfg.ffmpeg) {
+      clearInterval(S.ffHealTimer); S.ffHealTimer = null;
+      S.config = cfg;
+      toast(t("ffmpeg_installed", "FFmpeg نصب شد؛ پخش دوباره شروع می‌شود"));
+      if (item) playItem(item, { noAd: true });
+      return;
+    }
+    if (tries > 120) { clearInterval(S.ffHealTimer); S.ffHealTimer = null; }
+  }, 4000);
+}
+
 function stopVideo(hideScreen) {
   reportPlaying("");                    // UpdateClient?name= is empty again
   const video = $("#video");

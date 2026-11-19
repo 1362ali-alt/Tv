@@ -465,7 +465,10 @@ async function main() {
       errors.push("the check does not cover head-end reachability");
     }
     const okBtn = doc.querySelector("#input-ok");
-    console.log("[diag] verdict button =", okBtn.textContent, "| data-i18n =", okBtn.getAttribute("data-i18n"));
+    const ffst = await (await fetch(BASE + "/api/ffmpeg/status")).json();
+  console.log("[diag] ffmpeg self-heal state =", JSON.stringify(ffst));
+  if (typeof ffst.enabled !== "boolean") errors.push("/api/ffmpeg/status lacks the enabled flag");
+  console.log("[diag] verdict button =", okBtn.textContent, "| data-i18n =", okBtn.getAttribute("data-i18n"));
     okBtn.click(); await sleep(500);
     console.log("[diag] after close: dialog hidden =", doc.querySelector("#input-modal").hidden,
       "| list removed =", !doc.querySelector("#diag-list"),

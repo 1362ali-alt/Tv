@@ -1751,6 +1751,11 @@ def set_autostart(on):
 FFMPEG = None
 
 
+# Where the self-heal drop lands: <install>\tools by default, overridable for
+# tests so a verification run never writes into the repository.
+FF_DIR = os.environ.get("IPTV_FFMPEG_DIR") or os.path.join(os.path.dirname(HERE), "tools")
+
+
 def find_ffmpeg():
     global FFMPEG
     if FFMPEG:
@@ -1759,6 +1764,8 @@ def find_ffmpeg():
     env = os.environ.get("IPTV_FFMPEG")
     if env:
         cands.append(env)
+    cands.append(os.path.join(FF_DIR, "ffmpeg.exe"))
+    cands.append(os.path.join(FF_DIR, "ffmpeg"))
     tools = os.path.join(os.path.dirname(HERE), "tools")
     cands.append(os.path.join(tools, "ffmpeg.exe"))
     cands.append(os.path.join(tools, "ffmpeg"))
@@ -1775,6 +1782,102 @@ def find_ffmpeg():
         except Exception:
             continue
     return None
+
+
+# --------------------------------------------------------------------------- #
+# FFmpeg self-heal: the installer's PowerShell download can die on old TLS
+# stacks or a blocked PyPI, and a building LAN is sometimes offline at install
+# time but online later. Python's urllib speaks modern TLS, so the backend can
+# fetch the same static Windows build (the ffmpeg.exe inside the imageio-ffmpeg
+# wheel) into <install>\tools\ while the app runs, and the UI replays the
+# channel the moment it lands.
+# --------------------------------------------------------------------------- #
+FFMPEG_FETCH = {"running": False, "done": False, "error": "", "path": "", "bytes": 0}
+FFMPEG_PINNED = ("https://files.pythonhosted.org/packages/82/0c/a1d49f3dd268bbbd750b4986f8e271ad11f8e729a896070ea25f587b44da8/"
+                 "imageio_ffmpeg-0.8.1-py3-none-win_amd64.whl")
+
+
+def ffmpeg_fetch_enabled():
+    return os.environ.get("IPTV_FFMPEG_FETCH", "1") not in ("0", "false", "no")
+
+
+def ffmpeg_fetch_state():
+    d = dict(FFMPEG_FETCH)
+    d["enabled"] = ffmpeg_fetch_enabled()
+    return d
+
+
+def ensure_ffmpeg(reason=""):
+    if not ffmpeg_fetch_enabled():
+        FFMPEG_FETCH["error"] = "disabled (IPTV_FFMPEG_FETCH=0)"
+        return ffmpeg_fetch_state()
+    if FFMPEG_FETCH["running"] or FFMPEG_FETCH["done"] or find_ffmpeg():
+        return ffmpeg_fetch_state()
+    FFMPEG_FETCH["running"] = True
+    threading.Thread(target=_ffmpeg_fetch_loop, args=(reason,), daemon=True,
+                     name="ffmpeg-fetch").start()
+    return ffmpeg_fetch_state()
+
+
+def _ffmpeg_fetch_loop(reason):
+    global FFMPEG
+    tmp = ""
+    try:
+        CONNECTION.note("ffmpeg: self-heal download started (%s)" % reason)
+        urls = []
+        try:
+            data, _ct, _st = http_get("https://pypi.org/pypi/imageio-ffmpeg/json", timeout=20)
+            for u in json.loads(data.decode("utf-8", "replace")).get("urls", []):
+                if "win_amd64.whl" in (u.get("filename") or ""):
+                    urls.append(u.get("url"))
+        except Exception as e:
+            CONNECTION.note("ffmpeg: PyPI json failed: %r" % (e,))
+        urls.append(FFMPEG_PINNED)
+        os.makedirs(FF_DIR, exist_ok=True)
+        tmp = os.path.join(FF_DIR, "ffmpeg-wheel.zip.tmp")
+        last = None
+        for u in urls:
+            try:
+                req = urllib.request.Request(u, headers={
+                    "User-Agent": "PARDIK-SMART-IPTV-Win/%s" % APP_VERSION_NAME})
+                with _NO_PROXY.open(req, timeout=300) as r, open(tmp, "wb") as f:
+                    while True:
+                        chunk = r.read(1 << 16)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        FFMPEG_FETCH["bytes"] += len(chunk)
+                last = None
+                break
+            except Exception as e:
+                last = e
+        if last is not None:
+            raise last
+        import zipfile as _zf
+        with _zf.ZipFile(tmp) as z:
+            member = next((n for n in z.namelist()
+                           if n.lower().endswith(".exe") and "ffmpeg" in n.lower()), None)
+            if not member:
+                raise IOError("no ffmpeg exe inside the wheel")
+            blob = z.read(member)
+        dest = os.path.join(FF_DIR, "ffmpeg.exe")
+        with open(dest, "wb") as f:
+            f.write(blob)
+        FFMPEG = None
+        ok = bool(find_ffmpeg())
+        FFMPEG_FETCH.update(running=False, done=True, path=dest if ok else "",
+                            error="" if ok else "extracted but -version failed")
+        CONNECTION.note("ffmpeg: installed to %s (ok=%s, %d bytes)"
+                        % (dest, ok, FFMPEG_FETCH["bytes"]))
+    except Exception as e:
+        FFMPEG_FETCH.update(running=False, done=False, error=str(e))
+        CONNECTION.note("ffmpeg: self-heal failed: %r" % (e,))
+    finally:
+        try:
+            if tmp and os.path.exists(tmp):
+                os.remove(tmp)
+        except Exception:
+            pass
 
 
 class StreamSession(object):
@@ -2237,6 +2340,7 @@ class Handler(BaseHTTPRequestHandler):
                     "local_ip": detect_local_ip(),
                     "mac": SETTINGS.get("device_mac"),
                     "ffmpeg": bool(find_ffmpeg()),
+                    "ffmpeg_fetch": ffmpeg_fetch_state(),
                     "streams": STREAMS.status(),
                     "ws": {"prg": bool(WS.prg and WS.prg.connected),
                            "vol": bool(WS.vol and WS.vol.connected),
@@ -2265,6 +2369,8 @@ class Handler(BaseHTTPRequestHandler):
                 SETTINGS.d["device_iface_kind"] = NETWORK.get("kind", "unknown")
                 SETTINGS.save()
                 return self._json({"ok": True, "network": NETWORK})
+            if path == "/api/ffmpeg/status":
+                return self._json(ffmpeg_fetch_state())
             if path == "/api/connection":
                 # BaseApplication.isConnected() + PingServerActivity state: the
                 # UI reads this to know whether the live-TV menu may open.
@@ -2330,6 +2436,10 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(body.decode("utf-8")) if body else {}
         except Exception:
             data = {}
+        if u.path == "/api/ffmpeg/ensure":
+            # the player's "needs FFmpeg" banner asks the backend to fetch the
+            # static build in the background (Python TLS, not PowerShell).
+            return self._json(ensure_ffmpeg("player banner"))
         if u.path == "/api/settings":
             # SettingsActivity.onClick(): an IP field that contains letters is
             # checked as a domain, otherwise it must be a dotted quad; either

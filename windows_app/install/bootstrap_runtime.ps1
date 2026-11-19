@@ -2,6 +2,7 @@
 # so the app runs with ZERO preinstalled dependencies. The backend is pure
 # stdlib, so the embeddable distribution (python.exe + python3x.zip) is enough.
 $ErrorActionPreference = "Stop"
+try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
 $root = Split-Path -Parent $PSScriptRoot
 $dest = Join-Path $root "runtime\python"
 if (Test-Path (Join-Path $dest "python.exe")) { Write-Host "Python already present."; exit 0 }
