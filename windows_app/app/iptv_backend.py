@@ -426,7 +426,14 @@ def api_get(endpoint, params=None, timeout=TIMEOUT):
         except Exception as e:
             last = e
             continue
-        return json.loads(data.decode("utf-8", "replace"))
+        try:
+            return json.loads(data.decode("utf-8", "replace"))
+        except ValueError as e:
+            # 200 but not JSON (captive portal, proxy error page, wrong
+            # deployment shape) - the /iptv2/manager/ form must still get
+            # its chance instead of dying on the first base.
+            last = e
+            continue
     if isinstance(last, Exception):
         raise last
     raise IOError("no response")
@@ -2061,12 +2068,18 @@ def udp_bind_url(url):
     multicast never arrives (VLC shows its cone, ffmpeg reads zero bytes).
     ffmpeg's udp protocol accepts ?localaddr= to choose the membership
     interface, so hand it the wired LAN address we already know."""
-    if not url or not url.startswith(("udp://", "rtp://")) or "?" in url:
+    if not url or not url.startswith(("udp://", "rtp://")):
         return url
     lip = NETWORK.get("ip") or ""
     if not lip or lip.startswith("169.254."):
+        # the NIC may have gotten its address only after boot probed it
+        try:
+            lip = detect_local_ip() or ""
+        except Exception:
+            lip = ""
+    if not lip or lip.startswith("169.254.") or "localaddr=" in url:
         return url
-    return url + "?localaddr=" + lip
+    return url + ("&" if "?" in url else "?") + "localaddr=" + lip
 
 
 MULTICAST = {"url": "", "bytes": -1, "at": 0.0, "error": ""}
@@ -2092,7 +2105,7 @@ def schedule_multicast_probe(chans, force=False):
 
 def _multicast_probe(url, local_ip, secs=2.5):
     """Join the group like a player would and count bytes for `secs`."""
-    m = re.match(r"udp://([^:/?]+):(\d+)", url or "")
+    m = re.match(r"(?:udp|rtp)://@?([^:/?@]+):(\d+)", url or "")
     if not m:
         return 0, "bad url"
     grp, port = m.group(1), int(m.group(2))
@@ -2243,11 +2256,28 @@ class StreamSession(object):
         if not ff:
             self.error = "ffmpeg-missing"
             return False
-        args = [ff, "-hide_banner", "-loglevel", "error", "-y"]
+        # -loglevel info: the banner carries "Video: h264 / Audio: mp2" -
+        # _drain parses it, so no SECOND ffmpeg session has to probe the
+        # stream (an RTSP head-end may allow only one session per client,
+        # and two ffmpegs on one multicast group doubles the loss).
+        args = [ff, "-hide_banner", "-loglevel", "info", "-y"]
         if self.protocol == "rtsp":
             args += ["-rtsp_transport", "tcp"]
+        if self.protocol in ("udp", "rtp"):
+            # Windows drops high-bitrate multicast without a bigger socket
+            # buffer and ffmpeg's ring; overrun_nonfatal keeps it alive
+            # instead of aborting mid-stream.
+            args += ["-buffer_size", "2097152",
+                     "-fifo_size", "1000000",
+                     "-overrun_nonfatal", "1"]
+        # IRIB and satellite feeds carry MP2/AC3 audio and sometimes MPEG-2
+        # video; Edge's MSE plays none of those from a copied TS. Video is
+        # usually H.264 and stays copied (transcoding it would need a GPU
+        # budget a hotel PC does not have); audio is always re-encoded to
+        # AAC, which every MSE implementation decodes.
         args += ["-i", udp_bind_url(self.source),
-                 "-c", "copy",
+                 "-c:v", "copy",
+                 "-c:a", "aac", "-b:a", "192k", "-ac", "2", "-ar", "48000",
                  "-f", "hls",
                  "-hls_time", "2",
                  "-hls_list_size", "6",
@@ -2265,39 +2295,35 @@ class StreamSession(object):
         # forever mid-remux - which on a chatty stream looks exactly like
         # "Decoding video failed!" in the browser. Drain it, keep the tail.
         threading.Thread(target=self._drain, daemon=True, name="ff-stderr").start()
-        threading.Thread(target=self._probe, daemon=True, name="ff-probe").start()
         return True
 
     def _drain(self):
+        """Keep the stderr tail for diagnostics AND read the real codec out
+        of ffmpeg's own banner (an H.265/MPEG-2 head-end cannot be decoded
+        by Edge's MSE - the player must say so and hand over to VLC). The
+        banner arrives on the remux process itself, so no second ffmpeg
+        session is opened against the head-end."""
         try:
+            v = a = ""
             for line in iter(self.proc.stderr.readline, b""):
                 txt = line.decode("utf-8", "replace").strip()
-                if txt:
-                    self.log.append(txt)
-        except Exception:
-            pass
-
-    def _probe(self):
-        """Read the stream header once so the UI can name the real codec
-        (an H.265 head-end cannot be decoded by Edge's MSE - the player must
-        say so and hand over to VLC instead of a generic banner)."""
-        try:
-            ff = find_ffmpeg()
-            if not ff:
-                return
-            p = subprocess.Popen([ff, "-hide_banner", "-i", udp_bind_url(self.source),
-                                  "-t", "0", "-f", "null", "-"],
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-            try:
-                err = (p.communicate(timeout=8)[1] or b"").decode("utf-8", "replace")
-            except Exception:
-                try: p.kill()
-                except Exception: pass
-                return
-            v = re.search(r"Video: ([^,\r\n]+)", err)
-            a = re.search(r"Audio: ([^,\r\n]+)", err)
-            self.codec = " / ".join(x.group(1).strip() for x in (v, a) if x)
+                if not txt:
+                    continue
+                if not v:
+                    m = re.search(r"Video: ([^,\r\n]+)", txt)
+                    if m:
+                        v = m.group(1).strip()
+                        self.codec = " / ".join(x for x in (v, a) if x)
+                        continue
+                if not a:
+                    m = re.search(r"Audio: ([^,\r\n]+)", txt)
+                    if m:
+                        a = m.group(1).strip()
+                        self.codec = " / ".join(x for x in (v, a) if x)
+                        continue
+                if txt.startswith("frame="):
+                    continue          # progress spam: keep the tail readable
+                self.log.append(txt)
         except Exception:
             pass
 

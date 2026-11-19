@@ -26,7 +26,8 @@ if [ "$MODE" = "source" ]; then
     cp -r windows_app/install "$STAGE/PARDIK-SOURCE/" 2>/dev/null || true
     cp -r windows_app/tools "$STAGE/PARDIK-SOURCE/" 2>/dev/null || true
     cp windows_app/PORTABLE.bat windows_app/PARDIK-SMART-IPTV.bat \
-       windows_app/PARDIK-SMART-IPTV-silent.vbs windows_app/headend.txt \
+       windows_app/PARDIK-SMART-IPTV-silent.vbs windows_app/DIAGNOSE.bat \
+       windows_app/headend.txt \
        windows_app/README-FA.md windows_app/README-EN.md \
        windows_app/README-PORTABLE-FA.md "$STAGE/PARDIK-SOURCE/" 2>/dev/null || true
     cp analysis/REVERSE_ENGINEERING_REPORT.md "$STAGE/PARDIK-SOURCE/" 2>/dev/null || true
@@ -50,6 +51,7 @@ cp -r windows_app/app_assets "$STAGE/PARDIK-SMART-IPTV/app_assets"
 cp -r windows_app/install "$STAGE/PARDIK-SMART-IPTV/install"
 cp -r windows_app/tools "$STAGE/PARDIK-SMART-IPTV/tools"
 cp windows_app/PARDIK-SMART-IPTV.bat windows_app/PARDIK-SMART-IPTV-silent.vbs \
+   windows_app/DIAGNOSE.bat \
    windows_app/README-FA.md windows_app/README-EN.md "$STAGE/PARDIK-SMART-IPTV/"
 # every screenshot of the title bar must identify the exact build running
 COMMIT=$(git -C /home/user/Tv rev-parse --short HEAD 2>/dev/null || echo unknown)
