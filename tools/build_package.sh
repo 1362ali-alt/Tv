@@ -57,6 +57,7 @@ printf '{"commit": "%s", "date": "%s"}\n' "$COMMIT" "$(date -u +%Y%m%d-%H%M)" \
 if [ "$MODE" = "portable" ]; then
     # everything stays inside the folder: data_dir() sees portable.flag
     printf 'portable\r\n' > "$STAGE/PARDIK-SMART-IPTV/portable.flag"
+    cp windows_app/PORTABLE.bat "$STAGE/PARDIK-SMART-IPTV/PORTABLE.bat"
     cp windows_app/README-PORTABLE-FA.md "$STAGE/PARDIK-SMART-IPTV/README-PORTABLE-FA.md"
 fi
 # launch.ps1 reads mode.txt to pick the deployment flavour (IPTV_MODE)
