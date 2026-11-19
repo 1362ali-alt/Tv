@@ -1,0 +1,1090 @@
+{
+ "anim": {
+  "abc_fade_in": [
+   "res/vp.xml"
+  ],
+  "abc_fade_out": [
+   "res/gT.xml"
+  ],
+  "abc_grow_fade_in_from_bottom": [
+   "res/HA.xml"
+  ],
+  "abc_popup_enter": [
+   "res/N9.xml"
+  ],
+  "abc_popup_exit": [
+   "res/eU.xml"
+  ],
+  "abc_shrink_fade_out_from_bottom": [
+   "res/v2.xml"
+  ],
+  "abc_slide_in_bottom": [
+   "res/z3.xml"
+  ],
+  "abc_slide_in_top": [
+   "res/qQ.xml"
+  ],
+  "abc_slide_out_bottom": [
+   "res/v8.xml"
+  ],
+  "abc_slide_out_top": [
+   "res/jR1.xml"
+  ],
+  "abc_tooltip_enter": [
+   "res/6e.xml"
+  ],
+  "abc_tooltip_exit": [
+   "res/Gn.xml"
+  ],
+  "btn_checkbox_to_checked_box_inner_merged_animation": [
+   "res/q1.xml"
+  ],
+  "btn_checkbox_to_checked_box_outer_merged_animation": [
+   "res/on.xml"
+  ],
+  "btn_checkbox_to_checked_icon_null_animation": [
+   "res/Rx1.xml"
+  ],
+  "btn_checkbox_to_unchecked_box_inner_merged_animation": [
+   "res/Al.xml"
+  ],
+  "btn_checkbox_to_unchecked_check_path_merged_animation": [
+   "res/Ve.xml"
+  ],
+  "btn_checkbox_to_unchecked_icon_null_animation": [
+   "res/V1.xml"
+  ],
+  "btn_radio_to_off_mtrl_dot_group_animation": [
+   "res/_l1.xml"
+  ],
+  "btn_radio_to_off_mtrl_ring_outer_animation": [
+   "res/AA.xml"
+  ],
+  "btn_radio_to_off_mtrl_ring_outer_path_animation": [
+   "res/WO.xml"
+  ],
+  "btn_radio_to_on_mtrl_dot_group_animation": [
+   "res/Df.xml"
+  ],
+  "btn_radio_to_on_mtrl_ring_outer_animation": [
+   "res/Kv.xml"
+  ],
+  "btn_radio_to_on_mtrl_ring_outer_path_animation": [
+   "res/Ow.xml"
+  ],
+  "design_bottom_sheet_slide_in": [
+   "res/pT1.xml",
+   "res/2p2.xml"
+  ],
+  "design_bottom_sheet_slide_out": [
+   "res/_8.xml",
+   "res/lf.xml"
+  ],
+  "design_snackbar_in": [
+   "res/R2.xml"
+  ],
+  "design_snackbar_out": [
+   "res/MC.xml"
+  ],
+  "fade_in": [
+   "res/CP.xml"
+  ],
+  "fade_out": [
+   "res/Aj.xml"
+  ],
+  "fragment_fast_out_extra_slow_in": [
+   "res/4w1.xml",
+   "res/qK.xml"
+  ],
+  "mtrl_bottom_sheet_slide_in": [
+   "res/lZ.xml",
+   "res/c4.xml"
+  ],
+  "mtrl_bottom_sheet_slide_out": [
+   "res/mZ.xml",
+   "res/qL1.xml"
+  ],
+  "mtrl_card_lowers_interpolator": [
+   "res/bn.xml"
+  ],
+  "translate_from_b": [
+   "res/jG1.xml"
+  ],
+  "translate_to_b": [
+   "res/7E2.xml"
+  ],
+  "window_anim_in": [
+   "res/mL1.xml"
+  ],
+  "window_anim_out": [
+   "res/sO.xml"
+  ]
+ },
+ "animator": {
+  "design_fab_hide_motion_spec": [
+   "res/SQ.xml"
+  ],
+  "design_fab_show_motion_spec": [
+   "res/wG.xml"
+  ],
+  "fragment_close_enter": [
+   "res/s6.xml"
+  ],
+  "fragment_close_exit": [
+   "res/dp.xml"
+  ],
+  "fragment_fade_enter": [
+   "res/YQ.xml"
+  ],
+  "fragment_fade_exit": [
+   "res/tb.xml"
+  ],
+  "fragment_open_enter": [
+   "res/xs.xml"
+  ],
+  "fragment_open_exit": [
+   "res/PF1.xml"
+  ],
+  "mtrl_btn_state_list_anim": [
+   "res/rJ.xml"
+  ],
+  "mtrl_btn_unelevated_state_list_anim": [
+   "res/n6.xml"
+  ],
+  "mtrl_card_state_list_anim": [
+   "res/u3.xml"
+  ],
+  "mtrl_chip_state_list_anim": [
+   "res/q01.xml"
+  ],
+  "mtrl_extended_fab_change_size_motion_spec": [
+   "res/1g.xml"
+  ],
+  "mtrl_extended_fab_hide_motion_spec": [
+   "res/vl.xml"
+  ],
+  "mtrl_extended_fab_show_motion_spec": [
+   "res/Sf.xml"
+  ],
+  "mtrl_extended_fab_state_list_animator": [
+   "res/HE.xml"
+  ],
+  "mtrl_fab_hide_motion_spec": [
+   "res/wo.xml"
+  ],
+  "mtrl_fab_show_motion_spec": [
+   "res/o1.xml"
+  ],
+  "mtrl_fab_transformation_sheet_collapse_spec": [
+   "res/bT1.xml"
+  ],
+  "mtrl_fab_transformation_sheet_expand_spec": [
+   "res/xy.xml"
+  ],
+  "design_appbar_state_list_animator": [
+   "res/Gz.xml"
+  ]
+ },
+ "layout": {
+  "abc_action_bar_title_item": [
+   "res/cf.xml"
+  ],
+  "abc_action_bar_up_container": [
+   "res/r-.xml"
+  ],
+  "abc_action_menu_item_layout": [
+   "res/B8.xml"
+  ],
+  "abc_action_menu_layout": [
+   "res/Rq.xml"
+  ],
+  "abc_action_mode_bar": [
+   "res/jI.xml"
+  ],
+  "abc_action_mode_close_item_material": [
+   "res/zq.xml"
+  ],
+  "abc_activity_chooser_view": [
+   "res/vH1.xml"
+  ],
+  "abc_activity_chooser_view_list_item": [
+   "res/TK.xml"
+  ],
+  "abc_alert_dialog_button_bar_material": [
+   "res/vD.xml",
+   "res/LN.xml",
+   "res/Y-.xml"
+  ],
+  "abc_alert_dialog_material": [
+   "res/m6.xml"
+  ],
+  "abc_alert_dialog_title_material": [
+   "res/Ig.xml",
+   "res/fL.xml"
+  ],
+  "abc_cascading_menu_item_layout": [
+   "res/75.xml"
+  ],
+  "abc_dialog_title_material": [
+   "res/zH.xml"
+  ],
+  "abc_expanded_menu_layout": [
+   "res/43.xml"
+  ],
+  "abc_list_menu_item_checkbox": [
+   "res/65.xml"
+  ],
+  "abc_list_menu_item_icon": [
+   "res/R6.xml"
+  ],
+  "abc_list_menu_item_layout": [
+   "res/-Y1.xml"
+  ],
+  "abc_list_menu_item_radio": [
+   "res/-o.xml"
+  ],
+  "abc_popup_menu_header_item_layout": [
+   "res/vc.xml"
+  ],
+  "abc_popup_menu_item_layout": [
+   "res/XS.xml"
+  ],
+  "abc_screen_content_include": [
+   "res/8s1.xml"
+  ],
+  "abc_screen_simple": [
+   "res/jw.xml"
+  ],
+  "abc_screen_simple_overlay_action_mode": [
+   "res/NU1.xml"
+  ],
+  "abc_screen_toolbar": [
+   "res/Ey.xml",
+   "res/4C.xml",
+   "res/kB.xml"
+  ],
+  "abc_search_dropdown_item_icons_2line": [
+   "res/o-.xml"
+  ],
+  "abc_search_view": [
+   "res/e11.xml"
+  ],
+  "abc_select_dialog_material": [
+   "res/b91.xml"
+  ],
+  "abc_tooltip": [
+   "res/UO.xml"
+  ],
+  "activity_app": [
+   "res/YV.xml",
+   "res/Bd.xml"
+  ],
+  "activity_boot_video": [
+   "res/0q.xml"
+  ],
+  "activity_consume": [
+   "res/qL.xml"
+  ],
+  "activity_hotel_intro_album": [
+   "res/O81.xml"
+  ],
+  "activity_hotel_introduce": [
+   "res/j0.xml"
+  ],
+  "activity_live_package": [
+   "res/a1.xml"
+  ],
+  "activity_live_player": [
+   "res/q0.xml"
+  ],
+  "activity_live_player_back": [
+   "res/EU.xml"
+  ],
+  "activity_live_player_ijk": [
+   "res/4J.xml",
+   "res/Uk.xml"
+  ],
+  "activity_live_player_ijk_back": [
+   "res/e4.xml"
+  ],
+  "activity_live_player_ijk_with_package": [
+   "res/cD.xml"
+  ],
+  "activity_main_ijk_style_fourth": [
+   "res/Ws.xml",
+   "res/OO.xml"
+  ],
+  "activity_main_ijk_style_third": [
+   "res/Zf.xml"
+  ],
+  "activity_main_style_first": [
+   "res/DX.xml"
+  ],
+  "activity_main_style_second": [
+   "res/pO.xml"
+  ],
+  "activity_music": [
+   "res/Ur.xml",
+   "res/er.xml"
+  ],
+  "activity_music_detail": [
+   "res/fp.xml",
+   "res/yJ.xml",
+   "res/Pt.xml"
+  ],
+  "activity_my_history_order": [
+   "res/f0.xml"
+  ],
+  "activity_my_order": [
+   "res/jO.xml"
+  ],
+  "activity_ping_server": [
+   "res/Yj.xml"
+  ],
+  "activity_play_force_program": [
+   "res/0z.xml"
+  ],
+  "activity_rec_player": [
+   "res/VW.xml"
+  ],
+  "activity_record": [
+   "res/aQ.xml"
+  ],
+  "activity_record_epg": [
+   "res/C5.xml",
+   "res/u-.xml"
+  ],
+  "activity_rent_things": [
+   "res/KC.xml"
+  ],
+  "activity_scenery": [
+   "res/Xq.xml",
+   "res/EQ.xml"
+  ],
+  "activity_scenery_detail": [
+   "res/z5.xml",
+   "res/wy.xml"
+  ],
+  "activity_settings": [
+   "res/_0.xml"
+  ],
+  "activity_special_catering_back": [
+   "res/sP.xml"
+  ],
+  "activity_style_three_music": [
+   "res/O4.xml"
+  ],
+  "activity_style_three_service_record": [
+   "res/Hh.xml"
+  ],
+  "activity_vod_detail": [
+   "res/8h.xml"
+  ],
+  "activity_vod_new": [
+   "res/Ms.xml",
+   "res/ne.xml"
+  ],
+  "activity_vod_player": [
+   "res/e1.xml"
+  ],
+  "activity_vod_player_ijk": [
+   "res/2h.xml"
+  ],
+  "activity_wake_up": [
+   "res/rD.xml"
+  ],
+  "activity_welcome": [
+   "res/eq.xml",
+   "res/-Y.xml"
+  ],
+  "activity_welcome_style_other": [
+   "res/H7.xml",
+   "res/b-.xml"
+  ],
+  "adapter_hotel_service_layout": [
+   "res/DD.xml"
+  ],
+  "adapter_main_menu_layout": [
+   "res/qS1.xml"
+  ],
+  "adapter_main_menu_two_layout": [
+   "res/zY.xml"
+  ],
+  "adapter_scenery_item": [
+   "res/15.xml",
+   "res/y4.xml"
+  ],
+  "adapter_scenery_layout": [
+   "res/Pd.xml"
+  ],
+  "assistant_air_quality": [
+   "res/Lh.xml"
+  ],
+  "assistant_basic": [
+   "res/ib.xml"
+  ],
+  "assistant_captcha": [
+   "res/Nr.xml"
+  ],
+  "assistant_date": [
+   "res/Hp.xml"
+  ],
+  "assistant_guide": [
+   "res/nq.xml"
+  ],
+  "assistant_limit": [
+   "res/vj.xml"
+  ],
+  "assistant_limit_forecast": [
+   "res/X4.xml"
+  ],
+  "assistant_qr_code": [
+   "res/0R.xml"
+  ],
+  "assistant_slide_image": [
+   "res/Mv.xml"
+  ],
+  "assistant_slide_image_text": [
+   "res/S6.xml"
+  ],
+  "assistant_slide_texts": [
+   "res/Fv.xml"
+  ],
+  "assistant_slides": [
+   "res/dU.xml"
+  ],
+  "assistant_stock": [
+   "res/8O.xml"
+  ],
+  "assistant_stock_forecast": [
+   "res/xA.xml"
+  ],
+  "assistant_text": [
+   "res/VU.xml"
+  ],
+  "assistant_tips_text": [
+   "res/0K.xml"
+  ],
+  "assistant_weather": [
+   "res/No.xml"
+  ],
+  "assistant_weather_forecast": [
+   "res/1W.xml"
+  ],
+  "brvah_quick_view_load_more": [
+   "res/gn.xml"
+  ],
+  "common_ui_full_duplex_layout": [
+   "res/oi.xml",
+   "res/6A.xml",
+   "res/d01.xml"
+  ],
+  "common_ui_voice_hint_view": [
+   "res/wa.xml",
+   "res/Yo.xml"
+  ],
+  "consume_list_item": [
+   "res/4_.xml"
+  ],
+  "custom_dialog": [
+   "res/aA.xml"
+  ],
+  "design_bottom_navigation_item": [
+   "res/Hy.xml"
+  ],
+  "design_bottom_sheet_dialog": [
+   "res/38.xml"
+  ],
+  "design_layout_snackbar": [
+   "res/-c.xml",
+   "res/ZF.xml"
+  ],
+  "design_layout_snackbar_include": [
+   "res/BA.xml"
+  ],
+  "design_layout_tab_icon": [
+   "res/3x.xml"
+  ],
+  "design_layout_tab_text": [
+   "res/mN.xml"
+  ],
+  "design_menu_item_action_area": [
+   "res/Za.xml"
+  ],
+  "design_navigation_item": [
+   "res/rt.xml"
+  ],
+  "design_navigation_item_header": [
+   "res/9A.xml"
+  ],
+  "design_navigation_item_separator": [
+   "res/cs.xml"
+  ],
+  "design_navigation_item_subheader": [
+   "res/O8.xml"
+  ],
+  "design_navigation_menu": [
+   "res/Uz.xml"
+  ],
+  "design_navigation_menu_item": [
+   "res/vz.xml"
+  ],
+  "design_text_input_end_icon": [
+   "res/t9.xml"
+  ],
+  "design_text_input_start_icon": [
+   "res/Ej.xml"
+  ],
+  "dialob_select_vod_num": [
+   "res/kK.xml"
+  ],
+  "dialog_commom": [
+   "res/KA.xml"
+  ],
+  "dialog_house_keeper_service": [
+   "res/6p.xml"
+  ],
+  "dialog_one_key_check_out": [
+   "res/Bu.xml"
+  ],
+  "dialog_wash_closhes_service": [
+   "res/vL.xml"
+  ],
+  "dlp_connect": [
+   "res/mo.xml"
+  ],
+  "dlp_result": [
+   "res/ir.xml"
+  ],
+  "dlp_speaker_item": [
+   "res/Ui.xml"
+  ],
+  "en_floating_view": [
+   "res/bp.xml"
+  ],
+  "exception_layout": [
+   "res/p3.xml"
+  ],
+  "fragment_four_app": [
+   "res/v1.xml",
+   "res/NU.xml"
+  ],
+  "fragment_style_four_program_rec": [
+   "res/r3.xml"
+  ],
+  "fragment_style_one_apps": [
+   "res/iI.xml"
+  ],
+  "fragment_style_one_enjoy_music": [
+   "res/u2.xml"
+  ],
+  "fragment_style_one_home_page": [
+   "res/3M.xml"
+  ],
+  "fragment_style_one_hotel_guide": [
+   "res/8s.xml"
+  ],
+  "fragment_style_one_landscape": [
+   "res/nQ.xml"
+  ],
+  "fragment_style_one_movie_vod": [
+   "res/IB.xml"
+  ],
+  "fragment_style_one_personal_bills": [
+   "res/kJ.xml"
+  ],
+  "fragment_style_one_program_rec_epg": [
+   "res/ps.xml",
+   "res/Wa.xml"
+  ],
+  "fragment_style_one_room_service": [
+   "res/3N.xml"
+  ],
+  "fragment_style_one_smart_cast_screen": [
+   "res/6F.xml"
+  ],
+  "fragment_style_one_special_dining": [
+   "res/xj.xml"
+  ],
+  "fragment_style_one_tv_live": [
+   "res/rQ.xml"
+  ],
+  "fragment_style_three_program_rec": [
+   "res/3k.xml"
+  ],
+  "fragment_style_two_apps": [
+   "res/AE1.xml"
+  ],
+  "fragment_style_two_enjoy_music": [
+   "res/hS.xml"
+  ],
+  "fragment_style_two_home_page": [
+   "res/HZ.xml"
+  ],
+  "fragment_style_two_hotel_guide": [
+   "res/gg.xml"
+  ],
+  "fragment_style_two_landscape": [
+   "res/s3.xml"
+  ],
+  "fragment_style_two_movie_vod": [
+   "res/y0.xml"
+  ],
+  "fragment_style_two_personal_bills": [
+   "res/Rk.xml"
+  ],
+  "fragment_style_two_program_rec_epg": [
+   "res/fU.xml",
+   "res/e5.xml"
+  ],
+  "fragment_style_two_room_service": [
+   "res/8l.xml"
+  ],
+  "fragment_style_two_smart_cast_screen": [
+   "res/FO.xml"
+  ],
+  "fragment_style_two_special_dining": [
+   "res/47.xml"
+  ],
+  "fragment_style_two_tv_live": [
+   "res/_6.xml"
+  ],
+  "fragment_third_app": [
+   "res/H11.xml",
+   "res/Oy.xml"
+  ],
+  "fragment_vod": [
+   "res/bT.xml"
+  ],
+  "gallery_item_image": [
+   "res/zI.xml"
+  ],
+  "grid_item_app": [
+   "res/pj.xml"
+  ],
+  "guide_home_page_layout": [
+   "res/jP.xml"
+  ],
+  "guide_video_layout": [
+   "res/IO.xml"
+  ],
+  "item_catering_category_name": [
+   "res/sw.xml"
+  ],
+  "item_catering_detail": [
+   "res/2T.xml"
+  ],
+  "item_hot_video": [
+   "res/MQ.xml"
+  ],
+  "item_hotel_intro": [
+   "res/Ka.xml"
+  ],
+  "item_hotel_intro_album": [
+   "res/X7.xml"
+  ],
+  "item_main_menu": [
+   "res/6g.xml"
+  ],
+  "item_my_history_order": [
+   "res/Cp.xml"
+  ],
+  "item_my_order": [
+   "res/jR.xml"
+  ],
+  "item_rent_things": [
+   "res/nU.xml"
+  ],
+  "item_style_four_hotel_guide": [
+   "res/Nf.xml"
+  ],
+  "item_style_four_menu": [
+   "res/QZ.xml",
+   "res/GL.xml"
+  ],
+  "item_style_four_movie_vod_poster": [
+   "res/tJ.xml"
+  ],
+  "item_style_one_personal_bills": [
+   "res/gY.xml"
+  ],
+  "item_style_one_program_list": [
+   "res/1J.xml"
+  ],
+  "item_style_one_room_service": [
+   "res/OD.xml",
+   "res/LQ.xml"
+  ],
+  "item_style_three_hotel_guide": [
+   "res/V6.xml"
+  ],
+  "item_style_three_music": [
+   "res/t7.xml"
+  ],
+  "item_style_three_program_rec": [
+   "res/Zg.xml"
+  ],
+  "item_style_three_service_record": [
+   "res/4w.xml"
+  ],
+  "item_style_two_apps": [
+   "res/_Y.xml"
+  ],
+  "item_style_two_cast_screen_step": [
+   "res/xa.xml"
+  ],
+  "item_style_two_enjoy_music": [
+   "res/J5.xml"
+  ],
+  "item_style_two_landscape": [
+   "res/m8.xml"
+  ],
+  "item_style_two_movie_vod_poster": [
+   "res/7x.xml"
+  ],
+  "item_style_two_personal_bills": [
+   "res/I5.xml"
+  ],
+  "item_style_two_program_list": [
+   "res/H1.xml"
+  ],
+  "item_style_two_room_service": [
+   "res/Gx.xml",
+   "res/o5.xml"
+  ],
+  "item_style_two_special_dining": [
+   "res/rC.xml"
+  ],
+  "item_tv_catering_category_name": [
+   "res/tV.xml"
+  ],
+  "item_video_poster": [
+   "res/2F.xml"
+  ],
+  "layout_dialog": [
+   "res/9J.xml"
+  ],
+  "layout_head": [
+   "res/mq.xml"
+  ],
+  "layout_loading_wrapper": [
+   "res/PK.xml"
+  ],
+  "layout_vod_select_play_dialog": [
+   "res/c3.xml"
+  ],
+  "live_package_list_item": [
+   "res/5q.xml"
+  ],
+  "live_prog_package_list_item": [
+   "res/Jw.xml",
+   "res/7E.xml"
+  ],
+  "marqueen_text_view": [
+   "res/Z3.xml"
+  ],
+  "menu_rec_player": [
+   "res/d0.xml",
+   "res/_j.xml"
+  ],
+  "menu_vod_player": [
+   "res/WR.xml",
+   "res/xE.xml"
+  ],
+  "mtrl_alert_dialog": [
+   "res/AK.xml"
+  ],
+  "mtrl_alert_dialog_actions": [
+   "res/vM.xml",
+   "res/Os.xml"
+  ],
+  "mtrl_alert_dialog_title": [
+   "res/va.xml"
+  ],
+  "mtrl_alert_select_dialog_item": [
+   "res/DF.xml"
+  ],
+  "mtrl_alert_select_dialog_multichoice": [
+   "res/vP.xml"
+  ],
+  "mtrl_alert_select_dialog_singlechoice": [
+   "res/Ru.xml"
+  ],
+  "mtrl_calendar_day": [
+   "res/YA.xml"
+  ],
+  "mtrl_calendar_day_of_week": [
+   "res/UU.xml"
+  ],
+  "mtrl_calendar_days_of_week": [
+   "res/Ex.xml"
+  ],
+  "mtrl_calendar_horizontal": [
+   "res/6J.xml"
+  ],
+  "mtrl_calendar_month": [
+   "res/Wn.xml",
+   "res/ZW.xml"
+  ],
+  "mtrl_calendar_month_labeled": [
+   "res/rX.xml"
+  ],
+  "mtrl_calendar_month_navigation": [
+   "res/ew.xml"
+  ],
+  "mtrl_calendar_months": [
+   "res/_d1.xml"
+  ],
+  "mtrl_calendar_vertical": [
+   "res/bl.xml"
+  ],
+  "mtrl_calendar_year": [
+   "res/HQ.xml"
+  ],
+  "mtrl_layout_snackbar": [
+   "res/b9.xml",
+   "res/3h.xml"
+  ],
+  "mtrl_layout_snackbar_include": [
+   "res/a2.xml"
+  ],
+  "mtrl_picker_actions": [
+   "res/WT.xml"
+  ],
+  "mtrl_picker_dialog": [
+   "res/yx.xml"
+  ],
+  "mtrl_picker_fullscreen": [
+   "res/d2.xml"
+  ],
+  "mtrl_picker_header_dialog": [
+   "res/5A.xml",
+   "res/NA.xml"
+  ],
+  "mtrl_picker_header_fullscreen": [
+   "res/j9.xml"
+  ],
+  "mtrl_picker_header_selection_text": [
+   "res/V9.xml"
+  ],
+  "mtrl_picker_header_title_text": [
+   "res/iw.xml"
+  ],
+  "mtrl_picker_header_toggle": [
+   "res/4G.xml"
+  ],
+  "mtrl_picker_text_input_date": [
+   "res/aR.xml"
+  ],
+  "mtrl_picker_text_input_date_range": [
+   "res/em.xml"
+  ],
+  "music_type_list_item": [
+   "res/PP.xml",
+   "res/qn.xml"
+  ],
+  "mz_banner_effect_layout": [
+   "res/hi.xml"
+  ],
+  "mz_banner_normal_layout": [
+   "res/zW.xml"
+  ],
+  "notification_action": [
+   "res/8r.xml",
+   "res/DS.xml"
+  ],
+  "notification_action_tombstone": [
+   "res/BB.xml",
+   "res/4W.xml"
+  ],
+  "notification_media_action": [
+   "res/cH.xml"
+  ],
+  "notification_media_cancel_action": [
+   "res/A1.xml"
+  ],
+  "notification_template_big_media": [
+   "res/kM.xml"
+  ],
+  "notification_template_big_media_custom": [
+   "res/GQ.xml"
+  ],
+  "notification_template_big_media_narrow": [
+   "res/gW.xml"
+  ],
+  "notification_template_big_media_narrow_custom": [
+   "res/ya.xml"
+  ],
+  "notification_template_custom_big": [
+   "res/UT.xml",
+   "res/C7.xml"
+  ],
+  "notification_template_icon_group": [
+   "res/u6.xml",
+   "res/SS.xml"
+  ],
+  "notification_template_lines_media": [
+   "res/XB.xml"
+  ],
+  "notification_template_media": [
+   "res/kI.xml"
+  ],
+  "notification_template_media_custom": [
+   "res/4c.xml"
+  ],
+  "notification_template_part_chronometer": [
+   "res/iL.xml"
+  ],
+  "notification_template_part_time": [
+   "res/SH.xml"
+  ],
+  "picker_item": [
+   "res/GN.xml"
+  ],
+  "popup_order_food": [
+   "res/mV.xml"
+  ],
+  "popup_window_vod_play_list": [
+   "res/Th.xml"
+  ],
+  "popupwindow_main_service_layout": [
+   "res/WP.xml"
+  ],
+  "program_list_item": [
+   "res/gd.xml"
+  ],
+  "program_live_list_item": [
+   "res/AE.xml"
+  ],
+  "rec_play_page_prg_list_item": [
+   "res/u0.xml",
+   "res/Mk.xml"
+  ],
+  "rec_prog_list_item": [
+   "res/1w.xml",
+   "res/zO.xml"
+  ],
+  "rec_record_epg_prg_date_list_item": [
+   "res/pr.xml",
+   "res/vH.xml"
+  ],
+  "rec_record_epg_prg_list_item": [
+   "res/pT.xml"
+  ],
+  "rec_record_epg_prg_name_list_item": [
+   "res/09.xml"
+  ],
+  "rec_record_list_item": [
+   "res/kP.xml"
+  ],
+  "select_dialog_item_material": [
+   "res/SU.xml"
+  ],
+  "select_dialog_multichoice_material": [
+   "res/Px.xml"
+  ],
+  "select_dialog_singlechoice_material": [
+   "res/MP.xml"
+  ],
+  "support_simple_spinner_dropdown_item": [
+   "res/St.xml"
+  ],
+  "test_action_chip": [
+   "res/7W.xml"
+  ],
+  "test_chip_zero_corner_radius": [
+   "res/y9.xml"
+  ],
+  "test_design_checkbox": [
+   "res/1N.xml",
+   "res/24.xml"
+  ],
+  "test_design_radiobutton": [
+   "res/Zl.xml",
+   "res/0_.xml"
+  ],
+  "test_reflow_chipgroup": [
+   "res/MY.xml"
+  ],
+  "test_toolbar": [
+   "res/tQ.xml"
+  ],
+  "test_toolbar_custom_background": [
+   "res/kL.xml"
+  ],
+  "test_toolbar_elevation": [
+   "res/aj.xml",
+   "res/-r.xml"
+  ],
+  "test_toolbar_surface": [
+   "res/L2.xml"
+  ],
+  "text_view_with_line_height_from_appearance": [
+   "res/mi.xml"
+  ],
+  "text_view_with_line_height_from_layout": [
+   "res/r5.xml"
+  ],
+  "text_view_with_line_height_from_style": [
+   "res/qS.xml"
+  ],
+  "text_view_with_theme_line_height": [
+   "res/MH.xml"
+  ],
+  "text_view_without_line_height": [
+   "res/lE.xml"
+  ],
+  "video_list_activity_movies": [
+   "res/6X.xml"
+  ],
+  "video_list_item_movie": [
+   "res/r1.xml"
+  ],
+  "video_list_switch_page": [
+   "res/VD.xml"
+  ],
+  "view_player": [
+   "res/6b.xml"
+  ],
+  "view_player_controlbar": [
+   "res/SX.xml"
+  ],
+  "vod_type_item": [
+   "res/_o.xml"
+  ],
+  "voice_bar_item": [
+   "res/vG.xml"
+  ]
+ },
+ "raw": {
+  "stackblur": [
+   "res/Aa.bc"
+  ]
+ },
+ "xml": {
+  "network_security_config": [
+   "res/4u.xml"
+  ],
+  "provider_paths": [
+   "res/jB.xml"
+  ],
+  "standalone_badge": [
+   "res/AP.xml"
+  ],
+  "standalone_badge_gravity_bottom_end": [
+   "res/23.xml"
+  ],
+  "standalone_badge_gravity_bottom_start": [
+   "res/lJ.xml"
+  ],
+  "standalone_badge_gravity_top_start": [
+   "res/wA.xml"
+  ],
+  "standalone_badge_offset": [
+   "res/lG.xml"
+  ],
+  "util_code_provider_paths": [
+   "res/_d.xml"
+  ]
+ }
+}
