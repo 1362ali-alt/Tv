@@ -12,8 +12,33 @@ COMMIT=$(git -C /home/user/Tv rev-parse --short HEAD 2>/dev/null || echo unknown
 case "$MODE" in
   residential) OUT="dist/PARDIK-IPTV-RonikaPalace-Kohak-Win10-x64-${VER}-${COMMIT}.zip" ;;
   hotel)       OUT="dist/PARDIK-SMART-IPTV-Win10-x64-${VER}-${COMMIT}.zip" ;;
-  *) echo "unknown MODE=$MODE (residential|hotel)" >&2; exit 1 ;;
+  portable)    OUT="dist/PARDIK-IPTV-PORTABLE-${VER}-${COMMIT}.zip" ;;
+  source)      OUT="dist/PARDIK-SOURCE-${COMMIT}.zip" ;;
+  *) echo "unknown MODE=$MODE (residential|hotel|portable|source)" >&2; exit 1 ;;
 esac
+if [ "$MODE" = "source" ]; then
+    # the whole program source, for review: app, assets, installer, docs
+    STAGE=$(mktemp -d)
+    mkdir -p "$STAGE/PARDIK-SOURCE"
+    cp -r windows_app/app "$STAGE/PARDIK-SOURCE/app"
+    rm -rf "$STAGE/PARDIK-SOURCE/app/_userdata"
+    cp -r windows_app/app_assets "$STAGE/PARDIK-SOURCE/" 2>/dev/null || true
+    cp -r windows_app/install "$STAGE/PARDIK-SOURCE/" 2>/dev/null || true
+    cp -r windows_app/tools "$STAGE/PARDIK-SOURCE/" 2>/dev/null || true
+    cp windows_app/PORTABLE.bat windows_app/PARDIK-SMART-IPTV.bat \
+       windows_app/PARDIK-SMART-IPTV-silent.vbs windows_app/headend.txt \
+       windows_app/README-FA.md windows_app/README-EN.md \
+       windows_app/README-PORTABLE-FA.md "$STAGE/PARDIK-SOURCE/" 2>/dev/null || true
+    cp analysis/REVERSE_ENGINEERING_REPORT.md "$STAGE/PARDIK-SOURCE/" 2>/dev/null || true
+    find "$STAGE" -name "__pycache__" -type d -exec rm -rf {} +
+    cd "$STAGE"
+    zip -qr "/home/user/Tv/$OUT" PARDIK-SOURCE
+    cd /home/user/Tv
+    rm -rf "$STAGE"
+    ls -la "$OUT"
+    python3 -c "import hashlib,sys,zipfile; b=open(sys.argv[1],'rb').read(); print('entries =', len(zipfile.ZipFile(sys.argv[1]).namelist()), '| bytes =', len(b)); print('sha256  =', hashlib.sha256(b).hexdigest())" "$OUT"
+    exit 0
+fi
 rm -f "$OUT"
 mkdir -p dist
 # stage a clean copy
@@ -29,6 +54,11 @@ cp windows_app/PARDIK-SMART-IPTV.bat windows_app/PARDIK-SMART-IPTV-silent.vbs \
 COMMIT=$(git -C /home/user/Tv rev-parse --short HEAD 2>/dev/null || echo unknown)
 printf '{"commit": "%s", "date": "%s"}\n' "$COMMIT" "$(date -u +%Y%m%d-%H%M)" \
   > "$STAGE/PARDIK-SMART-IPTV/build_info.json"
+if [ "$MODE" = "portable" ]; then
+    # everything stays inside the folder: data_dir() sees portable.flag
+    printf 'portable\r\n' > "$STAGE/PARDIK-SMART-IPTV/portable.flag"
+    cp windows_app/README-PORTABLE-FA.md "$STAGE/PARDIK-SMART-IPTV/README-PORTABLE-FA.md"
+fi
 # launch.ps1 reads mode.txt to pick the deployment flavour (IPTV_MODE)
 printf '%s\r\n' "$MODE" > "$STAGE/PARDIK-SMART-IPTV/mode.txt"
 if [ -f windows_app/headend.txt ]; then

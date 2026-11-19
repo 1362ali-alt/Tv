@@ -147,10 +147,30 @@ DEFAULTS = {
 }
 
 
+def portable_root():
+    """A portable.flag beside the app means: keep EVERYTHING (settings,
+    logs, hls cache) inside this folder - a USB-stick install that never
+    touches the profile and needs no installer at all."""
+    try:
+        base = os.path.dirname(HERE)
+        if os.path.exists(os.path.join(base, "portable.flag")):
+            return base
+    except Exception:
+        pass
+    return None
+
+
 def data_dir():
-    if os.name == "nt":
-        base = os.environ.get("APPDATA") or os.path.expanduser("~")
-        d = os.path.join(base, "PARDIK-SMART-IPTV")
+    env = os.environ.get("IPTV_DATA_DIR")
+    if env:
+        d = env
+    elif os.name == "nt":
+        pr = portable_root()
+        if pr:
+            d = os.path.join(pr, "_userdata")
+        else:
+            base = os.environ.get("APPDATA") or os.path.expanduser("~")
+            d = os.path.join(base, "PARDIK-SMART-IPTV")
     else:
         d = os.path.join(HERE, "_userdata")
     try:
@@ -2121,7 +2141,9 @@ def update_check():
         m = json.loads(data.decode("utf-8", "replace"))
     except Exception as e:
         return {"available": False, "build": BUILD_STAMP, "error": str(e)}
-    e = m.get(APP_MODE if APP_MODE in ("residential", "hotel") else "residential") or {}
+    key = "portable" if portable_root() else \
+        (APP_MODE if APP_MODE in ("residential", "hotel") else "residential")
+    e = m.get(key) or {}
     commit = e.get("commit") or ""
     return {"available": bool(commit) and commit != BUILD_STAMP,
             "build": BUILD_STAMP, "commit": commit, "size": e.get("size"),
