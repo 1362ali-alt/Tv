@@ -1885,11 +1885,6 @@ function playItem(item, opts) {
   // v2: report how long the previous live programme was watched (AddAdvHistory type=1)
   if (S.playerCtx.kind === "live") reportLiveWatch(item);
   applyVolume();
-  video.onerror = () => {
-    if (S.cur === "scr-player") {
-      showPlayerError("video element error " + ((video.error && video.error.code) || "?"));
-    }
-  };
   if (noFfmpeg) {
     $("#player-loading").style.display = "none"; stopLoadAnim();
     $("#player-error").hidden = false;
@@ -1910,7 +1905,7 @@ function playItem(item, opts) {
   };
   const vlcBtn = $("#player-vlc");
   if (vlcBtn) {
-    vlcBtn.hidden = !S.config.vlc;
+    vlcBtn.hidden = !S.config.vlc_installed;
     vlcBtn.onclick = () => handToVlc();
   }
   try {
@@ -1931,7 +1926,12 @@ function playItem(item, opts) {
   }
   video.onplaying = () => { $("#player-loading").style.display = "none"; stopLoadAnim(); $("#player-error").hidden = true; applySpeed(); };
   video.onwaiting = () => { $("#player-loading").style.display = "flex"; startLoadAnim(); };
-  video.onerror = () => { $("#player-loading").style.display = "none"; stopLoadAnim(); $("#player-error").hidden = false; };
+  video.onerror = () => {
+    /* MEDIA_ERR_DECODE/SRC_NOT_SUPPORTED on the main element is exactly the
+       APK's "Decoding video failed!" - name the codec and recover. */
+    showPlayerError("video element error " + ((video.error && video.error.code) || "?"),
+                    { decode: true });
+  };
 }
 /* The installer's PowerShell download can die on old TLS stacks or an offline
    install day; the backend fetches the same static Windows build through
@@ -1942,7 +1942,7 @@ function playItem(item, opts) {
    guessing: it names the real codec (an H.265 head-end cannot be decoded by
    the browser's MSE), shows ffmpeg's own stderr tail, offers a retry, and
    hands the stream to VLC exactly like LivePlayerActivity.playWithVlc(). */
-async function showPlayerError(extra) {
+async function showPlayerError(extra, opts) {
   $("#player-loading").style.display = "none";
   stopLoadAnim();
   $("#player-error").hidden = false;
@@ -1962,16 +1962,25 @@ async function showPlayerError(extra) {
     det.textContent = lines.join("\n");
   }
   const hevc = /hevc|h265/i.test(codec);
+  const decodeFail = !!(opts && opts.decode);
   const vlcBtn = $("#player-vlc");
-  if (vlcBtn) vlcBtn.hidden = !S.config.vlc;
-  if (hevc && !S.config.vlc && det) {
+  if (vlcBtn) vlcBtn.hidden = !S.config.vlc_installed;
+  const instBtn = $("#player-vlc-install");
+  if (instBtn) {
+    instBtn.hidden = !((S.config.vlc_fetch || {}).enabled && !S.config.vlc_installed);
+    instBtn.onclick = () => healVlc(S.playerCtx.item);
+  }
+  if (hevc && !S.config.vlc_installed && det) {
     det.textContent += "\n" + t("hevc_need_vlc",
       "این کانال H.265/HEVC است و مرورگر آن را کدگشایی نمی‌کند؛ VLC را نصب کنید تا پخش خودکار سپرده شود.");
   }
-  if (hevc && S.config.vlc && !S.vlcTried) {
+  if ((hevc || decodeFail) && S.config.vlc_installed && !S.vlcTried) {
     S.vlcTried = true;
     handToVlc();
   }
+  try {
+    apiPost("/api/player_report", { text: lines.join(" | ") + (extra ? " | " + extra : "") });
+  } catch (e) {}
 }
 
 function handToVlc() {
@@ -1982,6 +1991,34 @@ function handToVlc() {
       if (r && r.ok) toast(t("external_player_on", "پخش به پخش‌کنندهٔ خارجی سپرده شد") + " (VLC)");
       else toast(t("vlc_player_install_tips", "پخش‌کننده VLC شناسایی نشد. لطفاً ابتدا آن را نصب کنید!"));
     }).catch(() => {});
+}
+
+/* Same background pattern as healFfmpeg: unpack portable VLC under tools\vlc
+   and hand the very same stream over, so an HEVC head-end plays without any
+   installer, admin rights or codec pack. */
+function healVlc(item) {
+  const instBtn = $("#player-vlc-install");
+  if (instBtn) instBtn.disabled = true;
+  toast(t("vlc_fetch_start", "دریافت VLC قابل‌حمل آغاز شد؛ کمی صبر کنید…"));
+  apiPost("/api/vlc/ensure", {}).catch(() => {});
+  let tries = 0;
+  const poll = setInterval(async () => {
+    tries += 1;
+    let cfg = null;
+    try { cfg = await (await fetch("/api/config")).json(); } catch (e) {}
+    if (cfg && cfg.vlc_installed) {
+      clearInterval(poll);
+      S.config.vlc_installed = true;
+      S.vlc = true;
+      S.vlcTried = false;
+      toast(t("vlc_ready", "VLC آماده شد؛ پخش به آن سپرده می‌شود."));
+      handToVlc();
+    } else if (tries >= 150) {
+      clearInterval(poll);
+      if (instBtn) instBtn.disabled = false;
+      toast(t("vlc_fetch_fail", "دریافت VLC ناموفق بود؛ اگر LAN اینترنت ندارد، VLC را دستی نصب کنید."));
+    }
+  }, 4000);
 }
 
 function healFfmpeg(item) {

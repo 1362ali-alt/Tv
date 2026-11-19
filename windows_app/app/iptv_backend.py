@@ -1473,6 +1473,7 @@ def diagnose():
         "ffmpeg": bool(find_ffmpeg()),
         "ffmpeg_path": find_ffmpeg() or "",
         "vlc": bool(find_vlc()),
+        "vlc_fetch": vlc_fetch_enabled(),
         "checks": [], "issues": [], "ok": True,
     }
 
@@ -1683,6 +1684,11 @@ def launch_app(name):
 def find_vlc():
     """org.videolan.vlc on Android -> vlc.exe on Windows."""
     cands = [os.environ.get("IPTV_VLC")] if os.environ.get("IPTV_VLC") else []
+    _vd = os.path.join(FF_DIR, "vlc")          # portable self-heal unpack
+    cands.append(os.path.join(_vd, "vlc.exe"))
+    if os.path.isdir(_vd):
+        for _ent in sorted(os.listdir(_vd)):
+            cands.append(os.path.join(_vd, _ent, "vlc.exe"))
     if os.name == "nt":
         for base in (os.environ.get("ProgramFiles"),
                      os.environ.get("ProgramFiles(x86)"),
@@ -1872,6 +1878,100 @@ def _ffmpeg_fetch_loop(reason):
     except Exception as e:
         FFMPEG_FETCH.update(running=False, done=False, error=str(e))
         CONNECTION.note("ffmpeg: self-heal failed: %r" % (e,))
+    finally:
+        try:
+            if tmp and os.path.exists(tmp):
+                os.remove(tmp)
+        except Exception:
+            pass
+
+
+VLC_DIR = os.path.join(FF_DIR, "vlc")
+VLC_PINNED = "https://get.videolan.org/vlc/3.0.21/win64/vlc-3.0.21-win64.zip"
+VLC_FETCH = {"running": False, "done": False, "bytes": 0, "error": None, "path": ""}
+
+
+def vlc_fetch_enabled():
+    return os.environ.get("IPTV_VLC_FETCH", "1") not in ("0", "false", "no")
+
+
+def vlc_fetch_state():
+    d = dict(VLC_FETCH)
+    d["enabled"] = vlc_fetch_enabled()
+    return d
+
+
+def ensure_vlc(reason=""):
+    """A head-end stream the browser's MSE cannot decode (H.265 being the
+    usual suspect on Windows) still plays through VLC, exactly like the APK's
+    LivePlayerActivity.playWithVlc(). Where VLC is absent - most hotel rooms -
+    fetch the portable VideoLAN zip and unpack it under tools\\vlc, no admin
+    rights and no installer required."""
+    if not vlc_fetch_enabled():
+        VLC_FETCH["error"] = "disabled (IPTV_VLC_FETCH=0)"
+        return vlc_fetch_state()
+    if VLC_FETCH["running"] or VLC_FETCH["done"] or find_vlc():
+        return vlc_fetch_state()
+    VLC_FETCH["running"] = True
+    threading.Thread(target=_vlc_fetch_loop, args=(reason,), daemon=True,
+                     name="vlc-fetch").start()
+    return vlc_fetch_state()
+
+
+def _vlc_fetch_loop(reason):
+    tmp = ""
+    try:
+        CONNECTION.note("vlc: self-heal download started (%s)" % reason)
+        urls = []
+        try:
+            data, _ct, _st = http_get("https://get.videolan.org/vlc/last/win64/",
+                                      timeout=20)
+            page = data.decode("utf-8", "replace")
+            names = sorted(set(re.findall(r'href="(vlc-[\d.]+-win64\.zip)"', page)))
+            if names:
+                urls.append("https://get.videolan.org/vlc/last/win64/" + names[-1])
+        except Exception as e:
+            CONNECTION.note("vlc: listing failed: %r" % (e,))
+        urls.append(VLC_PINNED)
+        os.makedirs(FF_DIR, exist_ok=True)
+        tmp = os.path.join(FF_DIR, "vlc-portable.zip.tmp")
+        last = None
+        for u in urls:
+            try:
+                req = urllib.request.Request(u, headers={
+                    "User-Agent": "PARDIK-SMART-IPTV-Win/%s" % APP_VERSION_NAME})
+                with _NO_PROXY.open(req, timeout=600) as r, open(tmp, "wb") as f:
+                    while True:
+                        chunk = r.read(1 << 16)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        VLC_FETCH["bytes"] += len(chunk)
+                last = None
+                break
+            except Exception as e:
+                last = e
+        if last is not None:
+            raise last
+        import zipfile as _zf
+        dest_dir = VLC_DIR
+        with _zf.ZipFile(tmp) as z:
+            z.extractall(dest_dir)
+        exe = ""
+        for root, _dirs, files in os.walk(dest_dir):
+            if "vlc.exe" in files:
+                exe = os.path.join(root, "vlc.exe")
+                break
+        if not exe:
+            raise IOError("no vlc.exe inside the portable zip")
+        ok = bool(find_vlc())
+        VLC_FETCH.update(running=False, done=True, path=exe if ok else "",
+                         error="" if ok else "extracted but not discoverable")
+        CONNECTION.note("vlc: portable unpacked to %s (ok=%s, %d bytes)"
+                        % (exe, ok, VLC_FETCH["bytes"]))
+    except Exception as e:
+        VLC_FETCH.update(running=False, done=False, error=str(e))
+        CONNECTION.note("vlc: self-heal failed: %r" % (e,))
     finally:
         try:
             if tmp and os.path.exists(tmp):
@@ -2400,6 +2500,7 @@ class Handler(BaseHTTPRequestHandler):
                            "volume": WS.volume, "muted": WS.muted},
                     # v2.7.2.06 additions
                     "vlc_installed": bool(find_vlc()),
+                    "vlc_fetch": vlc_fetch_state(),
                     "autostart": autostart_state(),
                     "apps_selected": load_apps().get("selected", []),
                     # residential deployment (Pardik / Ronika Palace Kahak)
@@ -2422,6 +2523,8 @@ class Handler(BaseHTTPRequestHandler):
                 SETTINGS.d["device_iface_kind"] = NETWORK.get("kind", "unknown")
                 SETTINGS.save()
                 return self._json({"ok": True, "network": NETWORK})
+            if path == "/api/vlc/status":
+                return self._json(vlc_fetch_state())
             if path == "/api/ffmpeg/status":
                 return self._json(ffmpeg_fetch_state())
             if path == "/api/connection":
@@ -2493,6 +2596,13 @@ class Handler(BaseHTTPRequestHandler):
             # the player's "needs FFmpeg" banner asks the backend to fetch the
             # static build in the background (Python TLS, not PowerShell).
             return self._json(ensure_ffmpeg("player banner"))
+        if u.path == "/api/vlc/ensure":
+            # the decode-failure panel offers portable VLC as the recovery
+            # path for streams MSE cannot decode (HEVC above all).
+            return self._json(ensure_vlc("player banner"))
+        if u.path == "/api/player_report":
+            append_log("PLAYER " + str(data.get("text") or "")[:300])
+            return self._json({"ok": True})
         if u.path == "/api/settings":
             # SettingsActivity.onClick(): an IP field that contains letters is
             # checked as a domain, otherwise it must be a dotted quad; either
