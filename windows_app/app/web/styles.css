@@ -9,8 +9,10 @@
    bare attribute selector; they are the higher-specificity equivalent. */
 [hidden]{display:none !important;}
 [hidden].modal,[hidden].epg-panel,[hidden].vol-osd,[hidden].player-osd,
-[hidden].ch-badge,[hidden].player-error,[hidden].tb-wifi,[hidden].tb-weather,
-[hidden].welcome-weather{display:none !important;}
+[hidden].ch-badge,[hidden].player-error,[hidden].main-wifi,[hidden].main-weather,
+[hidden].wel-weather,[hidden].wel-forecast,[hidden].wel-fday,[hidden].wel-user,[hidden].wel-word-en,
+[hidden].wel-manager,[hidden].main-title,[hidden].main-room-label,
+[hidden].welcome-media,[hidden].main-media{display:none !important;}
 
 :root{
   --bg1:#2b2f3e; --bg2:#4a4f63;
@@ -34,11 +36,15 @@ body{
 .screen.active{display:flex;}
 
 /* backgrounds */
-.boot-bg,.welcome-bg,.home-bg,.page-bg{position:absolute; inset:0; z-index:0;
-  background:linear-gradient(135deg,var(--bg1) 0%, #3a3f52 45%, var(--bg2) 100%);}
-.welcome-bg{background-image:url("/assets/img/mipmap__bg_welcome.png"); background-size:cover; background-position:center;}
-.home-bg{background-image:url("/assets/img/mipmap__bg_style_four.png"); background-size:cover; background-position:center;}
-.page-bg{background-image:url("/assets/img/mipmap__bg_style_four.png"); background-size:cover; background-position:center; filter:brightness(.85);}
+.page-bg{position:absolute; inset:0; z-index:0; background-color:#000;
+  background-image:url("/assets/img/mipmap__bg_style_four.png");
+  background-repeat:no-repeat; background-position:center; background-size:cover;
+  filter:brightness(.85);}
+
+/* The three start-up screens are conversions of the APK's own layouts, so every
+   size below is that layout's dimen value. The APK is designed on a 1280x720dp
+   canvas (1920x1080 at density 1.5), so one design unit is 100vw/1280. */
+:root{--u:calc(100vw / 1280);}
 .screen>*{position:relative; z-index:1;}
 
 /* generic */
@@ -53,53 +59,160 @@ body{
 .toast{position:fixed; left:50%; bottom:6%; transform:translateX(-50%); background:rgba(0,0,0,.8);
   border:1px solid var(--gold); padding:.6em 1.6em; border-radius:999px; z-index:99; font-size:1.05em;}
 
-/* ---------- boot ---------- */
-.boot-center{margin:auto; text-align:center; display:flex; flex-direction:column; align-items:center; gap:.8em;}
-.boot-logo{width:6.5em; height:6.5em; border-radius:22%;}
-.boot-title{font-size:1.6em; font-weight:700; letter-spacing:2px;}
-.boot-sub{color:var(--muted);}
-.boot-bar{width:22em; height:.45em; background:rgba(255,255,255,.18); border-radius:999px; overflow:hidden;}
-.boot-bar i{display:block; height:100%; width:0%; background:var(--accent); transition:width .3s;}
-.boot-msg{min-height:1.2em; color:var(--muted); font-size:.9em;}
+/* ---------- PING SERVER  (activity_ping_server.xml) ----------
+   RelativeLayout#ping_ser_layout background=black
+     RelativeLayout#ping_ser_bg   background=@mipmap/pic_ping_bg (or the image
+                                  from GetAdvImage?type=11), match_parent
+       ProgressBar                 length_150=100dp square, marginBottom margin_30=20dp,
+                                   indeterminateDrawable=@drawable/progress_bg,
+                                   above the text and centred
+       TextView#text_view          text_size_36=24sp, white, centred
+     TextView#tips_txt             24sp white, marginRight/marginBottom margin_90=60dp,
+                                   bottom|end */
+#scr-boot>.ping-bg{position:absolute; inset:0; z-index:0; background-color:#000;
+  background-image:url("/assets/img/mipmap__pic_ping_bg.png");
+  background-repeat:no-repeat; background-position:center; background-size:cover;}
+#scr-boot>.ping-center{position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  display:flex; flex-direction:column; align-items:center; z-index:1;}
+.ping-progress{width:calc(100 * var(--u)); height:calc(100 * var(--u));
+  margin-bottom:calc(20 * var(--u)); border-radius:50%;
+  /* @drawable/progress_bg: an animated-rotate ring, white -> transparent -> red */
+  background:conic-gradient(from 0deg, #FFFFFFFF 0deg, rgba(255,255,255,0) 120deg,
+    rgba(255,255,255,0) 240deg, #FFED1C24 360deg);
+  -webkit-mask:radial-gradient(farthest-side, transparent calc(100% - calc(10 * var(--u))), #000 0);
+  mask:radial-gradient(farthest-side, transparent calc(100% - calc(10 * var(--u))), #000 0);
+  animation:spin 1.1s linear infinite;}
+.ping-text{font-size:calc(24 * var(--u)); color:#fff; text-align:center;
+  text-shadow:0 calc(2 * var(--u)) calc(8 * var(--u)) rgba(0,0,0,.75);}
+#scr-boot>.ping-tips{position:absolute; z-index:1; bottom:calc(60 * var(--u)); inset-inline-end:calc(60 * var(--u));
+  font-size:calc(24 * var(--u)); color:#fff; text-shadow:0 2px 10px rgba(0,0,0,.8);}
+#scr-boot>.ping-state{position:absolute; z-index:1; bottom:calc(60 * var(--u)); inset-inline-start:calc(60 * var(--u));
+  max-width:calc(560 * var(--u)); font-size:calc(14 * var(--u)); line-height:1.75;
+  color:rgba(255,255,255,.82); text-align:start; direction:rtl;
+  text-shadow:0 2px 8px rgba(0,0,0,.85);}
+.ping-state b{color:#FFDD94; font-weight:600;}
+.ping-state .bad{color:#ff9c9c;}
+.ping-state .good{color:#8ef0a4;}
 
-/* ---------- welcome ---------- */
-.welcome-top{display:flex; justify-content:space-between; align-items:flex-start; padding:2em 3em 0;}
-.welcome-weather{display:flex; gap:.6em; align-items:center;}
-.welcome-weather img{width:3.2em; height:3.2em;}
-.welcome-card{margin:4vh auto 0; max-width:46em; background:var(--panel); backdrop-filter:blur(6px);
-  border-radius:var(--radius); padding:2.2em 2.6em; text-align:center; box-shadow:0 10px 40px rgba(0,0,0,.35);}
-.welcome-title{color:var(--gold-2); font-size:1.25em;}
-.welcome-name{font-size:1.7em; font-weight:700; margin:.35em 0;}
-.welcome-word{color:var(--muted); line-height:1.7;}
-.welcome-sign{margin-top:1.4em; color:var(--gold); font-size:.95em;}
-.welcome-langs{display:flex; gap:1.2em; justify-content:center; margin-top:3vh;}
-.langbtn{background:var(--panel); border:1px solid rgba(255,255,255,.3); color:#fff; border-radius:10px;
-  padding:.6em 2.2em; font-size:1.15em; cursor:pointer;}
-.welcome-tip{position:absolute; bottom:4%; width:100%; text-align:center; color:var(--muted);}
+/* ---------- WELCOME  (activity_welcome.xml, WelcomeStyleZeroActivity) ----------
+   FrameLayout#welcome_layout_background_img  background=@mipmap/bg_welcome
+     MZBannerView#welcome_mz_bg / IjkVideoView#welcome_my_ijkplayer_view  match_parent
+     LinearLayout centred, horizontal, length_1350=900dp x length_675=450dp,
+       background=@drawable/bg_welcome_text (#BB000000, radius 5dp)
+       left column weight 3 / divider 1dp @mipmap/line_colume_welcome / right column weight 1 */
+#scr-welcome>.welcome-bg{position:absolute; inset:0; z-index:0; background-color:#000;
+  background-image:url("/assets/img/mipmap__bg_welcome.png");
+  background-repeat:no-repeat; background-position:center; background-size:cover;}
+#scr-welcome>.welcome-media{position:absolute; inset:0; z-index:1; width:100%; height:100%; object-fit:cover;}
+#scr-welcome>.wel-card{position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:2;
+  display:flex; flex-direction:row; width:calc(900 * var(--u)); height:calc(450 * var(--u));
+  background:rgba(0,0,0,.733); border-radius:calc(5 * var(--u)); overflow:hidden;}
+.wel-left{flex:3 1 0; min-width:0; display:flex; flex-direction:column;}
+.wel-title-img{align-self:center; width:calc(400 * var(--u)); height:calc(60 * var(--u));
+  margin-top:calc(36 * var(--u)); object-fit:contain;}
+.wel-body{flex:1 1 0; min-height:0; display:flex; flex-direction:column;
+  padding:0 calc(13 * var(--u));}
+.wel-user{font-size:calc(18 * var(--u)); color:#fff; margin-top:calc(30 * var(--u));
+  margin-inline-start:calc(110 * var(--u));}
+.wel-word{flex:1 1 0; min-height:0; font-size:calc(22 * var(--u)); color:#fff; line-height:1.55;
+  margin-top:calc(20 * var(--u)); padding-inline-start:calc(110 * var(--u));
+  padding-inline-end:calc(30 * var(--u)); text-align:start; overflow:hidden;}
+.wel-word-en{font-size:calc(22 * var(--u)); color:#fff; margin-top:calc(20 * var(--u));
+  padding:0 calc(40 * var(--u)); line-height:1.5;}
+.wel-manager{align-self:flex-end; font-size:calc(20 * var(--u)); color:#fff;
+  margin-inline-end:calc(60 * var(--u));}
+.wel-sign{width:100%; height:calc(70 * var(--u)); margin:calc(13 * var(--u)); object-fit:contain;
+  object-position:right center;}
+.wel-divider{width:calc(1 * var(--u)); flex:0 0 auto;
+  background-image:url("/assets/img/mipmap__line_colume_welcome.png");
+  background-repeat:repeat-y; background-position:center; background-size:contain;}
+.wel-right{flex:1 1 0; min-width:0; display:flex; flex-direction:column; align-items:center;}
+.wel-time{font-size:calc(26 * var(--u)); color:#fff; margin-top:calc(30 * var(--u));}
+.wel-date{font-size:calc(16 * var(--u)); color:#fff; margin-top:calc(10 * var(--u));}
+.wel-weather{display:flex; flex-direction:column; align-items:center;}
+.wel-weather img{width:calc(60 * var(--u)); height:calc(60 * var(--u)); margin-top:calc(30 * var(--u));
+  object-fit:cover;}
+.wel-weather-txt{font-size:calc(18 * var(--u)); color:#fff; margin-top:calc(10 * var(--u));}
+.wel-weather-range{font-size:calc(14 * var(--u)); color:#fff; margin-top:calc(12 * var(--u));}
+.wel-forecast{display:flex; flex-direction:row; margin-top:calc(12 * var(--u));}
+.wel-fday{display:flex; flex-direction:column; align-items:center; margin-inline-end:calc(10 * var(--u));}
+.wel-fday span{font-size:calc(10 * var(--u)); color:#fff;}
+.wel-fday img{width:calc(36 * var(--u)); height:calc(36 * var(--u));}
+.wel-lang{width:calc(120 * var(--u)); height:calc(30 * var(--u)); font-size:calc(18 * var(--u));
+  color:#fff; text-align:center; cursor:pointer; background:transparent;
+  border:calc(0.5 * var(--u)) solid #fff; border-radius:calc(3 * var(--u));}
+#wel-zh{margin-top:calc(30 * var(--u));}
+#wel-en{margin-top:calc(10 * var(--u));}
+/* @drawable/bg_language_text_unfocused: state_focused -> @drawable/bg_language_focused */
+.wel-lang:focus{outline:none; border-color:transparent;
+  background-image:url("/assets/img/drawable__bg_language_focused.png");
+  background-repeat:no-repeat; background-position:center; background-size:100% 100%;}
 
-/* ---------- home ---------- */
-.topbar{display:flex; justify-content:space-between; align-items:center; padding:1.1em 2.6em 0;}
-.tb-left{display:flex; align-items:center; gap:1em;}
-.tb-logo{width:2.6em; height:2.6em; border-radius:20%;}
-.tb-room{display:flex; flex-direction:column; line-height:1.2;}
-.tb-room span:first-child{font-size:1.3em; font-weight:700;}
-.tb-roomlabel{color:var(--muted); font-size:.8em;}
-.tb-right{display:flex; align-items:center; gap:1.6em;}
-.tb-wifi{display:flex; flex-direction:column; font-size:.85em; color:var(--muted); text-align:left;}
-.tb-weather{display:flex; align-items:center; gap:.5em;}
-.tb-weather img{width:2.6em; height:2.6em;}
-.tb-clock{text-align:right;}
-.home-title{position:absolute; top:34%; width:100%; text-align:center; font-size:2.6em; font-weight:700;
-  letter-spacing:3px; text-shadow:0 4px 24px rgba(0,0,0,.5);}
-.menu{position:absolute; bottom:9%; width:100%; display:flex; justify-content:center; gap:1.4em; flex-wrap:nowrap;
-  overflow-x:auto; padding:1.4em 2em;}
-.menu-item{flex:0 0 auto; width:9.5em; display:flex; flex-direction:column; align-items:center; gap:.5em;
-  background:transparent; border:none; color:#fff; cursor:pointer; border-radius:var(--radius); padding:.6em .4em;}
-.menu-item img{width:7.5em; height:5.5em; object-fit:contain; filter:drop-shadow(0 6px 14px rgba(0,0,0,.45)); transition:transform .18s;}
-.menu-item span{font-size:1.05em; font-weight:600; text-shadow:0 2px 8px rgba(0,0,0,.6);}
-.menu-item:focus img{transform:scale(1.12);}
-.menu-item:focus span{color:var(--gold-2);}
-.home-hint{position:absolute; bottom:2.5%; width:100%; text-align:center; color:var(--muted); font-size:.9em;}
+/* ---------- MAIN  (activity_main_ijk_style_third.xml, MainStyleThirdActivity) ----------
+   FrameLayout#main_layout_background_img (IptvSP.getMainBgImg(), else @mipmap/bg_welcome)
+     MZBannerView#mzbv_bg_image (GetAdvImage?type=2) / IjkVideoView x2
+     top LinearLayout horizontal, marginLeft/Right margin_90=60dp, marginTop margin_30=20dp
+     LinearLayout#ll_main_menu  bottom, #77000000, marginBottom margin_120=80dp
+       TvRecyclerView#tv_rv_main_menu  horizontal, height length_270=180dp, selection centred */
+#scr-home>.main-bg{position:absolute; inset:0; z-index:0; background-color:#000;
+  background-image:url("/assets/img/mipmap__bg_welcome.png");
+  background-repeat:no-repeat; background-position:center; background-size:cover;}
+#scr-home>.main-media{position:absolute; inset:0; z-index:1; width:100%; height:100%; object-fit:cover;}
+#scr-home>.main-top{position:absolute; z-index:2; top:0; left:0; right:0; display:flex; flex-direction:row;
+  align-items:flex-start; margin:calc(20 * var(--u)) calc(60 * var(--u)) 0;}
+.main-title{font-size:calc(24 * var(--u)); color:#fff; text-shadow:0 1.5px 1.5px #000;}
+.main-logo{width:calc(120 * var(--u)); height:calc(60 * var(--u)); object-fit:fill;}
+.main-room{display:flex; flex-direction:column; align-items:center; margin-inline-start:calc(30 * var(--u));}
+.main-room-num{font-size:calc(30 * var(--u)); color:#fff; text-shadow:0 1.5px 1.5px #000;}
+.main-room-label{font-size:calc(14 * var(--u)); color:#fff; text-shadow:0 1px 1px #000;}
+.main-spacer{flex:1 1 auto;}
+.main-wifi{display:flex; flex-direction:row; align-items:center; margin-inline-start:calc(30 * var(--u));}
+.main-wifi-pic{width:calc(30 * var(--u)); height:calc(30 * var(--u));}
+.main-wifi-txt{display:flex; flex-direction:column; margin-inline-start:calc(5 * var(--u));
+  font-size:calc(20 * var(--u)); color:#fff; text-shadow:0 1.5px 1.5px #000; text-align:start;}
+.main-weather{display:flex; flex-direction:row;}
+.main-weather img{height:calc(50 * var(--u)); width:auto; margin-inline-start:calc(30 * var(--u));
+  align-self:center;}
+.main-weather-txt{display:flex; flex-direction:column; align-items:center; justify-content:center;
+  margin-inline-start:calc(10 * var(--u));}
+.main-weather-txt div:first-child{font-size:calc(30 * var(--u)); color:#fff; text-shadow:0 1.5px 1.5px #000;}
+.main-weather-txt div:last-child{font-size:calc(14 * var(--u)); color:#fff;
+  margin-top:calc(8 * var(--u)); text-shadow:0 1.5px 1.5px #000;}
+.main-clock{display:flex; flex-direction:column; align-items:center; margin-inline-start:calc(18 * var(--u));}
+.main-time{font-size:calc(36 * var(--u)); color:#fff; line-height:1.1; text-shadow:0 1.5px 1.5px #000;}
+.main-date{font-size:calc(14 * var(--u)); color:#fff; text-align:center; text-shadow:0 1px 1px #000;}
+/* ll_main_menu: the bottom strip the menu lives in */
+#scr-home>.main-menu-bar{position:absolute; z-index:2; left:0; right:0; bottom:calc(80 * var(--u));
+  background:#77000000;}
+#scr-home>.main-menu-bar{transform:translateX(-100vw); transition:transform 2s ease-out;}
+#scr-home.menu-in>.main-menu-bar{transform:translateX(0);}
+.main-menu-bar>.main-menu{display:flex; flex-direction:row; align-items:stretch; justify-content:flex-start;
+  height:calc(180 * var(--u)); gap:0; padding:0; overflow-x:auto; overflow-y:hidden;
+  scrollbar-width:none;}
+.main-menu::-webkit-scrollbar{display:none;}
+/* adapter_main_menu_layout.xml: icon length_285=190dp x length_210=140dp, padding 5dp,
+   margins L/R margin_15=10dp and T margin_8=5dp; label text_size_30=20sp #FFFFDD94,
+   marginBottom margin_15=10dp */
+.mm-item{flex:0 0 auto; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:transparent; border:none; cursor:pointer; height:100%;}
+.mm-item img{width:calc(190 * var(--u)); height:calc(140 * var(--u)); padding:calc(5 * var(--u));
+  margin:calc(5 * var(--u)) calc(10 * var(--u)) 0; object-fit:contain;
+  filter:drop-shadow(0 calc(6 * var(--u)) calc(14 * var(--u)) rgba(0,0,0,.45));
+  transition:transform .18s;}
+.mm-item span{font-size:calc(20 * var(--u)); color:#FFFFDD94; margin-bottom:calc(10 * var(--u));
+  white-space:nowrap; text-shadow:0 2px 8px rgba(0,0,0,.6);}
+.mm-item:focus{outline:none;}
+.mm-item:focus img{transform:scale(1.08);}
+.mm-item:focus span{color:#fff;}
+/* MainStyleFourthActivity (Settings.layout != 0) uses activity_main_ijk_style_
+   fourth.xml: the same views inside FrameLayout#bg_layout_abrove_root
+   (#66000000) and a transparent menu strip with margin_60=40dp side padding
+   and a length_210=140dp list. */
+#scr-home.style-four::after{content:""; position:absolute; inset:0; z-index:1; background:#66000000;}
+#scr-home.style-four>.main-top,#scr-home.style-four>.main-menu-bar{z-index:3;}
+#scr-home.style-four>.main-menu-bar{background:transparent; padding:0 calc(40 * var(--u));}
+#scr-home.style-four .main-menu{height:calc(140 * var(--u));}
+#scr-home.style-four .mm-item img{height:calc(105 * var(--u));}
 
 /* ---------- lists / grids ---------- */
 .focuslist{display:flex; gap:1em; padding:1.2em 2.4em; overflow:auto;}
@@ -335,5 +448,7 @@ body{
    !important, so the harness needs a copy after every `display:` rule to be
    able to prove that hidden overlays are really not painted. */
 [hidden],[hidden].modal,[hidden].epg-panel,[hidden].vol-osd,[hidden].player-osd,
-[hidden].ch-badge,[hidden].player-error,[hidden].tb-wifi,[hidden].tb-weather,
-[hidden].welcome-weather{display:none !important;}
+[hidden].ch-badge,[hidden].player-error,[hidden].main-wifi,[hidden].main-weather,
+[hidden].wel-weather,[hidden].wel-forecast,[hidden].wel-fday,[hidden].wel-user,[hidden].wel-word-en,
+[hidden].wel-manager,[hidden].main-title,[hidden].main-room-label,
+[hidden].welcome-media,[hidden].main-media{display:none !important;}

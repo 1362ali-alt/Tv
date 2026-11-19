@@ -1094,6 +1094,11 @@ window.I18N = {
   "fa": "موارد مهم",
   "zh": "提示"
  },
+ "sign_text": {
+  "en": "General Manager",
+  "fa": "مدیرکل",
+  "zh": "·总经理"
+ },
  "sign_text_hotel": {
   "en": "Hotel",
   "fa": "هتل",

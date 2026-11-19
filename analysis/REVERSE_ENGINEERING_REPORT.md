@@ -536,10 +536,12 @@ Two playback guarantees that came out of writing this check:
   as usual and *then* prints `ffmpeg_missing_long` («این کانال برای پخش به FFmpeg
   نیاز دارد…») instead of a black screen with the APK's generic
   `decoding_video_failed`.
-* `boot()` cannot hang forever on an unreachable head-end: six `GetSettings`
-  attempts (8 s timeout + 1.5 s apart), then the UI comes up **offline**
-  (`S.settings = {}`) so the wrong IP/port or an m3u source can be fixed from
-  Settings without the server being reachable.
+* Booting never hangs on an unreachable head-end either: the handshake now runs
+  in the backend as `ConnectionEngine` (§9), the UI polls `/api/connection`
+  instead of blocking, and `PingServerActivity`'s own escape hatches are
+  reproduced — any key on the boot screen skips the wait, and Settings keeps a
+  **«جست‌وجوی هداند»** row that re-runs discovery + the subnet sweep so a wrong
+  IP can be fixed without the server being reachable.
 
 `tools/smoke/smoke.js` runs the check through the UI in both flavours (dialog
 opens, ≥1 row, the `GetLiveTV` and head-end rows are present, the verdict button
@@ -547,3 +549,108 @@ loses its `data-i18n`, closing removes `#diag-list` and restores the button, the
 m3u dialog still gets a visible text input afterwards) and asserts that after a
 skipped pre-roll advert the channel either has a `stream/play`/`proxy` source or
 the player states the FFmpeg reason — **0 errors** for `residential` and `hotel`.
+
+---
+
+# 9. The connection engine — `BaseApplication` + `PingServerActivity` ported verbatim
+
+The first Windows build invented its own boot sequence (six `GetSettings` polls
+and no notion of "connected"), so the app started but never entered live TV on a
+real head-end. Section 9 documents the corrected implementation: every step below
+is a line-for-line port of the v2 APK, and the class/method it came from is named
+in the source comments of `windows_app/app/iptv_backend.py`
+(`ServerDiscovery`, `ConnectionEngine`, `CONNECTION`) and
+`windows_app/app/web/app.js` (`enterPingServer`, `pollConnection`,
+`applyConnection`, `openWelcomeActivity`, `enterMain`).
+
+## 9.1 What the APK actually does
+
+`IptvConfig`: `DEFAULT_SERVER_IP = "10.21.0.10"`, port `8030`, rtsp `554`,
+`WEBSERVICE_PATH = "/iptv2/"`, `IMAGE_PATH = "/iptv2/manager/"`,
+`VOD_PATH = "/iptv2/vod/"`. `IptvSP` defaults: `password = 111999`,
+`app_layout_style = 0`, `select_language_flag = 1`, `server_language_flag = 3`,
+`scroll_duration_time = 60000`.
+
+`BaseApplication.onCreate()` → `getPmsStatus()` → `getClientFromServer()` →
+`getDataFromServer()` → `startServerIpThread()` → `getTimeFromServer()` →
+`timer($1, 2000, 5000)`. Inside `$1`, `times % 2 == 0` calls
+`GetInStream?mac=` and `times ∈ {0, 5}` resets the counters and re-reads client +
+data.
+
+`connected` is only ever set by four callbacks: `$9` (`GetSettings`),
+`$7` (`GetClient`), `$4` (`GetRoomInfo`) and `$6` (`UpdateClient`);
+`$9.onFailure` sets it back to false. `$9` also stores `isGetPmsData =
+pmsType != 0` and the language flags.
+
+`startServerIpThread()` (`BaseApplication$3`) opens `DatagramSocket(27777)` with
+`setSoTimeout(20000)`. A timeout bumps `serverIpTimes` (capped at 180) and
+respawns the listener. A datagram of ≤ 512 bytes is decoded as UTF-8 and parsed
+by Gson into `ServerIpAddrBean{ip, port}`; the announcement is adopted only when
+`IpaddressCheck.checkIpaddress(ip)` and `0 < port < 65536`.
+
+`PingServerActivity` runs `Timer($2, 0, 2000)`: while `times != 20` it retries
+`GetSettings`; at `times == 20` it calls `openWelcomeActivity(false, 0)`, and any
+key press leaves the screen early. `openWelcomeActivity(advVideoEM, layout)` goes
+to `BootVideoActivity` when `advVideoEM` is set, then to
+`WelcomeStyleZeroActivity` for `layout == 0` and `WelcomeStyleOtherActivity`
+otherwise. Language flags: 1 = en, 2/3 = zh, **8/9 = fa**, 12/13 = ar, 16/17 = ru,
+35 = tr.
+
+## 9.2 How the port reproduces it
+
+| APK | Port |
+|---|---|
+| `BaseApplication.onCreate()` chain | `ConnectionEngine.on_create()`, called from `main()` before the HTTP server listens |
+| `$9/$7/$4/$6` → `connected` | `get_settings_from_server()`, `get_client_from_server()`, `get_room_info()`, `update_client()`; each sets/clears `self.connected` exactly as its callback does |
+| `timer($1, 2000, 5000)` | `app_loop()` + `app_tick()` with `APP_TIMER_DELAY = 2`, `APP_TIMER_PERIOD = 5` and the same `times % 2` / `times ∈ {0, 5}` branches |
+| `BaseApplication$3` UDP listener | `ServerDiscovery` (`DISCOVERY_PORT` = 27777, overridable with `IPTV_DISCOVERY_PORT`; `DISCOVERY_TIMEOUT = 20`; `DISCOVERY_MAX_THREADS = 180`; the same Gson-JSON payload and the same `checkIpaddress` + port validation) |
+| `PingServerActivity.$2` | `ping_loop()` / `ping_tick()` / `ping_get_settings_from_server()` — `PING_MAX_ATTEMPTS = 20` at `PING_INTERVAL = 2` s, then `open_welcome()` |
+| `openWelcomeActivity(advVideoEM, layout)` | `open_welcome()` → `state()["welcome"] = {advVideoEM, layout, language, screen, connected, main}` |
+| `WebSocketService` | `WsClient` / `WsManager` on `ws://{ip:port}/dx-admin/websocket/{mac}`, `dealPrgData` 1 = live voice, 2 = vod, 3 = volume |
+| the screen itself | `#scr-boot` = `activity_ping_server` (`res/U0.xml`): ProgressBar over `@drawable/progress_bg`, `#ping-text` = `connecting_server_tips`, `#ping-tips` = `welcome_alert`, background from `GetAdvImage?type=11` |
+
+`state()` publishes the whole engine so the UI never guesses:
+`{connected, phase (boot → ping → welcome → main), ping_times, ping_max, welcome,
+server{ip, port, address, is_factory_default}, unit, server_room_num, client,
+settings_ok, pms_type, layout, enter_live_page, need_cheek_in, enabled,
+adv_video_em, skip_welcome_page, ping_bg, server_settings, cur_playing,
+server_time, time_zone, last_error, last_ok, uptime, discovery, sweep,
+sweep_log[25], log[40], ws{prg, vol}}`, reachable at `GET /api/connection` and
+driven by `POST /api/connection/{retry,skip,sweep,announce,playing}`.
+
+Because the UI and the engine are now separate processes (as the APK's activity
+and `BaseApplication` are), `app.js` re-reads `/api/connection` every 5 s outside
+the boot screen and every 700 ms on it. That is what makes
+`MainStyleThirdActivity.isConnectServer()` honest: a head-end that disappears
+after the menu is up still produces the `status_disconnected` toast («سرور قطع
+شد!») instead of opening a dead player.
+
+`sweep_for_head_end()` is the port's extra safety net (not in the APK, off unless
+`IPTV_SWEEP` is set): stored IP → `10.21.0.10` → `other_server_ip` → the default
+gateway → `x.y.z.1` → `x.y.z.254` → the whole /24 in 64-thread chunks, accepting
+only a host whose `/iptv2/GetSettings` returns a non-empty object.
+
+## 9.3 Verification
+
+`tools/mock_iptv_server.py` answers the full contract (`GetSettings`,
+`GetClient`, `GetRoomInfo`, `UpdateClient`, `GetCurrentTimeAndZone`,
+`GetHomepageIcon`, `GetWelcomWord`, `GetAdvImage` types 0/1/2/11/12/17,
+`GetAdvVideoEM`, `apk/getWeatherDays`, `apk/getClientBackgroundMusics`,
+`apk/getClientBackgroundVideos`, `GetLivePackage`, `GetLiveTV`, `GetAPK`) and can
+replay the UDP announcement with `/mock/announce?on=1`, which is how the
+`BaseApplication$3` leg is proved rather than assumed.
+
+`tools/smoke/smoke.js` drives the real UI in jsdom and asserts, in order: the
+boot screen is `PingServerActivity` with `@mipmap/pic_ping_bg`; `/api/connection`
+reports `connected`, `settings_ok`, `ping_times/ping_max`, the UDP listener bound
+**and** an adopted `ServerIpAddrBean`; the welcome payload names a main activity;
+`activity_welcome` renders the 900×450 card with `@mipmap/bg_welcome`, the type-17
+title image, the manager signature, the guest word with `%s%` substituted, the
+clock, the Persian date and the three-day forecast; `MainStyleThirdActivity`
+renders the `GetHomepageIcon` tiles with the `icon` ↔ `iconFocus` swap, the room
+name from `Client.name`, Wi-Fi, weather, the `indexArea == 1` banner, and opens
+Settings only on the `111999` digit buffer; live TV opens the bouquets; and a
+deliberately unreachable head-end keeps the user on the menu with
+`status_disconnected` until `/api/connection/skip` is used. Latest run:
+**0 errors** in both `residential` and `hotel` modes.
+

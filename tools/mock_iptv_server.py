@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Mock of the PARDIK/DEXIN IPTV manager server (10.21.0.10:8030 contract).
 Used ONLY for local testing of the Windows client. Not shipped behaviour."""
-import json, os, time, re, subprocess, threading
+import json, os, time, re, socket, subprocess, threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import urllib.parse
 
@@ -12,12 +12,46 @@ PORT = 8030
 
 NOW = lambda: int(time.time() * 1000)
 
+# ---------------------------------------------------------------------------
+# BaseApplication$3: the real head-end broadcasts a JSON ServerIpAddrBean
+# {"ip","port"} (<=512 bytes) to UDP 27777 and the client adopts it when
+# IpaddressCheck.checkIpaddress(ip) and 0 < port < 65536. The mock can replay
+# that announcement so the client's listener is proven end to end. It is OFF by
+# default and switched on with /mock/announce?on=1 - a test that deliberately
+# points the client at an unreachable server must not be rescued by it.
+# ---------------------------------------------------------------------------
+ANNOUNCE_PORT = 27777
+ANNOUNCE = {"on": False, "every": 2.0, "ip": "127.0.0.1", "port": PORT, "sent": 0}
+
+
+def announce_loop():
+    while True:
+        cfg = dict(ANNOUNCE)
+        if not cfg["on"]:
+            time.sleep(0.4)
+            continue
+        payload = json.dumps({"ip": str(cfg["ip"]), "port": int(cfg["port"])}).encode("utf-8")[:512]
+        for target in ("255.255.255.255", "127.0.0.1"):
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                s.settimeout(0.3)
+                s.sendto(payload, (target, ANNOUNCE_PORT))
+                s.close()
+                ANNOUNCE["sent"] += 1
+            except Exception:
+                pass
+        time.sleep(max(1.0, float(cfg["every"])))
+
 SETTINGS = {
     # v2.7.2.06 Settings bean adds: epg, caterSub, tfPlayerFlag, appShowInMenu
     # and changes the built-in defaults layout 4 -> 0, trafficSaveMode 1 -> 0.
     "epg": True, "caterSub": True, "tfPlayerFlag": 0, "appShowInMenu": True,
     "serverIpAddress": "10.21.0.10",
-    "protocol": "http", "playerFlag": 0, "layout": 0, "language": 1, "defaultLanguage": 1,
+    # language / defaultLanguage are the platform's flags: PingServerActivity's
+    # map has 1 = en, 2/3 = zh, 8/9 = fa, 12/13 = ar, 16/17 = ru ...  Pardik's
+    # residential deployment is Persian, so the head-end sends 8.
+    "protocol": "http", "playerFlag": 0, "layout": 0, "language": 8, "defaultLanguage": 8,
     "hotelName": "مجتمع مسکونی رونیکا پالاس کوهک", "hotelNameEn": "Ronika Palace Residential Complex, Kahak", "city": "Tehran",
     "phone": "021-0000000", "symbol": "$", "chargeMode": 1, "pmsType": 1, "timeout": 1,
     "pictureInterval": 8, "indexArea": 1, "vodFreeMinutes": 5, "apkUpdateType": 1,
@@ -218,12 +252,77 @@ HOTEL = {"items": [
 MUSIC_CATS = [{"id": 1, "name": "Pop"}, {"id": 2, "name": "Classic"}]
 MUSIC = {1: [{"id": 1, "name": "Track 1", "url": "http://127.0.0.1:%d/iptv2/vod/test.mp4" % PORT}],
          2: [{"id": 2, "name": "Track 2", "url": "http://127.0.0.1:%d/iptv2/vod/test.mp4" % PORT}]}
-HOMEPAGE = [
-    {"id": 1, "number": 1, "type": 1, "enabled": True, "icon": "", "icon1": "", "packageName": "live",
-     "chineseName": "直播", "englishName": "LIVE", "japaneseName": "", "koreanName": "", "russianName": "", "thaiName": ""},
-    {"id": 2, "number": 2, "type": 2, "enabled": True, "packageName": "vod", "englishName": "VOD", "chineseName": "点播"},
-]
-WEATHER = {"data": {"now": {"temp": 18, "text": "Clear"}, "forecast": []}}
+# GetHomepageIcon -> List<MainPageItemBean>. The main menu is exactly this list:
+# MainStyleThirdActivity.addMenuItemData() switches on `type` (0 third apk,
+# 1 live, 2 vod, 3 playback, 4 hotel/complex intro, 5 dinner, 6 scenery,
+# 7 service popup, 8 third-app popup, 9 music) and only falls back to
+# addDefaultMenu() when the call fails or the list is empty. `icon` is the
+# FOCUSED icon and `icon1` the normal one (MainMenu(icon=bean.icon1,
+# iconFocus=bean.icon)); both empty -> the APK's own @mipmap/icon_* tiles.
+def _hp(id_, number, type_, pkg, en, zh):
+    return {"id": id_, "number": number, "type": type_, "enabled": True,
+            "icon": "", "icon1": "", "packageName": pkg,
+            "chineseName": zh, "englishName": en, "japaneseName": "", "koreanName": "",
+            "russianName": "", "thaiName": ""}
+
+
+# IPTV_MODE picks the operator's tile set, exactly as a real head-end would:
+# the hotel platform also serves dinner (type 5, CountryFoodActivity), while the
+# residential deployment of Ronika Palace has no catering. addDefaultMenu()'s own
+# order is kept: 1 live, 2 vod, 3 rec, 6 scenery, [5 dinner], 7 service,
+# 8 third-app, 4 hotel/complex intro.
+MOCK_MODE = os.environ.get("IPTV_MODE", "residential").strip().lower()
+
+
+def homepage(mode=None):
+    mode = (mode or MOCK_MODE or "residential").lower()
+    tiles = [
+        _hp(1, 1, 1, "live", "LIVE", "\u76f4\u64ad"),
+        _hp(2, 2, 2, "vod", "VOD", "\u70b9\u64ad"),
+        _hp(3, 3, 3, "rec", "Playback", "\u56de\u770b"),
+        _hp(4, 4, 6, "scenery", "Scenery", "\u98ce\u666f"),
+    ]
+    if mode == "hotel":
+        tiles.append(_hp(5, 5, 5, "dinner", "Dinner", "\u7f8e\u98df"))
+    tiles += [
+        _hp(6, 6, 9, "music", "Play Music", "\u97f3\u4e50"),
+        _hp(7, 7, 7, "service", "Service", "\u670d\u52a1"),
+        _hp(8, 8, 8, "third_app", "Third APP", "\u7b2c\u4e09\u65b9\u5e94\u7528"),
+        _hp(9, 9, 4, "hotel", "About the complex", "\u7b80\u4ecb"),
+    ]
+    return tiles
+
+
+HOMEPAGE = homepage()
+# GetWelcomWord -> WelcomeWordBean. "%s%" is replaced with Client.checkPerson and
+# "%s%:" with the salutation (welcome_title_text_default_cur / _en).
+WELCOME_WORD = {
+    "id": 1,
+    "content": "ساکن محترم %s%\u060c به شبکهٔ تلویزیون اینترنتی مجتمع خوش آمدید. "
+               "کانال‌های زنده\u060c آرشیو ویدئو و بازپخش در دسترس شماست.",
+    "content_en": "Dear resident %s%, welcome to the complex IPTV service. Live channels, "
+                  "the video archive and catch-up TV are at your disposal.",
+}
+# GetAPK -> List<ThirdPartyApkBean>{name,packageName,icon,url}; the "third app"
+# popup lists these plus the locally registered Windows apps.
+THIRD_APKS = []
+# apk/getWeatherDays -> WeatherBean{status, explain, data:[DataBean]}. A DataBean
+# is {type, convertType, date, high, low, wendu}; data[0] is today (the welcome
+# card's weather_layout_invisible and, through EVENT_TODAY_WEATHER, the main
+# screen's weather_layout_main) and the next three feed weather_layout_gone.
+# `type` is the Chinese label the APK maps through WEATHER_FORECAST_STATUS_MAP,
+# with the "n"/"d" night/day suffix added before 06:00 and after 20:00.
+def _wx(type_, wendu, low, high, days):
+    return {"type": type_, "convertType": "", "wendu": wendu, "low": low, "high": high,
+            "date": time.strftime("%Y-%m-%d", time.localtime(time.time() + days * 86400))}
+
+
+WEATHER = {"status": "1000", "explain": "OK", "data": [
+    _wx("\u6674", "18\u2103", "12", "19", 0),        # 晴  clear
+    _wx("\u591a\u4e91", "17\u2103", "11", "17", 1),  # 多云 cloudy
+    _wx("\u9635\u96e8", "15\u2103", "9", "15", 2),   # 阵雨 showers
+    _wx("\u6674", "16\u2103", "10", "16", 3),        # 晴  clear
+]}
 VERSION = {"versionCode": 20702006, "versionName": "2.7.2.06", "name": "PARDIK", "url": "", "length": 0, "time": ""}
 
 
@@ -320,6 +419,26 @@ class H(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _route(self, p, q):
+        if p == "/mock/announce":
+            # test hook: GET|POST /mock/announce?on=1&ip=127.0.0.1&port=8030&every=2
+            if "on" in q:
+                ANNOUNCE["on"] = str(q["on"][0]).lower() in ("1", "true", "on", "yes")
+            if "ip" in q:
+                ANNOUNCE["ip"] = str(q["ip"][0])
+            if "port" in q:
+                try:
+                    ANNOUNCE["port"] = int(q["port"][0])
+                except Exception:
+                    pass
+            if "every" in q:
+                try:
+                    ANNOUNCE["every"] = max(1.0, float(q["every"][0]))
+                except Exception:
+                    pass
+            return self._j(dict(ANNOUNCE))
+        if p == "/mock/state":
+            return self._j({"announce": dict(ANNOUNCE), "port": PORT, "now": NOW(),
+                            "mode": MOCK_MODE, "homepage": [t["type"] for t in homepage()]})
         if p == "/iptv2/manager/GetSettings":
             return self._j(SETTINGS)
         if p == "/iptv2/manager/GetClient":
@@ -361,7 +480,15 @@ class H(BaseHTTPRequestHandler):
             # type 3 = the image shown in the live player (random pick client-side)
             if t == "3":
                 return self._j(ADV_IMAGES if SETTINGS.get("activeAdv") else [])
-            # type 1 = welcome background slideshow, type 12 = manager signature
+            # type 0 = the main screen's MZBannerView slideshow (indexArea 1,
+            # MainStyleThirdActivity.getBgPptAndMusic), type 1 = the welcome
+            # slideshow, type 2 = the main screen logo (initTitleData),
+            # type 11 = the boot-screen background (IptvSP.setPingSerBgImg),
+            # type 12 = the manager signature, type 17 = the welcome title image.
+            # An empty list leaves the layout's own artwork in place
+            # (@mipmap/pic_ping_bg, @mipmap/iv_welcome, no logo).
+            if t == "0":
+                return self._j(ADV_BG_IMAGES)
             if t == "1":
                 return self._j(ADV_BG_IMAGES)
             if t == "12":
@@ -382,8 +509,12 @@ class H(BaseHTTPRequestHandler):
                                 "type": q.get("type", ["0"])[0], "time": q.get("time", ["0"])[0],
                                 "check": q.get("check", ["0"])[0], "at": NOW()})
             return self._j({"status": 200})
+        if p == "/iptv2/manager/GetWelcomWord":
+            return self._j(WELCOME_WORD)
+        if p in ("/iptv2/GetAPK", "/iptv2/manager/GetAPK"):
+            return self._j(THIRD_APKS)
         if p == "/iptv2/manager/GetHomepageIcon":
-            return self._j(HOMEPAGE)
+            return self._j(homepage())
         if p == "/iptv2/manager/GetServiceIcon":
             return self._j(SERVICE_ICONS)
         if p == "/iptv2/manager/GetScenery":
@@ -584,6 +715,8 @@ if __name__ == "__main__":
         import base64
         open(os.path.join(HERE, "mock_img.png"), "wb").write(base64.b64decode(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="))
+    threading.Thread(target=announce_loop, daemon=True, name="udp-announce").start()
     srv = ThreadingHTTPServer(("0.0.0.0", PORT), H)
-    print("mock IPTV server on :%d" % PORT, flush=True)
+    print("mock IPTV server on :%d (UDP %d announce off; /mock/announce?on=1)"
+          % (PORT, ANNOUNCE_PORT), flush=True)
     srv.serve_forever()

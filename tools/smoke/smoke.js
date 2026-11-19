@@ -39,7 +39,26 @@ async function main() {
   const w = d.window, doc = w.document;
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const active = () => (doc.querySelector(".screen.active") || {}).id;
-  const homeBtn = (re) => Array.from(doc.querySelectorAll("#home-menu .menu-item")).find(n => re.test(n.textContent));
+  /* adapter_main_menu_layout.xml tiles (MainStyleThirdActivity's menu) */
+  const tiles = () => Array.from(doc.querySelectorAll("#home-menu .mm-item"));
+  const homeBtn = (re) => tiles().find(n => re.test(n.textContent));
+  /* MainStyleThirdActivity.onKeyDown(): the settings activity opens by typing
+     IptvSP.getPassword() on the main screen - there is no settings tile. */
+  const typeCode = async (code) => {
+    for (const ch of String(code)) {
+      doc.dispatchEvent(new w.KeyboardEvent("keydown", { key: ch, bubbles: true }));
+      await sleep(25);
+    }
+    await sleep(450);
+  };
+  const openSettingsByCode = async (code) => {
+    await typeCode(code || "111999");
+    if (active() !== "scr-settings") {
+      /* inputNumberTimer expired mid-sequence (the APK's own 2 s rule): again */
+      await sleep(2200);
+      await typeCode(code || "111999");
+    }
+  };
   // v2.7.2.06: channels 1-2 carry a pre-roll advert (GetNextAdv). Wait for it and skip it.
   const adBox = () => doc.querySelector("#ad-countdown");
   const skipAd = async (label) => {
@@ -72,9 +91,60 @@ async function main() {
     w.addEventListener("load", resolve);
     setTimeout(resolve, 4000);
   });
-  await sleep(2500);
-  console.log("after boot, active screen =", active());
-  console.log("boot msg =", (doc.querySelector("#boot-msg") || {}).textContent);
+  /* ---- the boot screen is PingServerActivity (activity_ping_server.xml):
+     a ProgressBar over @drawable/progress_bg, #text_view = connecting_server_tips
+     and #tips_txt = welcome_alert, while the backend runs BaseApplication's
+     handshake (GetRoomInfo -> GetClient -> GetSettings -> UDP 27777 ->
+     GetCurrentTimeAndZone) and its Timer(task, 0, 2000), 20 attempts. ---- */
+  await sleep(600);
+  console.log("boot screen =", active(), "| #ping-text =", (doc.querySelector("#ping-text") || {}).textContent,
+    "| #ping-tips =", (doc.querySelector("#ping-tips") || {}).textContent);
+  if (active() !== "scr-boot" && active() !== "scr-bootvideo") errors.push("the boot screen is not PingServerActivity: " + active());
+  const pingBg = w.getComputedStyle(doc.querySelector("#ping-bg")).backgroundImage || "";
+  console.log("[ping] background =", pingBg.slice(0, 80));
+  if (!/pic_ping_bg/.test(pingBg)) errors.push("the boot background is not @mipmap/pic_ping_bg: " + pingBg);
+
+  const conn = await (await fetch(BASE + "/api/connection")).json();
+  console.log("[ping] connected =", conn.connected, "| phase =", conn.phase, "| settings_ok =", conn.settings_ok,
+    "| attempts =", conn.ping_times + "/" + conn.ping_max, "| server =", (conn.server || {}).address,
+    "| udp bound =", (conn.discovery || {}).bound, "| udp packets =", (conn.discovery || {}).packets);
+  console.log("[ping] welcome payload =", JSON.stringify(conn.welcome));
+  console.log("[ping] state panel =", ((doc.querySelector("#ping-state") || {}).textContent || "").replace(/\s+/g, " ").slice(0, 150));
+  if (!conn.connected) errors.push("BaseApplication.isConnected() is false - the handshake never completed: " + (conn.last_error || ""));
+  if (!conn.settings_ok) errors.push("GetSettings did not answer, so the live-TV gate stays closed");
+  if (!(conn.discovery || {}).bound) errors.push("the UDP 27777 announce listener is not bound: " + ((conn.discovery || {}).error || ""));
+  if (!conn.welcome) errors.push("openWelcomeActivity() never ran (no welcome payload after " + conn.ping_times + " attempts)");
+  if (conn.welcome && conn.welcome.main !== "MainStyleThird" && conn.welcome.main !== "MainStyleFourth") {
+    errors.push("the welcome payload does not name a main activity: " + JSON.stringify(conn.welcome));
+  }
+  if (!(conn.server_settings || {}).layout && (conn.server_settings || {}).layout !== 0) {
+    errors.push("the server Settings bean has no layout");
+  }
+  console.log("[ping] Settings from the head-end =", Object.keys(conn.server_settings || {}).length, "fields |",
+    "layout =", (conn.server_settings || {}).layout, "| indexArea =", (conn.server_settings || {}).indexArea,
+    "| showPackage =", (conn.server_settings || {}).showPackage, "| epg =", (conn.server_settings || {}).epg,
+    "| enterLivePage =", (conn.server_settings || {}).enterLivePage);
+
+  /* BaseApplication$3 + startServerIpThread(): the head-end broadcasts
+     ServerIpAddrBean {"ip","port"} to UDP 27777 and the client adopts it. */
+  const headEnd = (conn.server || {}).address || "http://127.0.0.1:8030";
+  try { await fetch(headEnd + "/mock/announce?on=1&ip=127.0.0.1&port=8030&every=2"); } catch (e) {}
+  await sleep(3600);
+  const connA = await (await fetch(BASE + "/api/connection")).json();
+  const disc = connA.discovery || {};
+  console.log("[ping] UDP 27777 announce -> bound =", disc.bound, "| packets =", disc.packets,
+    "| adopted =", JSON.stringify(disc.last));
+  if (!(disc.packets > 0)) errors.push("BaseApplication$3: the UDP 27777 listener received no announcement");
+  if (!((disc.last || {}).ip === "127.0.0.1" && (disc.last || {}).port === 8030)) {
+    errors.push("ServerIpAddrBean was not adopted from the announce: " + JSON.stringify(disc.last));
+  }
+  try { await fetch(headEnd + "/mock/announce?on=0"); } catch (e) {}
+  await sleep(300);
+
+  /* the screen must leave the boot activity on its own, without a key press */
+  for (let i = 0; i < 40 && active() === "scr-boot"; i++) await sleep(250);
+  console.log("after the handshake, active screen =", active());
+  if (active() === "scr-boot") errors.push("the boot screen never left PingServerActivity");
 
   /* v2.7.2.06: settings.advVideoEM -> PingServerActivity starts BootVideoActivity,
      which plays GetAdvVideoEM[0] full screen before the welcome screen. */
@@ -97,28 +167,69 @@ async function main() {
     errors.push("expected the boot advert video screen (settings.advVideoEM)");
   }
 
-  // welcome background advertising (GetAdvImage type=1 slideshow / type=12 sign / bg music)
+  /* ---- WelcomeStyleZeroActivity (activity_welcome.xml): the 900x450dp card over
+     @mipmap/bg_welcome, GetAdvImage?type=1 in the banner, type=12 as the manager
+     signature, type=17 as the title image, GetClient -> tv_user_name,
+     GetWelcomWord -> tv_welcome_word_zh, apk/getWeatherDays -> both weather
+     layouts, apk/getClientBackgroundMusics looped. ---- */
   if (active() === "scr-welcome") {
-    await sleep(900);
+    await sleep(2200);
     const ppt = doc.querySelector("#wel-ppt"), sign = doc.querySelector("#wel-sign"), mus = doc.querySelector("#bg-music");
-    console.log("[v2] welcome ppt hidden =", ppt.hidden, "| src =", (ppt.src || "").slice(0, 90));
-    console.log("[v2] welcome sign hidden =", sign.hidden, "| src =", (sign.src || "").slice(0, 90));
-    console.log("[v2] welcome bg music src =", ((mus && mus.src) || "none").slice(0, 90));
-    console.log("[v2] welcome background video hidden =", doc.querySelector("#wel-video").hidden);
+    const card = w.getComputedStyle(doc.querySelector(".wel-card"));
+    console.log("[wel] card =", card.width + " x " + card.height, "| bg =", (w.getComputedStyle(doc.querySelector("#welcome-bg")).backgroundImage || "").slice(0, 60));
+    console.log("[wel] ppt hidden =", ppt.hidden, "| src =", (ppt.src || "").slice(0, 90));
+    console.log("[wel] sign hidden =", sign.hidden, "| src =", (sign.src || "").slice(0, 90));
+    console.log("[wel] bg music src =", ((mus && mus.src) || "none").slice(0, 90));
+    console.log("[wel] background video hidden =", doc.querySelector("#wel-video").hidden);
+    console.log("[wel] title image hidden =", doc.querySelector("#wel-title-img").hidden, "(GetAdvImage?type=17 was empty)");
+    console.log("[wel] user =", (doc.querySelector("#wel-user") || {}).textContent,
+      "| word =", ((doc.querySelector("#wel-word") || {}).textContent || "").slice(0, 70),
+      "| manager =", (doc.querySelector("#wel-manager") || {}).textContent);
+    console.log("[wel] time =", (doc.querySelector("#wel-time") || {}).textContent,
+      "| date =", (doc.querySelector("#wel-date") || {}).textContent,
+      "| weather hidden =", doc.querySelector("#wel-weather").hidden,
+      "|", (doc.querySelector("#wel-weather-txt") || {}).textContent, (doc.querySelector("#wel-weather-range") || {}).textContent,
+      "| forecast hidden =", doc.querySelector("#wel-forecast").hidden,
+      "|", Array.from(doc.querySelectorAll(".wel-fday span")).map(n => n.textContent).join(","));
     if (ppt.hidden) errors.push("welcome slideshow (GetAdvImage?type=1) is not showing");
-    if (mode === "hotel" && sign.hidden) errors.push("manager signature (GetAdvImage?type=12) is not showing");
-    if (mode !== "hotel" && !sign.hidden) errors.push("the hotel manager signature must not show in residential mode");
+    if (sign.hidden) errors.push("manager signature (GetAdvImage?type=12) is not showing");
     if (!mus || !mus.src) errors.push("welcome background music (apk/getClientBackgroundMusics) not started");
+    if (doc.querySelector("#wel-user").hidden) errors.push("tv_user_name is still GONE after GetClient");
+    if (!/guest/.test((doc.querySelector("#wel-user") || {}).textContent || "")) {
+      errors.push("tv_user_name does not carry Client.checkPerson: " + (doc.querySelector("#wel-user") || {}).textContent);
+    }
+    if (!/رونیکا|complex|مجتمع/i.test((doc.querySelector("#wel-manager") || {}).textContent || "")) {
+      errors.push("welcome_end_hotel_manager does not carry Settings.hotelName: " + (doc.querySelector("#wel-manager") || {}).textContent);
+    }
+    if (!/18/.test((doc.querySelector("#wel-weather-txt") || {}).textContent || "")) {
+      errors.push("the welcome weather is not filled from apk/getWeatherDays");
+    }
+    if (doc.querySelector("#wel-weather").hidden || doc.querySelector("#wel-forecast").hidden) {
+      errors.push("setShowWeather() did not make both weather layouts visible");
+    }
+    if (!/\d{2}:\d{2}/.test((doc.querySelector("#wel-time") || {}).textContent || "")) {
+      errors.push("cur_time_view is not HH:mm");
+    }
+    /* onKeyDown: UP/LEFT -> tv_chinese, DOWN/RIGHT -> tv_english, and the screen
+       waits for the guest instead of walking on by itself. */
+    doc.dispatchEvent(new w.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    await sleep(200);
+    console.log("[wel] after RIGHT, focused =", (doc.activeElement || {}).id, "| active screen =", active());
+    if ((doc.activeElement || {}).id !== "wel-en") errors.push("DOWN/RIGHT did not focus tv_english");
+    doc.dispatchEvent(new w.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+    await sleep(200);
+    if ((doc.activeElement || {}).id !== "wel-zh") errors.push("UP/LEFT did not focus tv_chinese");
+    if (active() !== "scr-welcome") errors.push("the welcome screen left on its own (it must wait for a language choice)");
   }
 
-  // if welcome is showing, pick Persian
+  /* onClick(tv_chinese) -> setSelectLanguage(1) -> openMain() */
   if (active() === "scr-welcome") {
-    const fa = doc.querySelector('#wel-langs .langbtn[data-lang="fa"]');
-    if (fa) fa.click();
-    await sleep(800);
+    doc.querySelector("#wel-zh").click();
+    await sleep(1200);
   }
-  console.log("after language, active =", active());
-  const menu = Array.from(doc.querySelectorAll("#home-menu .menu-item")).map(n => n.textContent.trim());
+  console.log("after the language choice, active =", active());
+  if (active() !== "scr-home") errors.push("openMain() did not reach MainStyleThirdActivity: " + active());
+  const menu = tiles().map(n => n.textContent.trim());
   console.log("menu items =", JSON.stringify(menu));
 
   /* The overlays are hidden with the `hidden` attribute while their classes set
@@ -133,7 +244,8 @@ async function main() {
   if (!hasHiddenRule) errors.push("styles.css lost the [hidden]{display:none !important} rule");
   const overlays = ["#confirm-modal", "#input-modal", "#vod-detail", "#order-detail", "#epg-panel",
     "#epg-detail", "#vol-osd", "#player-osd", "#ch-badge", "#player-error", "#toast",
-    "#ad-countdown", "#side-list", "#wel-weather", "#home-wifi", "#home-weather"];
+    "#ad-countdown", "#side-list", "#wel-weather", "#wel-forecast", "#wel-title-img", "#wel-sign",
+    "#main-wifi", "#main-weather", "#main-logo", "#main-title", "#main-room-label", "#main-banner"];
   let shown = [];
   overlays.forEach((sel) => {
     const n = doc.querySelector(sel);
@@ -143,27 +255,73 @@ async function main() {
   console.log("[css] overlays painted while hidden =", shown.length ? JSON.stringify(shown) : "none");
   if (shown.length) errors.push("hidden overlays are still displayed: " + shown.join(", "));
 
-  /* ============ deployment flavour: Pardik residential vs hotel platform ============ */
-  if (mode === "residential") {
-    const hotelOnly = /شام|غذا|خدمات|هتل|صورتحساب|CATERING|SERVICE|HOTEL/i;
-    const leaked = menu.filter(m => hotelOnly.test(m));
-    console.log("[mode] residential menu =", JSON.stringify(menu));
-    if (leaked.length) errors.push("hotel tiles in the residential menu: " + leaked.join(", "));
-    const brand = ((doc.querySelector("#home-title") || {}).textContent || "") + " | " +
-                  ((doc.querySelector("#home-subtitle") || {}).textContent || "");
-    console.log("[mode] branding =", brand);
-    if (!/PARDIK/i.test(brand) || !/رونیکا پالاس/.test(brand)) errors.push("residential branding missing: " + brand);
-    const unit = (doc.querySelector("#home-roomlabel") || {}).textContent || "";
-    console.log("[mode] unit label =", unit, "| welcome =", (doc.querySelector("#wel-guest") || {}).textContent);
-    if (!/واحد/.test(unit)) errors.push("the home bar still says room instead of unit: " + unit);
-    if (/مهمان|میهمان/.test((doc.querySelector("#wel-guest") || {}).textContent || "")) errors.push("welcome still addresses hotel guests");
-  } else {
-    console.log("[mode] hotel platform menu =", JSON.stringify(menu));
-    if (!menu.some(m => /خدمت|SERVICE/i.test(m))) errors.push("hotel mode lost the room-service tile");
+  /* ---- MainStyleThirdActivity (activity_main_ijk_style_third.xml): the top bar
+     (iv_logo, tv_room_num, wifi_status_layout, weather_layout_main, the clock),
+     ll_main_menu sliding in from the left, and one adapter_main_menu_layout tile
+     per GetHomepageIcon entry. ---- */
+  {
+    const scr = doc.querySelector("#scr-home");
+    console.log("[main] style-four =", scr.classList.contains("style-four"), "(Settings.layout =",
+      (conn.server_settings || {}).layout, ") | menu strip slid in =", scr.classList.contains("menu-in"));
+    if ((conn.server_settings || {}).layout === 0 && scr.classList.contains("style-four")) {
+      errors.push("layout 0 must use activity_main_ijk_style_third, not style four");
+    }
+    await sleep(300);
+    if (!doc.querySelector("#scr-home").classList.contains("menu-in")) {
+      errors.push("right_show_action() never made ll_main_menu visible");
+    }
+    const bg = w.getComputedStyle(doc.querySelector("#main-bg")).backgroundImage || "";
+    console.log("[main] background =", bg.slice(0, 70),
+      "| room =", (doc.querySelector("#main-room-num") || {}).textContent,
+      "| room label hidden =", doc.querySelector("#main-room-label").hidden,
+      "| logo hidden =", doc.querySelector("#main-logo").hidden,
+      "| clock =", (doc.querySelector("#main-time") || {}).textContent, (doc.querySelector("#main-date") || {}).textContent);
+    if (!/bg_welcome|main_bg/.test(bg)) errors.push("main_layout_background_img is not @mipmap/bg_welcome: " + bg);
+    if ((doc.querySelector("#main-room-num") || {}).textContent !== "Ronika") {
+      errors.push("tv_room_num does not print Client.name: " + (doc.querySelector("#main-room-num") || {}).textContent);
+    }
+    if (!doc.querySelector("#main-room-label").hidden) errors.push("tv_room_text_view must stay GONE");
+    if (!doc.querySelector("#main-logo").hidden) errors.push("iv_logo must stay empty while GetAdvImage?type=2 is empty");
+    if (!/\d{2}:\d{2}/.test((doc.querySelector("#main-time") || {}).textContent || "")) errors.push("the main clock is not HH:mm");
+    const wifi = doc.querySelector("#main-wifi");
+    console.log("[main] wifi hidden =", wifi.hidden, "|", (doc.querySelector("#main-wifi-name") || {}).textContent,
+      "|", (doc.querySelector("#main-wifi-pass") || {}).textContent);
+    if (wifi.hidden) errors.push("isShowWifi() hid a client that has wifiName + wifiPassword");
+    if (!/RONIKA-RESIDENTS/.test((doc.querySelector("#main-wifi-name") || {}).textContent || "")) {
+      errors.push("wifi_name_View is not R$string.account + Client.wifiName");
+    }
+    const wx = doc.querySelector("#main-weather");
+    console.log("[main] weather hidden =", wx.hidden, "|", (doc.querySelector("#main-weather-status") || {}).textContent,
+      (doc.querySelector("#main-weather-range") || {}).textContent,
+      "| banner hidden =", doc.querySelector("#main-banner").hidden, "(indexArea =", (conn.server_settings || {}).indexArea, ")");
+    if (wx.hidden) errors.push("weather_layout_main is hidden although the welcome screen got weather");
+    if ((conn.server_settings || {}).indexArea === 1 && doc.querySelector("#main-banner").hidden) {
+      errors.push("indexArea 1 must run the GetAdvImage?type=0 banner behind the menu");
+    }
+    /* the tiles are the head-end's list, in order, with the APK's own artwork */
+    const want = (conn.server_settings || {}) && menu.length;
+    const icons = tiles().map(n => ((n.querySelector("img") || {}).src || "").replace(/^.*\//, ""));
+    console.log("[main] tiles =", JSON.stringify(menu), "| icons =", JSON.stringify(icons));
+    if (!want || menu.length < 2) errors.push("GetHomepageIcon did not build the menu: " + JSON.stringify(menu));
+    if (icons[0] !== "mipmap__icon_live.png") errors.push("the live tile is not @mipmap/icon_live: " + icons[0]);
+    const t0 = tiles()[0];
+    if (t0) {
+      t0.dispatchEvent(new w.FocusEvent("focus"));
+      await sleep(120);
+      const focused = ((t0.querySelector("img") || {}).src || "").replace(/^.*\//, "");
+      console.log("[main] focused icon =", focused);
+      if (focused !== "mipmap__icon_live_large.png") errors.push("onItemSelected did not swap to icon_live_large: " + focused);
+      t0.dispatchEvent(new w.FocusEvent("blur"));
+      await sleep(80);
+    }
+    /* the tile label follows getMenuItemName(); Persian uses the APK's own
+       string resource for that tile type because MainPageItemBean has no fa column */
+    if (!/زنده|LIVE|直播/i.test(menu[0] || "")) errors.push("the first tile is not the live tile: " + menu[0]);
+    console.log("[mode] deployment =", mode, "| menu =", JSON.stringify(menu));
   }
 
   // open LIVE
-  const liveBtn = Array.from(doc.querySelectorAll("#home-menu .menu-item")).find(n => /زنده|LIVE/i.test(n.textContent));
+  const liveBtn = homeBtn(/زنده|LIVE|直播/i);
   if (liveBtn) { liveBtn.click(); await sleep(1500); }
   console.log("after LIVE click, active =", active());
   const pkgs = Array.from(doc.querySelectorAll("#pkg-list .pkg-item")).map(n => n.textContent.trim());
@@ -184,7 +342,7 @@ async function main() {
   // back to home, open VOD
   for (let i = 0; i < 3; i++) { doc.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Escape", bubbles: true })); await sleep(400); }
   console.log("after escapes, active =", active());
-  const vodBtn = Array.from(doc.querySelectorAll("#home-menu .menu-item")).find(n => /ویدئو|VOD/i.test(n.textContent));
+  const vodBtn = homeBtn(/ویدئو|VOD|点播/i);
   if (vodBtn) { vodBtn.click(); await sleep(1500); }
   console.log("after VOD, active =", active());
   const types = Array.from(doc.querySelectorAll("#vod-types .type-item")).map(n => n.textContent.trim());
@@ -194,13 +352,27 @@ async function main() {
   if (poster) { poster.click(); await sleep(600); }
   console.log("vod detail hidden =", doc.querySelector("#vod-detail").hidden, "title =", (doc.querySelector("#vd-title") || {}).textContent);
 
-  // settings gate
+  /* Settings: MainStyleThirdActivity.onKeyDown() collects digits and opens
+     SettingsActivity when the buffer equals IptvSP.getPassword() - the menu has
+     no settings tile, exactly like the APK. */
   for (let i = 0; i < 4; i++) { doc.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Escape", bubbles: true })); await sleep(300); }
-  const setBtn = Array.from(doc.querySelectorAll("#home-menu .menu-item")).find(n => /تنظیمات/i.test(n.textContent));
-  if (setBtn) { setBtn.click(); await sleep(600); }
-  console.log("settings active =", active(), "gate shown =", doc.querySelector("#set-gate").style.display);
-  const gp = doc.querySelector("#gate-pass");
-  if (gp) { gp.value = "111999"; doc.querySelector("#gate-ok").click(); await sleep(500); }
+  if (active() !== "scr-home") errors.push("BACK did not return to the main screen: " + active());
+  const wrongCode = async () => {
+    for (const ch of "12345") { doc.dispatchEvent(new w.KeyboardEvent("keydown", { key: ch, bubbles: true })); await sleep(20); }
+    await sleep(300);
+    const a = active();
+    for (let i = 0; i < 3; i++) { doc.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Escape", bubbles: true })); await sleep(200); }
+    return a;
+  };
+  const wrong1 = await wrongCode();
+  console.log("[main] after a wrong code, active =", wrong1, "(must stay scr-home)");
+  if (wrong1 !== "scr-home") errors.push("a wrong digit sequence opened the settings activity");
+  await sleep(2200);                       // let inputNumberTimer clear the buffer
+  await openSettingsByCode("111999");
+  console.log("settings active =", active(), "gate shown =", doc.querySelector("#set-gate").style.display,
+    "| body hidden =", doc.querySelector("#set-body").hidden);
+  if (active() !== "scr-settings") errors.push("typing 111999 on the main screen did not open SettingsActivity");
+  if (doc.querySelector("#set-body").hidden) errors.push("the code was correct but the settings gate asked again");
   console.log("[mode] head-end row =", (doc.querySelector("#set-headend-value") || {}).textContent);
   if (!/:\d+/.test((doc.querySelector("#set-headend-value") || {}).textContent || "")) {
     errors.push("the head-end row does not show the configured address: " + (doc.querySelector("#set-headend-value") || {}).textContent);
@@ -251,7 +423,7 @@ async function main() {
 
   /* --- live-playback pre-flight check (Settings -> "بررسی پخش زنده") --- */
   await goHome();
-  if (homeBtn(/تنظیمات/i)) { homeBtn(/تنظیمات/i).click(); await sleep(600); }
+  await openSettingsByCode();
   console.log("[diag] ffmpeg row =", (doc.querySelector("#set-ffmpeg-value") || {}).textContent,
     "| check row =", (doc.querySelector("#set-diag-value") || {}).textContent);
   const diagRow = doc.querySelector("#set-diag");
@@ -287,7 +459,7 @@ async function main() {
 
   /* --- external playlist source (residential head-end): Settings -> m3u --- */
   await goHome();
-  if (homeBtn(/تنظیمات/i)) { homeBtn(/تنظیمات/i).click(); await sleep(600); }
+  await openSettingsByCode();
   const m3uRow = doc.querySelector("#set-m3u");
   if (m3uRow) {
     m3uRow.click(); await sleep(500);
@@ -300,7 +472,7 @@ async function main() {
     console.log("[m3u] row value =", rowVal);
     if (!/10/.test(rowVal)) errors.push("the playlist was not parsed: " + rowVal);
     await goHome();
-    const lb = homeBtn(/زنده|LIVE/i);
+    const lb = homeBtn(/زنده|LIVE|直播/i);
     if (lb) { lb.click(); await sleep(1500); }
     const mpkgs = Array.from(doc.querySelectorAll("#pkg-list .pkg-item")).map(n => n.textContent.trim());
     console.log("[m3u] packages from playlist =", JSON.stringify(mpkgs));
@@ -318,7 +490,7 @@ async function main() {
     }
     await goHome();
     // turn the playlist off again so the rest of the run uses the server list
-    if (homeBtn(/تنظیمات/i)) { homeBtn(/تنظیمات/i).click(); await sleep(600); }
+    await openSettingsByCode();
     doc.querySelector("#set-m3u").click(); await sleep(600);
     const cok2 = doc.querySelector("#confirm-ok");
     console.log("[m3u] disable confirm hidden =", doc.querySelector("#confirm-modal").hidden);
@@ -332,7 +504,7 @@ async function main() {
   await fetch(BASE + "/api/m3u", { method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ enabled: false }) });
   await goHome();
-  const liveBtn2 = homeBtn(/زنده|LIVE/i);
+  const liveBtn2 = homeBtn(/زنده|LIVE|直播/i);
   if (liveBtn2) { liveBtn2.click(); await sleep(800); }
   const pkg2 = doc.querySelector("#pkg-list .pkg-item");
   if (pkg2) { pkg2.click(); await sleep(2200); }
@@ -355,7 +527,7 @@ async function main() {
      Pardik's residential deployment for Ronika Palace has none of them. */
   if (mode === "hotel") {
     // --- catering: country selector (caterSub) -> types -> basket -> orders
-    const dinnerBtn = homeBtn(/شام|CATERING|DINNER/i);
+    const dinnerBtn = homeBtn(/شام|CATERING|DINNER|美食/i);
     if (dinnerBtn) { dinnerBtn.click(); await sleep(900); }
     console.log("[v2] dinner active =", active(), "countries =", Array.from(doc.querySelectorAll("#country-list .country-item")).map(n => n.textContent.trim()).join(","));
     const c0 = doc.querySelector("#country-list .country-item");
@@ -387,7 +559,7 @@ async function main() {
     await goHome();
 
     // --- room service (GetServiceIcon) incl. taxi / checkout / service record
-    const svcBtn = homeBtn(/خدمت|SERVICE/i);
+    const svcBtn = homeBtn(/خدمت|SERVICE|服务/i);
     if (svcBtn) { svcBtn.click(); await sleep(900); }
     console.log("[v2] service active =", active(), "tiles =", doc.querySelectorAll("#svc-grid .svc-item").length);
     const tile = (re) => Array.from(doc.querySelectorAll("#svc-grid .svc-item")).find(n => re.test(n.textContent));
@@ -395,14 +567,14 @@ async function main() {
     if (t8) { t8.click(); await sleep(900); }
     console.log("[v2] service-record active =", active(), "rows =", doc.querySelectorAll("#svcrec-body tr").length);
     await goHome();
-    if (homeBtn(/خدمت|SERVICE/i)) { homeBtn(/خدمت|SERVICE/i).click(); await sleep(900); }
+    if (homeBtn(/خدمت|SERVICE|服务/i)) { homeBtn(/خدمت|SERVICE|服务/i).click(); await sleep(900); }
     const t6 = tile(/تسویه|checkout|Check/i) || doc.querySelectorAll("#svc-grid .svc-item")[5];
     if (t6) { t6.click(); await sleep(600); }
     console.log("[v2] checkout confirm hidden =", doc.querySelector("#confirm-modal").hidden, "| title =", (doc.querySelector("#confirm-title") || {}).textContent);
     const cok = doc.querySelector("#confirm-ok");
     if (cok) { cok.click(); await sleep(900); }
     await goHome();
-    if (homeBtn(/خدمت|SERVICE/i)) { homeBtn(/خدمت|SERVICE/i).click(); await sleep(900); }
+    if (homeBtn(/خدمت|SERVICE|服务/i)) { homeBtn(/خدمت|SERVICE|服务/i).click(); await sleep(900); }
     const t7 = tile(/تاکسی|taxi|Taxi/i) || doc.querySelectorAll("#svc-grid .svc-item")[6];
     if (t7) { t7.click(); await sleep(700); }
     console.log("[v2] taxi/wakeup active =", active(), "label =", (doc.querySelector("#wk-label") || {}).textContent);
@@ -412,7 +584,7 @@ async function main() {
     await goHome();
 
     // --- laundry uses the new GetClothingType endpoint
-    if (homeBtn(/خدمت|SERVICE/i)) { homeBtn(/خدمت|SERVICE/i).click(); await sleep(900); }
+    if (homeBtn(/خدمت|SERVICE|服务/i)) { homeBtn(/خدمت|SERVICE|服务/i).click(); await sleep(900); }
     const t3 = tile(/لباس|laundry|wash/i) || doc.querySelectorAll("#svc-grid .svc-item")[2];
     if (t3) { t3.click(); await sleep(900); }
     console.log("[v2] laundry active =", active(), "title =", (doc.querySelector("#rent-title") || {}).textContent,
@@ -425,7 +597,7 @@ async function main() {
   }
 
   // --- record/EPG screen (GetRecTV + GetEpgRecProgram)
-  const recBtn = homeBtn(/دوباره|REPLAY|RECORD/i);
+  const recBtn = homeBtn(/دوباره|REPLAY|RECORD|回看/i);
   if (recBtn) { recBtn.click(); await sleep(1000); }
   console.log("[v2] rec active =", active(), "channels =", doc.querySelectorAll("#rec-channels .rec-item").length);
   const rc = doc.querySelector("#rec-channels .rec-item");
@@ -433,6 +605,52 @@ async function main() {
   console.log("[v2] rec dates =", doc.querySelectorAll("#rec-dates .rec-item").length, "progs =", doc.querySelectorAll("#rec-progs .rec-item").length);
   await goHome();
   console.log("[v2] final active screen =", active());
+
+  /* ---- the gate itself: with no head-end the menu must refuse and say why
+     (isConnectServer() -> Toast status_disconnected), and the boot screen must
+     still leave after its 20 attempts instead of hanging. ---- */
+  await goHome();
+  const goodIp = ((await (await fetch(BASE + "/api/config")).json()).settings || {}).server_ip;
+  console.log("\n[gate] pointing the client at an unreachable head-end (was " + goodIp + ")");
+  await fetch(BASE + "/api/settings", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ server_ip: "10.255.255.1" }) });
+  /* the frontend re-reads isConnected() every 5 s (BaseApplication's timer), so
+     give it time to notice before probing the gate */
+  await sleep(6500);
+  let c2 = await (await fetch(BASE + "/api/connection")).json();
+  console.log("[gate] connected =", c2.connected, "| settings_ok =", c2.settings_ok, "| last_error =", (c2.last_error || "").slice(0, 70));
+  if (c2.connected) errors.push("the client still claims to be connected without a head-end");
+  if (homeBtn(/زنده|LIVE|直播/i)) homeBtn(/زنده|LIVE|直播/i).click();
+  let toastTxt = "";
+  for (let i = 0; i < 20; i++) {
+    await sleep(300);
+    const tn = doc.querySelector("#toast");
+    if (tn && !tn.hidden && /سرور قطع شد|Disconnect Server/i.test(tn.textContent)) { toastTxt = tn.textContent; break; }
+    if (active() !== "scr-home") break;
+    toastTxt = (tn || {}).textContent || "";
+  }
+  console.log("[gate] after LIVE with no server: active =", active(), "| toast =", toastTxt,
+    "| hidden =", (doc.querySelector("#toast") || {}).hidden);
+  if (active() === "scr-player" || active() === "scr-livepkg") errors.push("live TV opened although BaseApplication.isConnected() is false");
+  if (!/سرور قطع شد|Disconnect Server/i.test(toastTxt)) errors.push("isConnectServer() did not toast status_disconnected: " + toastTxt);
+  /* PingServerActivity.onKeyDown(): leaving the boot screen by a key press must
+     always produce a welcome payload, connected or not. */
+  const skipped = await (await fetch(BASE + "/api/connection/skip", { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: "{}" })).json();
+  console.log("[gate] skip payload =", JSON.stringify(skipped.welcome));
+  if (!skipped.welcome || !skipped.welcome.screen) errors.push("openWelcomeActivity() produced no screen while disconnected");
+  /* and the handshake must recover as soon as the address is right again */
+  await fetch(BASE + "/api/settings", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ server_ip: goodIp }) });
+  for (let i = 0; i < 24; i++) {
+    c2 = await (await fetch(BASE + "/api/connection")).json();
+    if (c2.connected && c2.settings_ok && c2.welcome) break;
+    await sleep(500);
+  }
+  console.log("[gate] after restoring " + goodIp + ": connected =", c2.connected, "| settings_ok =", c2.settings_ok,
+    "| attempts =", c2.ping_times, "| welcome =", JSON.stringify(c2.welcome));
+  if (!c2.connected || !c2.settings_ok) errors.push("the handshake did not recover after the address was restored");
+  if (!c2.welcome) errors.push("no openWelcomeActivity() payload after reconnecting");
 
   console.log("\n=== ERRORS (" + errors.length + ") ===");
   errors.slice(0, 25).forEach(e => console.log(" *", e));

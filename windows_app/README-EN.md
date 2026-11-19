@@ -31,6 +31,10 @@ What the residential flavour means in practice:
 - API base `/iptv2/` (falls back to `/iptv2/manager/`), VOD `/iptv2/vod/`
 - WebSocket control `ws://{ip}:{port}/dx-admin/websocket/{mac}` and
   `/iptv2/websocket/{unit}`
+- Head-end self-announcement on **UDP `27777`** (20 s socket timeout, up to 180
+  listener cycles), boot screen = 20 `GetSettings` attempts 2 s apart, background
+  timer = 2 s delay / 5 s period — the exact constants of `BaseApplication` and
+  `PingServerActivity`.
 - Change IP/port/**unit number** in **System settings** (password-gated).
 
 ## Will live TV actually play? (post-install checklist)
@@ -61,10 +65,11 @@ Two code-level guarantees behind that list:
   FFmpeg remux and `ffmpeg.exe` is missing, `pickSource()` falls back to the same
   channel's `hlsUrl`/`httpUrl`, and if there is none the player prints the reason
   (`ffmpeg_missing_long`) instead of a black screen with a generic decode error.
-* Start-up never hangs on an unreachable head-end: the connect screen tries
-  `GetSettings` six times (8 s timeout + 1.5 s apart) and then brings the UI up
-  **offline**, so the wrong IP/port or the m3u source can be fixed from Settings
-  without the server being reachable.
+* Start-up never hangs on an unreachable head-end either: the handshake runs in
+  the backend as `ConnectionEngine` (see below) while the UI polls
+  `/api/connection`, any key on the boot screen skips the wait, and Settings keeps
+  a **"Find the head-end"** row that re-runs UDP discovery plus a subnet sweep —
+  so a wrong IP can be fixed without the server being reachable.
 
 ## Channel source: the platform server, or an m3u playlist
 1. **Platform server (default)** — bouquets from `GetLivePackage`, channels from
@@ -91,10 +96,30 @@ Wi-Fi. `detect_network()` picks the winner and `/api/config` returns it as
 "Reconnect to server" re-detects it. The resolved MAC is refreshed at every
 start and persisted with `device_iface` / `device_iface_kind`.
 
+## How it connects (the APK's own handshake)
+`ConnectionEngine` in `iptv_backend.py` replays `BaseApplication.onCreate()` in
+order — device MAC → `GetRoomInfo` → `GetClient` → `GetSettings` →
+`startServerIpThread()` (UDP `27777`, Gson-style `{"ip","port"}` adopted only
+when `checkIpaddress(ip)` and `0 < port < 65536`) → `GetCurrentTimeAndZone` →
+the 2 s/5 s timer (`times % 2` → `GetInStream`, `times ∈ {0, 5}` → full re-read +
+`UpdateClient`) — while `ping_loop()` reproduces `PingServerActivity`'s
+`Timer(0, 2000)`: 20 `GetSettings` attempts, then `openWelcomeActivity(advVideoEM,
+layout)`. `connected` is set by exactly the four calls that set it in the APK
+(`GetSettings`, `GetClient`, `GetRoomInfo`, `UpdateClient`), so the LIVE gate and
+the `status_disconnected` toast are honest even when the head-end disappears
+later; the UI re-reads `/api/connection` every 5 s (700 ms on the boot screen).
+Live state for support: `GET /api/connection` (`phase`, `ping_times/ping_max`,
+`server_settings`, `discovery`, `sweep`, 40 log lines) and
+`POST /api/connection/{retry,skip,sweep,announce,playing}`. Settings shows three
+rows for it: **head-end connection status**, **find the head-end (UDP 27777)**
+and **reconnect to the server**.
+
 ## What it does
-Boot/ping → welcome (language fa/en/zh, clock, weather, **resident greeting**,
-background advertising) → home (logo/**unit number**/weather/clock bar + icon
-menu) → Live TV (bouquets, numbered channel list, watermark, favourites, EPG
+Boot/ping (`PingServerActivity`) → boot advert (`BootVideoActivity`) → welcome
+(`WelcomeStyleZeroActivity`: language fa/en/zh, clock, weather, **resident
+greeting**, manager signature, background advertising) → home
+(`MainStyleThirdActivity`: logo/**unit number**/Wi-Fi/weather/clock bar + the
+`GetHomepageIcon` menu, or the APK's `addDefaultMenu()` fallback) → Live TV (bouquets, numbered channel list, watermark, favourites, EPG
 polling, RTSP/HLS/HTTP/UDP), VOD (categories, poster grid, detail, playlist),
 Playback/Timeshift, Scenery, Music, password-protected Settings, plus the
 Windows-only extras (launch local apps from the menu, boot auto-start, playback
@@ -107,9 +132,10 @@ The same code still contains Pardik's full hospitality platform; flip it on by
 setting `mode.txt` (next to `install\launch.ps1`) to `hotel`, or by exporting
 `IPTV_MODE=hotel`. Catering, room service, laundry, taxi, wake-up, consumption
 bill, hotel intro and the manager signature come back, and the product title
-becomes "PARDIK SMART IPTV". In the default `residential` flavour those screens
-are removed from the menu *and* blocked from navigation
-(`app.js: HOTEL_SCREENS`).
+becomes "PARDIK SMART IPTV". In the default `residential` flavour the head-end
+simply does not offer them: the menu is built from `GetHomepageIcon` (or the
+APK's own `addDefaultMenu()`), so catering/service tiles only appear when the
+deployment asks for them — no screens are hard-blocked in the client any more.
 
 ## Performance on the target box (i5-3337U / 6 GB / GT 720M)
 - Video decoding is hardware-accelerated by the browser (MF/DXVA).

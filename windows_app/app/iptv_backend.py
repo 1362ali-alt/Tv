@@ -20,6 +20,7 @@ import time
 import uuid
 import socket
 import struct
+import collections
 import base64
 import hashlib
 import threading
@@ -369,6 +370,15 @@ class Api(object):
     def get_client(self):
         return api_get("GetClient", self._m())
 
+    def get_welcome_word(self):
+        # GetWelcomWord?mac= (the platform's own spelling) -> WelcomeWordBean
+        # {content, content_en}; "%s%" is the guest name, "%s%:" the salutation.
+        return api_get("GetWelcomWord", self._m())
+
+    def get_apk(self):
+        # GetAPK -> List<ThirdPartyApkBean> behind the "third app" popup (type 8)
+        return api_get("GetAPK")
+
     def get_room_info(self):
         return api_get("GetRoomInfo", self._m({
             "ip": detect_local_ip(), "online": "1",
@@ -596,6 +606,682 @@ PARAM_ALIAS = {
 }
 
 # --------------------------------------------------------------------------- #
+# Connection engine - the APK's start-up handshake, ported call by call
+#
+#   BaseApplication.onCreate()        -> ConnectionEngine.on_create()
+#     getPmsStatus()                    GetRoomInfo?mac=&ip=&online=&versionCode=&versionName=
+#     getClientFromServer()             GetClient?mac=        (gated by isGetClient)
+#     getDataFromServer()               GetSettings, plus GetAdvImage?type=11,
+#                                       UpdateClient / GetRoomInfo on every 2nd
+#                                       tick and GetCurrentTimeAndZone when the
+#                                       clock is stale or the link is down
+#     startServerIpThread()             the UDP 27777 announce listener
+#     getTimeFromServer()               GetCurrentTimeAndZone
+#     timer.schedule(task, 2000, 5000)  the 5 s maintenance loop
+#
+#   PingServerActivity.startTimer()   -> ConnectionEngine.ping_loop()
+#     Timer(task, 0, 2000): the first tick sleeps 2 s, then times++ and while
+#     times != 20 both BaseApplication.getSettingsFromServer() and the
+#     activity's own GetSettings call are made; at times == 20 the app stops
+#     trying and opens the welcome screen with layout 0.
+#
+#   BaseApplication$9                 -> `connected` becomes true only when a
+#     GetSettings response parses and false when the request fails. Every menu
+#     entry of MainStyleThirdActivity is gated on that flag (isConnectServer()
+#     -> Toast status_disconnected), so this flag is what decides whether the
+#     resident ever reaches the live-TV menu.
+#
+#   BaseApplication$3                 -> the head-end announces itself with a
+#     JSON datagram {"ip": "...", "port": N} on UDP 27777; the client adopts it
+#     (setServerIp / setOtherServerIp / setServerPort) and the next GetSettings
+#     goes to the right machine. This is how a tower deployment finds its
+#     server without anybody typing an address, so the port listens too.
+# --------------------------------------------------------------------------- #
+DISCOVERY_PORT = int(os.environ.get("IPTV_DISCOVERY_PORT", "27777"))
+DISCOVERY_TIMEOUT = 20.0          # DatagramSocket.setSoTimeout(20000)
+DISCOVERY_MAX_THREADS = 180       # BaseApplication.startServerIpThread(): serverIpTimes < 180
+PING_MAX_ATTEMPTS = 20            # PingServerActivity$2: while (times != 20)
+PING_INTERVAL = 2.0               # PingServerActivity.startTimer(): Timer(task, 0, 2000)
+APP_TIMER_DELAY = 2.0             # BaseApplication.onCreate(): timer.schedule(task, 2000, 5000)
+APP_TIMER_PERIOD = 5.0
+DAY_MS = 86400000                 # getDataFromServer(): refresh the clock once a day
+# Windows-port aid (not in the APK): when no announce arrives and the stored
+# address does not answer, look for the head-end on the local subnet.
+SWEEP_ENABLED = os.environ.get("IPTV_SWEEP", "1") not in ("0", "false", "no")
+SWEEP_PORT_TIMEOUT = 0.35
+SWEEP_HTTP_TIMEOUT = 1.5
+
+# util.IpaddressCheck
+_IP_RE = re.compile(r"^(1\d{2}|2[0-4]\d|25[0-5]|[1-9]\d|[1-9])\."
+                    r"(1\d{2}|2[0-4]\d|25[0-5]|[1-9]\d|\d)\."
+                    r"(1\d{2}|2[0-4]\d|25[0-5]|[1-9]\d|\d)\."
+                    r"(1\d{2}|2[0-4]\d|25[0-5]|[1-9]\d|\d)$")
+_DOMAIN_RE = re.compile(r"^((?!-)[A-Za-z0-9-]{1,63}(?<!-)\.)+[A-Za-z]{2,6}$")
+
+
+def check_ipaddress(v):
+    """IpaddressCheck.checkIpaddress - dotted quad, no leading zeros allowed."""
+    return bool(v) and _IP_RE.match(str(v)) is not None
+
+
+def is_valid_domain(v):
+    """IpaddressCheck.isValidDomain"""
+    return bool(v) and _DOMAIN_RE.match(str(v)) is not None
+
+
+def has_letter(v):
+    """IpaddressCheck.hasLetter - SettingsActivity rejects letters in an IP field."""
+    return re.search(r"[a-zA-Z]", str(v or "")) is not None
+
+
+def _port(v, default=8030):
+    try:
+        p = int(v)
+    except Exception:
+        return default
+    return p if 0 < p < 65536 else default
+
+
+def default_gateway():
+    """The router of the interface we are on - the usual place a building's
+    head-end sits when it is not the address the APK was built with."""
+    try:
+        if os.name == "nt":
+            ps = ("(Get-NetRoute -DestinationPrefix 0.0.0.0/0 -ErrorAction SilentlyContinue | "
+                  "Sort-Object RouteMetric | Select-Object -First 1).NextHop")
+            flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+                               capture_output=True, timeout=15, creationflags=flags)
+            gw = (r.stdout or b"").decode("utf-8", "replace").strip()
+            return gw if check_ipaddress(gw) else ""
+        for line in open("/proc/net/route").read().splitlines()[1:]:
+            f = line.split()
+            if len(f) > 2 and f[1] == "00000000":
+                return socket.inet_ntoa(struct.pack("<L", int(f[2], 16)))
+    except Exception:
+        pass
+    return ""
+
+
+def local_subnet(ip=None):
+    """/24 neighbours of our own address, in the order a technician would try."""
+    ip = ip or NETWORK.get("ip") or detect_local_ip()
+    if not check_ipaddress(ip) or ip.startswith("169.254."):
+        return ip, []
+    base = ip.rsplit(".", 1)[0]
+    hosts = ["%s.%d" % (base, i) for i in range(1, 255) if "%s.%d" % (base, i) != ip]
+    return ip, hosts
+
+
+class ServerDiscovery(threading.Thread):
+    """BaseApplication$3 + startServerIpThread(): listen on UDP 27777 for the
+    head-end's {"ip","port"} announcement and adopt it. The socket timeout is
+    20 s and the listener is re-armed at most 180 times, exactly as the APK
+    does, so a server that announces late is still picked up."""
+
+    def __init__(self, engine):
+        super(ServerDiscovery, self).__init__(daemon=True, name="iptv-discovery")
+        self.engine = engine
+        self.sock = None
+        self.bound = False
+        self.error = ""
+        self.packets = 0
+        self.threads = 0
+        self.last = None
+        self.stop_flag = False
+
+    def state(self):
+        return {"port": DISCOVERY_PORT, "bound": self.bound, "error": self.error,
+                "packets": self.packets, "threads": self.threads, "last": self.last}
+
+    def adopt(self, payload, why, addr=None):
+        """ServerIpAddrBean {ip, port} -> setServerIp / setOtherServerIp /
+        setServerPort, with the APK's own validation."""
+        try:
+            ip = str((payload or {}).get("ip") or "").strip()
+            port = _port((payload or {}).get("port"), 0)
+        except Exception:
+            return False
+        if not check_ipaddress(ip) or not (0 < port < 65536):
+            self.engine.note("announce rejected: ip=%r port=%r" % (ip, port))
+            return False
+        self.last = {"ip": ip, "port": port, "why": why, "from": addr or "",
+                     "at": round(time.time(), 3)}
+        self.engine.adopt_server(ip, port, why)
+        return True
+
+    def run(self):
+        while not self.stop_flag and self.threads < DISCOVERY_MAX_THREADS:
+            self.threads += 1
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                try:
+                    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                except Exception:
+                    pass
+                s.bind(("0.0.0.0", DISCOVERY_PORT))
+                s.settimeout(DISCOVERY_TIMEOUT)
+                self.sock, self.bound, self.error = s, True, ""
+                self.engine.note("discovery: listening on UDP %d (thread %d/%d)"
+                                 % (DISCOVERY_PORT, self.threads, DISCOVERY_MAX_THREADS))
+                while not self.stop_flag:
+                    try:
+                        buf, addr = s.recvfrom(512)
+                    except socket.timeout:
+                        break                       # -> startServerIpThread() again
+                    except Exception as e:
+                        self.error = str(e)
+                        break
+                    self.packets += 1
+                    text = buf.decode("utf-8", "replace").strip()
+                    self.engine.note("discovery: %d byte(s) from %s:%s -> %s"
+                                     % (len(buf), addr[0], addr[1], text[:160]))
+                    try:
+                        payload = json.loads(text)
+                    except Exception:
+                        payload = None
+                    if not isinstance(payload, dict):
+                        time.sleep(6.0)             # BaseApplication$3: bean == null -> sleep 6000
+                        continue
+                    if self.adopt(payload, "udp-announce", "%s:%s" % (addr[0], addr[1])):
+                        return                      # address adopted: stop announcing
+                s.close()
+            except Exception as e:
+                self.bound, self.error = False, str(e)
+                self.engine.note("discovery: bind failed on UDP %d: %s" % (DISCOVERY_PORT, e))
+                time.sleep(2.0)
+        self.bound = False
+
+
+class ConnectionEngine(object):
+    """BaseApplication + PingServerActivity, in one place.
+
+    `connected` is the flag MainStyleThirdActivity.isConnectServer() reads, and
+    the whole point of the boot phase: the welcome screen and the live-TV menu
+    only open when a GetSettings response has parsed."""
+
+    def __init__(self):
+        self.lock = threading.RLock()
+        self.connected = False
+        self.settings = None                 # bean.Settings
+        self.client = None                   # bean.Client
+        self.pms_type = 0
+        self.is_get_pms_data = False         # settings.getPmsType() != 0
+        self.is_get_client = True            # GetClient is asked for once
+        self.is_get_ping_ser_img = True      # GetAdvImage?type=11 (boot background)
+        self.update_room_number = True       # BaseApplication.updateRoomNumber
+        self.times = 0                       # 5 s maintenance loop counter
+        self.times1 = 0                      # getDataFromServer() counter
+        self.ping_times = 0                  # PingServerActivity.times
+        self.server_ip_times = 0
+        self.system_cur_time = 0
+        self.server_time_mills = 0           # GetCurrentTimeAndZone -> DigitalClock
+        self.cur_playing = ""                # UpdateClient?name=<live programme>
+        self.server_room_num = ""
+        self.time_zone = ""
+        self.cur_language = ""
+        self.phase = "boot"                  # boot -> ping -> welcome -> main
+        self.welcome = None                  # openWelcomeActivity() payload
+        self.last_error = ""
+        self.last_ok = 0.0
+        self.started = 0.0
+        self.log = collections.deque(maxlen=240)
+        self.discovery = ServerDiscovery(self)
+        self.sweep = {"enabled": SWEEP_ENABLED, "done": False, "running": False,
+                      "tried": 0, "found": None, "log": []}
+        self._threads = []
+        self._stop = threading.Event()
+
+    # ---- logging / state ------------------------------------------------- #
+    def note(self, msg):
+        line = "[%s] %s" % (time.strftime("%H:%M:%S"), msg)
+        with self.lock:
+            self.log.append(line)
+        print("CONNECTION " + line)
+        sys.stdout.flush()
+
+    def state(self):
+        with self.lock:
+            st = self.settings or {}
+            return {
+                "connected": self.connected,
+                "phase": self.phase,
+                "ping_times": self.ping_times,
+                "ping_max": PING_MAX_ATTEMPTS,
+                "welcome": self.welcome,
+                "server": {"ip": SETTINGS.get("server_ip"), "port": SETTINGS.get("server_port"),
+                           "address": SETTINGS.address(),
+                           "is_factory_default": SETTINGS.get("server_ip") == DEFAULTS["server_ip"]},
+                "unit": SETTINGS.get("iptv_room_number") or "",
+                "server_room_num": self.server_room_num,
+                "client": self.client,
+                "settings_ok": bool(self.settings),
+                "pms_type": self.pms_type,
+                "layout": st.get("layout", SETTINGS.get("app_layout_style", 0)),
+                "enter_live_page": bool(st.get("enterLivePage")),
+                "need_cheek_in": bool(st.get("needCheekIn")),
+                "enabled": self.is_enabled(),
+                "adv_video_em": bool(st.get("advVideoEM")),
+                "skip_welcome_page": bool(st.get("skipWelcomePage")),
+                "ping_bg": SETTINGS.get("ping_server_bg_image") or "",
+                # BaseApplication.getSettings() / curPlayingLiveProgramName /
+                # DigitalClock.currentTimeMillis(): the screens read these.
+                "server_settings": self.settings,
+                "cur_playing": self.cur_playing,
+                "server_time": self.server_time_mills,
+                "time_zone": self.time_zone,
+                "last_error": self.last_error,
+                "last_ok": self.last_ok,
+                "uptime": round(time.time() - self.started, 1) if self.started else 0,
+                "discovery": self.discovery.state(),
+                "sweep": {k: v for k, v in self.sweep.items() if k != "log"},
+                "sweep_log": list(self.sweep["log"])[-25:],
+                "log": list(self.log)[-40:],
+                "ws": {"prg": bool(WS.prg and WS.prg.connected),
+                       "vol": bool(WS.vol and WS.vol.connected)},
+            }
+
+    def is_enabled(self):
+        """MainStyleThirdActivity.isEnabled(): only a checked-in client is
+        blocked, and only when the server asks for check-in at all."""
+        st = self.settings or {}
+        if not st.get("needCheekIn"):
+            return True
+        c = self.client
+        return not (c is not None and not c.get("enable", True))
+
+    # ---- the individual server calls ------------------------------------- #
+    def _fail(self, what, e):
+        self.last_error = "%s: %s" % (what, e)
+        self.note(self.last_error)
+
+    def get_settings_from_server(self):
+        """BaseApplication.getSettingsFromServer() + $9: this is the call that
+        decides `connected`."""
+        try:
+            data = API.get_settings()
+        except Exception as e:
+            self.connected = False
+            self._fail("GetSettings", e)
+            return None
+        if not isinstance(data, dict):
+            self.connected = False
+            self._fail("GetSettings", "answer is not an object (%r)" % type(data).__name__)
+            return None
+        self.connected = True
+        self.last_ok = time.time()
+        self.last_error = ""
+        if data != self.settings:
+            self.settings = data
+            self.pms_type = int(data.get("pmsType") or 0)
+            self.is_get_pms_data = self.pms_type != 0
+            lang = data.get("language")
+            if lang is not None and SETTINGS.get("server_language_flag") != lang:
+                SETTINGS.set("server_language_flag", lang)
+            dlang = data.get("defaultLanguage")
+            if dlang is not None and SETTINGS.get("server_language_defalut_select_flag") != dlang:
+                SETTINGS.set("server_language_defalut_select_flag", dlang)
+            self.note("GetSettings ok: protocol=%s layout=%s showPackage=%s epg=%s "
+                      "enterLivePage=%s pmsType=%s"
+                      % (data.get("protocol"), data.get("layout"), data.get("showPackage"),
+                         data.get("epg"), data.get("enterLivePage"), self.pms_type))
+        return data
+
+    def get_client_from_server(self):
+        """BaseApplication.getClientFromServer() + $7 (only while isGetClient)."""
+        if not self.is_get_client:
+            return self.client
+        try:
+            data = API.get_client()
+        except Exception as e:
+            self._fail("GetClient", e)
+            return None
+        if isinstance(data, dict):
+            self.connected = True
+            self.is_get_client = False
+            self.client = data
+            self.note("GetClient ok: name=%r enable=%s" % (data.get("name"), data.get("enable")))
+        return self.client
+
+    def get_pms_status(self):
+        """BaseApplication.getPmsStatus() - despite the name it calls GetRoomInfo."""
+        try:
+            data = API.get_room_info()
+        except Exception as e:
+            self._fail("GetRoomInfo", e)
+            return None
+        if isinstance(data, dict):
+            self.client = data
+            self.connected = True
+            self.note("GetRoomInfo ok: name=%r" % data.get("name"))
+        return data
+
+    def update_client(self, playing=""):
+        """BaseApplication.updateClient() + $6: also how the head-end hands this
+        client its unit number (Client.name -> IptvSP.setRoomNumber)."""
+        try:
+            data = API.update_client(playing or self.cur_playing)
+        except Exception as e:
+            self._fail("UpdateClient", e)
+            return None
+        if not isinstance(data, dict):
+            return None
+        self.client = data
+        self.connected = True
+        tz = data.get("timeZone")
+        if tz and tz != self.time_zone:
+            self.get_time_from_server()
+        name = data.get("name")
+        if self.update_room_number and name and ":" not in str(name):
+            self.server_room_num = SETTINGS.get("iptv_room_number") or ""
+            if self.server_room_num != name:
+                SETTINGS.set("iptv_room_number", name)
+                self.note("UpdateClient: unit number set to %r (was %r)"
+                          % (name, self.server_room_num))
+        return data
+
+    def get_time_from_server(self):
+        try:
+            data = API.get_time()
+        except Exception as e:
+            self._fail("GetCurrentTimeAndZone", e)
+            return None
+        if isinstance(data, dict):
+            self.time_zone = data.get("timeZone") or self.time_zone
+            try:
+                self.server_time_mills = int(data.get("timeMills") or 0)
+            except (TypeError, ValueError):
+                pass
+            self.note("GetCurrentTimeAndZone ok: %s %s"
+                      % (data.get("timeMills"), self.time_zone or ""))
+        return data
+
+    def get_ping_ser_img_data(self):
+        """BaseApplication.getPingSerImgData() + $5: GetAdvImage?type=11 becomes
+        the boot-screen background (IptvSP.setPingSerBgImg)."""
+        try:
+            lst = API.get_adv_image(11)
+        except Exception as e:
+            self._fail("GetAdvImage?type=11", e)
+            return
+        items = [x for x in (lst if isinstance(lst, list) else []) if x]
+        if not items:
+            return
+        self.is_get_ping_ser_img = False
+        SETTINGS.set("ping_server_bg_image", SETTINGS.image_path(items[0]))
+        self.note("boot background: %s" % items[0])
+
+    def get_force_change_program(self):
+        """BaseApplication.getForceChangeProgram() - GetInStream (even ticks)."""
+        try:
+            API.get_in_stream()
+        except Exception:
+            pass                              # the APK ignores this one silently
+
+    def get_data_from_server(self):
+        """BaseApplication.getDataFromServer(), in order."""
+        self.get_settings_from_server()
+        if self.is_get_ping_ser_img:
+            self.get_ping_ser_img_data()
+        if self.times1 % 2 == 0:
+            self.times1 = 0
+            self.update_client()
+            if self.is_get_pms_data:
+                self.get_pms_status()
+        self.times1 += 1
+        now = int(time.time() * 1000)
+        if not self.connected or (now - self.system_cur_time) > DAY_MS:
+            self.system_cur_time = now
+            self.get_time_from_server()
+
+    # ---- address adoption + sweep ---------------------------------------- #
+    def adopt_server(self, ip, port, why):
+        port = _port(port, SETTINGS.get("server_port"))
+        old = SETTINGS.address()
+        SETTINGS.set("server_ip", ip)
+        SETTINGS.set("other_server_ip", ip)
+        SETTINGS.set("server_port", port)
+        self.note("server address adopted from %s: %s (was %s)" % (why, SETTINGS.address(), old))
+        self.is_get_client = True
+        self.get_settings_from_server()
+        WS.start()
+
+    def sweep_for_head_end(self):
+        """Windows-port aid: try the addresses a building head-end usually has.
+        Only runs when the APK's own paths (stored address + UDP announce) did
+        not produce a GetSettings answer."""
+        if self.sweep["running"] or not SWEEP_ENABLED:
+            return None
+        self.sweep["running"] = True
+
+        def log(msg):
+            self.sweep["log"].append(msg)
+            self.note("sweep: " + msg)
+
+        def answers(ip, port):
+            try:
+                sk = socket.create_connection((ip, int(port)), timeout=SWEEP_PORT_TIMEOUT)
+                sk.close()
+            except Exception:
+                return False
+            url = "http://%s:%s/iptv2/GetSettings" % (ip, port)
+            try:
+                data, _ct, _st = http_get(url, timeout=SWEEP_HTTP_TIMEOUT)
+                obj = json.loads(data.decode("utf-8", "replace"))
+                return isinstance(obj, dict) and bool(obj)
+            except Exception:
+                return False
+
+        try:
+            port = _port(SETTINGS.get("server_port"))
+            gw = default_gateway()
+            mine, hosts = local_subnet()
+            first = [SETTINGS.get("server_ip"), DEFAULTS["server_ip"],
+                     SETTINGS.get("other_server_ip"), gw,
+                     mine.rsplit(".", 1)[0] + ".1" if check_ipaddress(mine) else "",
+                     mine.rsplit(".", 1)[0] + ".254" if check_ipaddress(mine) else ""]
+            seen, ordered = set(), []
+            for ip in first:
+                if ip and check_ipaddress(ip) and ip not in seen:
+                    seen.add(ip)
+                    ordered.append(ip)
+            log("candidates: %s (gateway %s, local %s)" % (", ".join(ordered), gw or "-", mine))
+            for ip in ordered:
+                self.sweep["tried"] += 1
+                if answers(ip, port):
+                    log("head-end answered on %s:%s" % (ip, port))
+                    self.sweep["found"] = "%s:%s" % (ip, port)
+                    self.adopt_server(ip, port, "sweep")
+                    return ip
+            if not self.connected and hosts:
+                log("scanning %d host(s) of %s/24 on port %d" % (len(hosts), mine.rsplit(".", 1)[0], port))
+                found = []
+
+                def probe(ip):
+                    self.sweep["tried"] += 1
+                    if answers(ip, port):
+                        found.append(ip)
+
+                threads = [threading.Thread(target=probe, args=(h,), daemon=True) for h in hosts]
+                for t in threads[:64]:
+                    t.start()
+                for t in threads[:64]:
+                    t.join(timeout=SWEEP_PORT_TIMEOUT + SWEEP_HTTP_TIMEOUT + 1)
+                for chunk in range(64, len(threads), 64):
+                    for t in threads[chunk:chunk + 64]:
+                        t.start()
+                    for t in threads[chunk:chunk + 64]:
+                        t.join(timeout=SWEEP_PORT_TIMEOUT + SWEEP_HTTP_TIMEOUT + 1)
+                    if found:
+                        break
+                if found:
+                    ip = sorted(found, key=lambda x: int(x.rsplit(".", 1)[1]))[0]
+                    log("head-end answered on %s:%s" % (ip, port))
+                    self.sweep["found"] = "%s:%s" % (ip, port)
+                    self.adopt_server(ip, port, "sweep")
+                    return ip
+                log("no head-end answered on this subnet")
+            return None
+        finally:
+            self.sweep["running"] = False
+            self.sweep["done"] = True
+
+    # ---- the two APK loops ----------------------------------------------- #
+    def app_tick(self):
+        """BaseApplication$1.run() - Timer(task, 2000, 5000)."""
+        if self.settings is not None and (self.times % 2) == 0:
+            self.get_force_change_program()
+        if self.times in (0, 5):
+            self.times = 0
+            self.get_client_from_server()
+            self.get_data_from_server()
+        self.times += 1
+
+    def ping_tick(self):
+        """PingServerActivity$2.run() - Timer(task, 0, 2000), 20 attempts."""
+        if self.welcome is not None:
+            return True                                   # isLeave: the timer is cancelled
+        self.ping_times += 1
+        if self.ping_times != PING_MAX_ATTEMPTS:
+            self.get_settings_from_server()               # BaseApplication.getSettingsFromServer()
+            self.ping_get_settings_from_server()          # the activity's own call
+        else:
+            self.note("ping: %d attempts without an answer -> welcome with layout 0"
+                      % PING_MAX_ATTEMPTS)
+            self.open_welcome(False, 0)
+        return self.welcome is not None
+
+    def ping_get_settings_from_server(self):
+        """PingServerActivity.getSettingsFromServer() + $3: on the first parsed
+        answer it stores the language/layout and opens the welcome screen."""
+        data = self.get_settings_from_server()
+        if not isinstance(data, dict) or self.welcome is not None:
+            return
+        layout = data.get("layout")
+        if layout is not None:
+            SETTINGS.set("app_layout_style", layout)
+        lang = data.get("language")
+        if lang is not None:
+            SETTINGS.set("select_language_flag", lang)
+        self.open_welcome(bool(data.get("advVideoEM")),
+                          SETTINGS.get("app_layout_style", 0), lang)
+
+    def open_welcome(self, adv_video_em, layout, language=None):
+        """PingServerActivity.openWelcomeActivity(advVideoEM, layout[, language]):
+        advVideoEM -> BootVideoActivity, layout 0 -> WelcomeStyleZeroActivity,
+        any other layout (5 included, a decompiler artefact) -> WelcomeStyleOther."""
+        if self.welcome is not None:
+            return
+        if self.settings is not None:
+            SETTINGS.set("app_layout_style", layout)
+        style = SETTINGS.get("app_layout_style", 0)
+        if adv_video_em:
+            screen = "bootvideo"
+        elif style == 0 or style == 5:
+            screen = "welcome_zero"
+        else:
+            screen = "welcome_other"
+        self.welcome = {"advVideoEM": bool(adv_video_em), "layout": style,
+                        "language": language, "screen": screen,
+                        "connected": self.connected,
+                        "main": "MainStyleThird" if style == 0 else "MainStyleFourth"}
+        self.phase = "welcome"
+        self.note("openWelcomeActivity(advVideoEM=%s, layout=%s) -> %s / %s"
+                  % (adv_video_em, style, screen, self.welcome["main"]))
+
+    def skip_ping(self):
+        """PingServerActivity.onKeyDown(): any key leaves the boot screen at once."""
+        if self.welcome is None:
+            st = self.settings or {}
+            self.open_welcome(bool(st.get("advVideoEM")),
+                              int(st.get("layout") or SETTINGS.get("app_layout_style", 0) or 0),
+                              st.get("language"))
+            self.note("ping: left by a key press")
+        return self.welcome
+
+    def ping_loop(self):
+        time.sleep(PING_INTERVAL)                    # the first tick sleeps 2 s
+        while not self._stop.is_set() and self.welcome is None:
+            if self.ping_tick():
+                break
+            self._stop.wait(PING_INTERVAL)
+
+    def app_loop(self):
+        while not self._stop.is_set():
+            if self._stop.wait(APP_TIMER_PERIOD):
+                break
+            try:
+                self.app_tick()
+            except Exception as e:
+                self._fail("maintenance loop", e)
+
+    def sweep_loop(self):
+        """Runs after the boot phase: if the APK's own paths found nothing, look
+        for the head-end on the local subnet (Windows-port aid)."""
+        self._stop.wait(PING_MAX_ATTEMPTS * PING_INTERVAL + 2)
+        if self._stop.is_set() or self.connected:
+            return
+        self.sweep_for_head_end()
+        if self.connected and self.welcome is None:
+            self.ping_get_settings_from_server()
+
+    # ---- lifecycle -------------------------------------------------------- #
+    def on_create(self):
+        """BaseApplication.onCreate(), in the APK's order."""
+        self.started = time.time()
+        self.system_cur_time = int(time.time() * 1000)
+        self.note("onCreate: mac=%s iface=%s ip=%s server=%s"
+                  % (SETTINGS.get("device_mac"), NETWORK.get("iface"),
+                     NETWORK.get("ip"), SETTINGS.address()))
+        self.get_pms_status()
+        self.get_client_from_server()
+        self.get_data_from_server()
+        self.start_server_ip_thread()
+        self.get_time_from_server()
+        WS.start()                                   # WebSocketService + VolumeWebSocketService
+        self.phase = "ping"
+        for target, name in ((self.app_loop, "iptv-app-timer"),
+                             (self.ping_loop, "iptv-ping-timer"),
+                             (self.sweep_loop, "iptv-sweep")):
+            th = threading.Thread(target=target, daemon=True, name=name)
+            th.start()
+            self._threads.append(th)
+
+    def start_server_ip_thread(self):
+        """BaseApplication.startServerIpThread() - at most 180 listener threads."""
+        if self.discovery.is_alive():
+            return
+        self.server_ip_times += 1
+        if self.server_ip_times > DISCOVERY_MAX_THREADS:
+            return
+        self.discovery = ServerDiscovery(self)
+        self.discovery.start()
+
+    def retry(self):
+        """Settings -> "reconnect": the whole boot handshake again."""
+        self.note("retry requested by the user")
+        self.connected = False
+        self.welcome = None
+        self.ping_times = 0
+        self.times = 0
+        self.times1 = 0
+        self.is_get_client = True
+        self.is_get_ping_ser_img = True
+        self.phase = "ping"
+        self.sweep["done"] = False
+        self.sweep["found"] = None
+        self.get_client_from_server()
+        self.get_data_from_server()
+        self.start_server_ip_thread()
+        threading.Thread(target=self.ping_loop, daemon=True, name="iptv-ping-retry").start()
+        threading.Thread(target=self.sweep_loop, daemon=True, name="iptv-sweep-retry").start()
+        return self.state()
+
+
+CONNECTION = ConnectionEngine()
+
+
+# --------------------------------------------------------------------------- #
 # v2.7.2.06 local features
 #   * SettingAppShowActivity + database/app.db  -> "APP show in menu"
 #   * use_vlc_paly_live_prg                     -> hand playback to VLC
@@ -740,7 +1426,31 @@ def diagnose():
         "به %s نمی‌رسیم؛ آی‌پی/پورت هداند را در تنظیمات وارد کنید (پیش‌فرض کارخانه %s "
         "است و ممکن است مال شبکهٔ شما نباشد)." % (SETTINGS.address(), DEFAULT_SERVER_HINT))
 
-    # 3. the platform contract: GetSettings then the live tables
+    # 3. the APK's own handshake: is the boot loop connected, and did the
+    #    head-end announce itself on UDP 27777 (BaseApplication$3)?
+    conn = CONNECTION.state()
+    out["connection"] = {k: conn[k] for k in ("connected", "phase", "ping_times", "ping_max",
+                                              "last_error", "server_room_num", "enabled")}
+    out["discovery"] = conn["discovery"]
+    out["sweep"] = conn["sweep"]
+    disc = conn["discovery"]
+    chk("udp_announce", bool(disc.get("bound")),
+        ("UDP %s فعال، %d بسته" % (disc.get("port"), disc.get("packets") or 0))
+        if disc.get("bound") else (disc.get("error") or "شنونده بسته است"),
+        "شنوندهٔ UDP %s بالا نیامد؛ اگر برنامهٔ دیگری این پورت را گرفته آن را ببندید. "
+        "هداند پاردیک آدرسش را روی همین پورت اعلام می‌کند." % disc.get("port"))
+    if disc.get("packets"):
+        out["checks"].append({"name": "server_announce", "ok": bool(disc.get("last")),
+                              "detail": json.dumps(disc.get("last") or {}, ensure_ascii=False),
+                              "hint": ""})
+    chk("handshake", bool(conn.get("connected")),
+        "connected=%s phase=%s تلاش %d/%d" % (conn.get("connected"), conn.get("phase"),
+                                              conn.get("ping_times"), conn.get("ping_max")),
+        "دست‌دادن GetSettings انجام نشد؛ برنامه مثل نرم‌افزار برج ۲۰ بار هر ۲ ثانیه تلاش "
+        "می‌کند و تا پاسخ نگیرد وارد منوی پخش زنده نمی‌شود. آدرس هداند را در تنظیمات "
+        "وارد کنید یا «جستجوی هداند» را بزنید.")
+
+    # 4. the platform contract: GetSettings then the live tables
     st = None
     if tcp_ms is not None:
         try:
@@ -770,7 +1480,7 @@ def diagnose():
             chk("get_live_tv", False, "هیچ کانالی برنگشت",
                 "سرور کانالی برای این MAC/واحد برنگرداند؛ ثبت دستگاه در پنل پردیک را بررسی کنید.")
 
-    # 4. can those URLs be played here?
+    # 5. can those URLs be played here?
     kinds = {}
     for c in chans:
         for f in ("hlsUrl", "httpUrl", "rtspUrl", "url"):
@@ -787,7 +1497,7 @@ def diagnose():
             "کانال‌های RTSP/TS/UDP بدون FFmpeg پخش نمی‌شوند: فایل ffmpeg.exe را در "
             "tools\\ کنار برنامه بگذارید (نصب‌کننده خودش از PyPI می‌گیرد).")
 
-    # 5. the alternative source: an m3u playlist from the head-end
+    # 6. the alternative source: an m3u playlist from the head-end
     m = m3u_public(load_m3u())
     out["m3u"] = {k: v for k, v in m.items() if k != "channels"}
     if m.get("enabled"):
@@ -1449,6 +2159,10 @@ class Handler(BaseHTTPRequestHandler):
                     "branding": BRANDING[APP_MODE],
                     "network": {k: NETWORK.get(k) for k in ("mac", "iface", "kind", "ip", "wired")},
                     "m3u": {k: v for k, v in m3u_public(load_m3u()).items() if k != "channels"},
+                    # connection handshake (BaseApplication / PingServerActivity)
+                    "connection": {k: v for k, v in CONNECTION.state().items()
+                                   if k not in ("log", "sweep_log", "client",
+                                                "server_settings")},
                 })
             if path == "/api/network":
                 global NETWORK
@@ -1460,6 +2174,10 @@ class Handler(BaseHTTPRequestHandler):
                 SETTINGS.d["device_iface_kind"] = NETWORK.get("kind", "unknown")
                 SETTINGS.save()
                 return self._json({"ok": True, "network": NETWORK})
+            if path == "/api/connection":
+                # BaseApplication.isConnected() + PingServerActivity state: the
+                # UI reads this to know whether the live-TV menu may open.
+                return self._json(CONNECTION.state())
             if path == "/api/diagnose":
                 return self._json(diagnose())
             if path == "/api/m3u":
@@ -1522,13 +2240,54 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             data = {}
         if u.path == "/api/settings":
+            # SettingsActivity.onClick(): an IP field that contains letters is
+            # checked as a domain, otherwise it must be a dotted quad; either
+            # way a rejected value is not written and the caller is told why.
+            bad = ""
+            if "server_ip" in data:
+                ip = str(data.get("server_ip") or "").strip()
+                if has_letter(ip):
+                    if not is_valid_domain(ip):
+                        bad = "invalid_domain"
+                elif not check_ipaddress(ip):
+                    bad = "invalid_ip"
+                if not bad:
+                    data["other_server_ip"] = ip
+            if bad:
+                return self._json({"ok": False, "error": bad})
+            changed_addr = any(k in data for k in ("server_ip", "server_port"))
             for k, v in data.items():
                 SETTINGS.set(k, v)
             WS.start()
+            if changed_addr:
+                # a new address means a new handshake, exactly as after an announce
+                CONNECTION.retry()
+                return self._json({"ok": True, "connection": CONNECTION.state()})
             return self._json({"ok": True})
         if u.path == "/api/ws/start":
             WS.start()
             return self._json({"ok": True})
+        if u.path == "/api/connection/retry":
+            # Settings -> "reconnect": run the whole boot handshake again.
+            return self._json({"ok": True, "connection": CONNECTION.retry()})
+        if u.path == "/api/connection/skip":
+            # PingServerActivity.onKeyDown(): any key leaves the boot screen and
+            # calls openWelcomeActivity() with whatever the handshake produced.
+            w = CONNECTION.skip_ping()
+            return self._json({"ok": True, "welcome": w, "connection": CONNECTION.state()})
+        if u.path == "/api/connection/sweep":
+            threading.Thread(target=CONNECTION.sweep_for_head_end, daemon=True,
+                             name="iptv-sweep-manual").start()
+            return self._json({"ok": True, "connection": CONNECTION.state()})
+        if u.path == "/api/connection/playing":
+            # BaseApplication.curPlayingLiveProgramName - UpdateClient?name=...
+            CONNECTION.cur_playing = str(data.get("name") or "")[:120]
+            return self._json({"ok": True, "name": CONNECTION.cur_playing})
+        if u.path == "/api/connection/announce":
+            # The same adoption path as the UDP announce, for a head-end that
+            # cannot broadcast (or an installer that already knows the address).
+            ok = CONNECTION.discovery.adopt(data, "manual", "api")
+            return self._json({"ok": bool(ok), "connection": CONNECTION.state()})
         if u.path == "/api/m3u":
             d = load_m3u()
             for k in ("url", "path", "text"):
@@ -1752,7 +2511,9 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     port = int(os.environ.get("IPTV_PORT", "8787"))
     host = os.environ.get("IPTV_HOST", "127.0.0.1")
-    WS.start()
+    # BaseApplication.onCreate(): the handshake, the UDP 27777 announce listener
+    # and the 5 s maintenance loop all start before the first request is served.
+    CONNECTION.on_create()
     srv = ThreadingHTTPServer((host, port), Handler)
     srv.daemon_threads = True
     print("%s backend on http://%s:%d/ (mode=%s)" % (BRANDING[APP_MODE]["install_name"], host, port, APP_MODE))

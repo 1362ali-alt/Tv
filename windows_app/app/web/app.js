@@ -7,6 +7,8 @@ const $ = (s, r) => (r || document).querySelector(s);
 const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
 const el = (tag, cls, html) => { const n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; };
 const enc = (u) => encodeURIComponent(u);
+const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g,
+  c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 const S = {
   lang: "fa",
@@ -57,6 +59,42 @@ const S = {
   vlc: false,
   autostart: false,
   loadAnim: null,
+  /* the connection handshake (BaseApplication + PingServerActivity) lives in the
+     backend; the screens only read its state, exactly like the APK's activities
+     read BaseApplication.getInstance(). */
+  conn: null,              // last /api/connection snapshot
+  connected: false,        // BaseApplication.isConnected()
+  welcome: null,           // openWelcomeActivity(advVideoEM, layout) payload
+  connTimer: null,         // PingServerActivity$2 poll
+  serverSettings: null,    // BaseApplication.getSettings() - bean.Settings
+  inputNumber: "",         // MainStyleThirdActivity.onKeyDown digit buffer
+  inputNumberTimer: null,
+  playTypendex: 0,         // Settings.indexArea -> what plays behind the menu
+  mainBannerTimer: null,   // MZBannerView, 8 s a page (initPpt)
+  mainBannerImages: [],
+  mainBgVideos: [],        // apk/getClientBackgroundVideos
+  mainHls: null,
+  mainMenuTimer: null,     // right_show_action(): the strip slides in over 2 s
+  homepageIcons: [],       // GetHomepageIcon answer
+  mainMenus: [],           // bean.MainMenu list handed to the adapter
+  thirdApkBeanList: [],    // GetAPK answer (type 0 / type 8 tiles)
+  loacalThirdApkBeans: [], // readLocalThirdAppDatas() - the Windows apps
+  connPoll: null,          // the 5 s read of BaseApplication.isConnected()
+  mainEntered: false,      // onResume() of the main activity already ran once
+  mainMusic: null,         // apk/getClientBackgroundMusics on the main screen
+  mainLiveList: [],        // GetLiveTV?packageId=0 behind the menu (indexArea 3)
+  mainLiveErrors: 0,
+  curPlaying: "",          // BaseApplication.curPlayingLiveProgramName
+  /* WelcomeStyleZeroActivity fields */
+  selectLanguage: 1,       // IptvSP.selectLanguage: 0 = English, 1 = the other
+  appLanguageType: 0,      // Settings.language / Client.language flag
+  persionName: "",         // Client.checkPerson
+  welcomeWordZh: "", welcomeWordEn: "", welcomeWordText: "",
+  isGetWelcomeWordSuccessCh: false, isGetWelcomeWordSuccessEn: false,
+  welDelay: null,
+  weatherToday: null,      // EVENT_TODAY_WEATHER, sticky for the main screen
+  /* MainStyleThirdActivity fields */
+  isShowPackage: false, isShowEpgInfo: false, isShowAppInMenu: false, recordMode: 0,
 };
 
 /* ----------------------------- i18n ----------------------------- */
@@ -78,23 +116,25 @@ function applyI18n() {
    titles, the welcome wording and "unit" instead of "room" come from
    /api/config.branding rather than from the hotel strings. */
 function applyBranding() {
+  /* The APK is one platform that each deployment rebrands through the head-end
+     (Settings.hotelName, Client.welcomeWord, GetAdvImage). The Windows port
+     keeps the same views - it only falls back to /api/config.branding when the
+     server sends nothing, so a residential complex reads like itself. */
   const b = S.branding || {};
   const en = S.lang === "en";
-  const setTxt = (sel, v) => { const n = $(sel); if (n && v != null && v !== "") n.textContent = v; };
-  const sub = en ? (b.subtitle_en || b.subtitle || "") : (b.subtitle || "");
   document.title = b.product || "PARDIK IPTV";
-  setTxt("#boot-title", b.title || "");
-  setTxt("#boot-brand", sub);
-  setTxt("#home-title", b.title || "");
-  setTxt("#home-subtitle", sub);
-  setTxt("#wel-guest", (en ? (b.welcome_en || "Dear residents") : (b.welcome || "ساکنین محترم")) + ":");
-  setTxt("#wel-word", en ? (b.welcome_word_en || "") : (b.welcome_word || ""));
-  setTxt("#wel-sign-label", en ? (S.mode === "hotel" ? "Hotel" : "Residential complex")
-                               : (S.mode === "hotel" ? "هتل" : "مجتمع مسکونی"));
-  setTxt("#home-roomlabel", en ? (b.unit_label_en || "Unit number") : (b.unit_label || "شمارهٔ واحد"));
+  const setTxt = (sel, v) => { const n = $(sel); if (n && v != null && v !== "") n.textContent = v; };
+  const setHtml = (sel, v) => { const n = $(sel); if (n && v != null && v !== "") n.innerHTML = v; };
+  /* tv_room_text_view / activity_title_name stay GONE, as in the layouts. */
+  setTxt("#main-room-label", en ? (b.unit_label_en || "Unit number") : (b.unit_label || "شمارهٔ واحد"));
   setTxt("#set-room-label", en ? (b.unit_label_en || "Unit number") : (b.unit_label || "شمارهٔ واحد"));
-  const hs = $("#home-subtitle"); if (hs) hs.hidden = !sub;
-  const bb = $("#boot-brand"); if (bb) bb.hidden = !sub;
+  /* welcome: tv_user_name + tv_welcome_word_zh, filled by showGuestName() and
+     showWelcomeText(); the branding text is only the fallback. */
+  if (!S.welcomeWordText) {
+    setTxt("#wel-word", en ? (b.welcome_word_en || b.welcome_word || "") : (b.welcome_word || ""));
+  }
+  setHtml("#wel-manager", "");
+  void setHtml;
 }
 
 /* ----------------------------- API ----------------------------- */
@@ -230,7 +270,7 @@ function back() {
 function focusables(id) {
   const scr = document.getElementById(id);
   if (!scr) return [];
-  return $$(".focusable, button, input, select, .menu-item, .pkg-item, .poster, .type-item, .svc-item, .food-item, .side-item, .rec-item, .set-row[data-edit], .set-row[data-act], .hotel-item, .scen-item, .epg-item, .order-item, .country-item, .app-item", scr)
+  return $$(".focusable, button, input, select, .mm-item, .pkg-item, .poster, .type-item, .svc-item, .food-item, .side-item, .rec-item, .set-row[data-edit], .set-row[data-act], .hotel-item, .scen-item, .epg-item, .order-item, .country-item, .app-item", scr)
     .filter(n => n.offsetParent !== null && !n.disabled);
 }
 function focusFirst(id) {
@@ -260,6 +300,9 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" || e.key === "Backspace") {
     // the boot advert video treats BACK like any other key: on to the welcome screen
     if (S.cur === "scr-bootvideo") { e.preventDefault(); leaveBootVideo(); return; }
+    /* MainStyleThirdActivity.onKeyDown(): keyCode 4 is consumed - the main
+       screen is the home of the app, there is nothing to go back to. */
+    if (S.cur === "scr-home") { e.preventDefault(); return; }
     if (!typing) { e.preventDefault(); back(); }
     return;
   }
@@ -280,6 +323,38 @@ document.addEventListener("keydown", (e) => {
     leaveBootVideo();
     return;
   }
+  /* PingServerActivity.onKeyDown(): any key leaves the boot screen at once and
+     calls openWelcomeActivity() with whatever the handshake produced so far. */
+  if (S.cur === "scr-boot") {
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); bumpVolume(e.key === "ArrowUp" ? 5 : -5); return; }
+    e.preventDefault();
+    skipPing();
+    return;
+  }
+  /* WelcomeStyleZeroActivity.onKeyDown(): UP/LEFT focus tv_chinese, DOWN/RIGHT
+     focus tv_english, OK clicks the focused button (which calls openMain()) and
+     every other key is swallowed - only VOLUME_UP/DOWN reach the system. */
+  if (S.cur === "scr-welcome") {
+    if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+      e.preventDefault(); const zh = $("#wel-zh"); if (zh) zh.focus(); return;
+    }
+    if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+      e.preventDefault(); const en = $("#wel-en"); if (en) en.focus(); return;
+    }
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      const a = document.activeElement;
+      if (a && a.click) a.click();
+      return;
+    }
+    e.preventDefault();
+    return;
+  }
+  /* MainStyleThirdActivity.onKeyDown(): BACK is consumed on the main screen and
+     digits collect into inputNumber; when the buffer equals
+     IptvSP.getPassword() (111999) the settings activity opens. A 2 s timer
+     clears the buffer (inputNumberTimer). */
+  if (S.cur === "scr-home" && /^[0-9]$/.test(e.key)) { e.preventDefault(); mainDigit(e.key); return; }
   if (typing) return;
   const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
   if (dir) {
@@ -304,20 +379,59 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+/* PingServerActivity.onKeyDown() -> openWelcomeActivity(): the backend answers
+   with the same payload the 20-attempt timer would have produced. */
+async function skipPing() {
+  if (S.pingSkipped) return;
+  S.pingSkipped = true;
+  clearInterval(S.connTimer); S.connTimer = null;
+  let r = null;
+  try { r = await apiPost("/api/connection/skip", {}); } catch (e) { r = null; }
+  const c = (r && r.connection) || null;
+  if (c) applyConnection(c);
+  const w = (r && r.welcome) || (c && c.welcome) || { screen: "welcome_zero", layout: 0, main: "MainStyleThird" };
+  openWelcomeActivity(w);
+}
+
+/* MainStyleThirdActivity.onKeyDown() digit buffer -> SettingsActivity */
+function mainDigit(key) {
+  S.inputNumber = String(S.inputNumber || "") + key;
+  const pass = String((S.config.settings && S.config.settings.password) || "111999");
+  if (S.inputNumber === pass) {
+    S.inputNumber = "";
+    clearTimeout(S.inputNumberTimer);
+    openSettings(true);
+    return;
+  }
+  if (S.inputNumber.length > pass.length) S.inputNumber = S.inputNumber.slice(-pass.length);
+  clearTimeout(S.inputNumberTimer);
+  S.inputNumberTimer = setTimeout(() => { S.inputNumber = ""; }, 2000);
+}
+
 /* ----------------------------- clock ----------------------------- */
+/* widget.DigitalClock: cur_time_view prints SimpleDateFormat("HH:mm") of
+   DigitalClock.currentTimeMillis() (the server clock from GetCurrentTimeAndZone,
+   falling back to the local one) and cur_date_view "yyyy/MM/dd  EEEE"
+   (WelcomeStyleZeroActivity.showWeekDay()). Both screens have their own pair. */
 function startClock() {
   const fmt = () => {
     const d = serverNow();
     const hh = String(d.getHours()).padStart(2, "0"), mm = String(d.getMinutes()).padStart(2, "0");
-    const ds = d.toLocaleDateString(S.lang === "fa" ? "fa-IR" : (S.lang === "zh" ? "zh-CN" : "en-GB"),
-      { weekday: "short", year: "numeric", month: "short", day: "numeric" });
-    ["#wel-time", "#home-time"].forEach(s => { const n = $(s); if (n) n.textContent = hh + ":" + mm; });
-    ["#wel-date", "#home-date"].forEach(s => { const n = $(s); if (n) n.textContent = ds; });
+    const loc = S.lang === "fa" ? "fa-IR" : (S.lang === "zh" ? "zh-CN" : (S.lang === "ar" ? "ar" : "en-GB"));
+    const ds = d.toLocaleDateString(loc, { year: "numeric", month: "2-digit", day: "2-digit" })
+      .replace(/\//g, "/") + "  "
+      + d.toLocaleDateString(loc, { weekday: "long" });
+    ["#wel-time", "#main-time"].forEach(x => { const n = $(x); if (n) n.textContent = hh + ":" + mm; });
+    ["#wel-date", "#main-date"].forEach(x => { const n = $(x); if (n) n.textContent = ds; });
   };
   clearInterval(S.clockTimer); S.clockTimer = setInterval(fmt, 1000); fmt();
 }
 let timeOffset = 0;
 function serverNow() { return new Date(Date.now() + timeOffset); }
+/* BaseApplication.getTimeFromServer() -> GetCurrentTimeAndZone?mac= */
+function applyServerTime(st) {
+  if (st && st.server_time) timeOffset = Number(st.server_time) - Date.now();
+}
 
 /* ----------------------------- boot ----------------------------- */
 async function boot() {
@@ -342,36 +456,136 @@ async function boot() {
       S.m3u = { enabled: d.enabled, count: d.count, url: d.url, path: d.path, error: d.error };
     } catch (e) { S.m3uChannels = []; }
   }
-  const bar = $("#boot-progress"); const msg = $("#boot-msg");
-  let tries = 0;
-  while (tries < 6) {
-    tries++;
-    bar.style.width = Math.min(tries * 16, 92) + "%";
-    msg.textContent = t("connecting_server_tips") + "  (" + S.config.server.address + ")";
-    try {
-      S.settings = await apiGet("settings");
-      break;
-    } catch (e) {
-      msg.textContent = t("status_disconnected", "اتصال سرور برقرار نیست!") + " — " + e.message;
-      await new Promise(r => setTimeout(r, 1500));
-      S.config = await cfg();
-    }
-  }
-  bar.style.width = "100%";
-  apiPost("/api/ws/start", {});
-  if (!S.settings) {
-    // offline: still allow local settings + UI
-    S.settings = {};
-  }
-  // server time
-  try { const tm = await apiGet("time"); if (tm && tm.timeMills) timeOffset = tm.timeMills - Date.now(); } catch (e) {}
   startClock();
-  heartbeat();
-  /* PingServerActivity.openWelcomeActivity(settings.isAdvVideoEM(), layout):
-     advVideoEM -> BootVideoActivity (full-screen advert) -> welcome screen. */
-  if (S.settings && S.settings.advVideoEM) enterBootVideo();
-  else if (S.settings && S.settings.skipWelcomePage) enterHome();
+  /* the boot screen is PingServerActivity: it waits for the handshake that the
+     backend has been running since BaseApplication.onCreate(). */
+  enterPingServer();
+  startConnectionPoll();
+}
+
+/* BaseApplication's Timer(task, 2000, 5000) keeps isConnected() current inside
+   the APK's own process. The port's handshake runs in the backend, so the screens
+   re-read it every 5 s: a menu click must never be gated on a stale answer (the
+   head-end can disappear long after the boot screen was left). */
+function startConnectionPoll() {
+  clearInterval(S.connPoll);
+  S.connPoll = setInterval(async () => {
+    if (S.cur === "scr-boot") return;             // the boot screen polls faster
+    try { applyConnection(await (await fetch("/api/connection")).json()); } catch (e) {}
+  }, 5000);
+}
+
+/* ---------------------------------------------------------------------------
+   PingServerActivity + BaseApplication - the boot handshake.
+
+   The Android client does not "log in": BaseApplication.onCreate() runs
+   GetRoomInfo -> GetClient -> GetSettings -> the UDP 27777 listener ->
+   GetCurrentTimeAndZone plus a Timer(task, 2000, 5000) maintenance loop, while
+   PingServerActivity shows activity_ping_server.xml and runs its own
+   Timer(task, 0, 2000):
+
+     times != 20 -> BaseApplication.getSettingsFromServer() and its own copy;
+                    the first parsed answer stores selectLanguage /
+                    appLayoutStyle = settings.getLayout() and calls
+                    openWelcomeActivity(settings.isAdvVideoEM(), layout)
+     times == 20 -> openWelcomeActivity(false, 0) anyway
+     any key      -> openWelcomeActivity(...) at once
+
+   `connected` becomes true only when GetSettings / GetClient / GetRoomInfo /
+   UpdateClient answer, so this screen is the real "am I on the building
+   network?" gate - and every menu action is gated on it later.
+
+   A browser cannot bind UDP 27777 or keep the 5 s timer while it is in the
+   background, so the whole handshake runs in the backend
+   (iptv_backend.ConnectionEngine) and this screen polls /api/connection.
+   --------------------------------------------------------------------------- */
+function enterPingServer() {
+  show("scr-boot", false);
+  const txt = $("#ping-text"), tips = $("#ping-tips");
+  if (txt) txt.textContent = t("connecting_server_tips", "در حال دریافت آدرس سرور…");
+  if (tips) tips.textContent = t("welcome_alert", "برای رد شدن هر کلیدی را بزنید");
+  /* IptvSP.getPingSerBgImg(): GetAdvImage?type=11 replaces @mipmap/pic_ping_bg */
+  const bg = $("#ping-bg");
+  if (bg && S.conn && S.conn.ping_bg) bg.style.backgroundImage = 'url("' + imgUrl(S.conn.ping_bg) + '")';
+  clearInterval(S.connTimer);
+  pollConnection();
+  S.connTimer = setInterval(pollConnection, 700);
+}
+
+async function pollConnection() {
+  let c = null;
+  try { c = await (await fetch("/api/connection")).json(); } catch (e) { return; }
+  applyConnection(c);
+  renderPingState(c);
+  if (c.welcome) {
+    clearInterval(S.connTimer); S.connTimer = null;
+    openWelcomeActivity(c.welcome);
+  }
+}
+
+/* BaseApplication.getInstance(): the screens read the handshake from here. */
+function applyConnection(c) {
+  if (!c) return;
+  S.conn = c;
+  S.connected = !!c.connected;
+  if (c.server_settings) S.serverSettings = c.server_settings;
+  S.settings = S.serverSettings || S.settings || {};
+  if (c.client) S.client = c.client;
+  applyServerTime(c);
+}
+
+/* The APK logs the handshake to logcat; the port prints the same facts on the
+   boot screen so whoever installs it can see why the head-end is not answering.
+   This panel is a Windows-port addition - activity_ping_server.xml has no such
+   view. */
+function renderPingState(c) {
+  const box = $("#ping-state");
+  if (!box) return;
+  const srv = c.server || {}, dis = c.discovery || {}, sw = c.sweep || {};
+  const row = (k, v, cls) => "<div>" + esc(k) + ": <b" + (cls ? ' class="' + cls + '"' : "") + ">"
+    + esc(v) + "</b></div>";
+  let h = "";
+  h += row("تلاش", (c.ping_times || 0) + " از " + (c.ping_max || 20), c.connected ? "good" : "");
+  h += row("نشانی سرور", srv.address || "-", c.connected ? "good" : "bad");
+  h += row("GetSettings", c.settings_ok ? "پاسخ دریافت شد" : "بدون پاسخ", c.settings_ok ? "good" : "bad");
+  h += row("اعلان UDP " + (dis.port || 27777),
+    dis.bound ? ("در حال گوش دادن" + (dis.packets ? " — " + dis.packets + " بسته" : ""))
+              : ("در دسترس نیست: " + (dis.error || "?")), dis.bound ? "good" : "bad");
+  if (sw.running || sw.tried) {
+    h += row("جست‌وجوی شبکه", sw.found ? ("پیدا شد: " + sw.found) : (sw.tried + " آدرس آزموده شد"),
+      sw.found ? "good" : "");
+  }
+  h += row("واحد/اتاق", c.unit || "-", "");
+  if (c.last_error) h += row("آخرین خطا", c.last_error, "bad");
+  box.innerHTML = h;
+}
+
+/* PingServerActivity.openWelcomeActivity(advVideoEM, layout[, language]):
+   advVideoEM -> BootVideoActivity, layout 0 -> WelcomeStyleZeroActivity,
+   anything else -> WelcomeStyleOtherActivity (the same card, other artwork). */
+function openWelcomeActivity(w) {
+  S.welcome = w || S.welcome || {};
+  if (S.welcome.language != null) applyServerLanguage(S.welcome.language);
+  if (S.welcome.screen === "bootvideo") enterBootVideo();
   else enterWelcome();
+}
+
+/* PingServerActivity.setLanguageData(): the server's language flag -> a Locale.
+   The port ships fa/en/zh, so any other language keeps the local choice. */
+const SERVER_LANGUAGE = {
+  1: "en", 2: "zh", 3: "zh", 4: "th", 5: "th", 6: "ka", 7: "ka", 8: "fa", 9: "fa",
+  10: "in", 11: "in", 12: "ar", 13: "ar", 14: "fr", 15: "fr", 16: "ru", 17: "ru",
+  20: "hy", 21: "hy", 22: "vi", 23: "vi", 24: "es", 25: "es", 26: "it", 27: "it",
+  28: "bg", 29: "bg", 30: "bg", 32: "pt", 33: "pt", 35: "tr",
+};
+const PORT_LANGUAGES = ["fa", "en", "zh"];
+function applyServerLanguage(flag) {
+  const want = SERVER_LANGUAGE[Number(flag)];
+  if (!want || PORT_LANGUAGES.indexOf(want) < 0 || want === S.lang) return;
+  S.lang = want;
+  apiPost("/api/settings", { app_language: want }).catch(() => {});
+  applyI18n();
+  startClock();
 }
 
 /* ------------- v2.7.2.06: boot advert video (BootVideoActivity) -------------
@@ -444,62 +658,138 @@ function leaveBootVideo() {
   if (S.bootLeft) return;              // BootVideoActivity.isLeave
   S.bootLeft = true;
   stopBootVideo();
-  if (S.settings && S.settings.skipWelcomePage) enterHome();
-  else enterWelcome();
+  /* BootVideoActivity always finishes into the welcome activity chosen by
+     openWelcomeActivity(); WelcomeStyleZeroActivity.initData() is what honours
+     Settings.skipWelcomePage. */
+  enterWelcome();
 }
 
-async function heartbeat() {
-  setInterval(async () => {
-    try { await apiGet("room_info"); } catch (e) {}
-    try { await apiPost("/api/post", { ep: "update_client", playing: S.playerCtx ? (S.playerCtx.name || "") : "" }); } catch (e) {}
-  }, 60000);
+/* BaseApplication.updateClient() runs inside the backend's Timer(task, 2000,
+   5000); the screens only tell it what is on screen so UpdateClient?name=
+   carries curPlayingLiveProgramName, exactly like the APK. */
+function reportPlaying(name) {
+  const v = name || "";
+  if (S.curPlaying === v) return;
+  S.curPlaying = v;
+  apiPost("/api/connection/playing", { name: v }).catch(() => {});
 }
 
-/* ----------------------------- welcome ----------------------------- */
-function enterWelcome() {
+/* ---------------------------------------------------------------------------
+   WelcomeStyleZeroActivity - activity_welcome.xml
+
+   onCreate -> initView() (binds the 900x450dp card, the MZBannerView, the
+   IjkVideoView and the two language buttons, then simulates DPAD_UP so 中文
+   starts focused) -> initData():
+
+     getSettingsFromServer()
+     isSkipWelcomePage() -> setSelectLanguage(from the device locale) -> openMain()
+     getWelcomeWordTitleImage()  GetAdvImage?type=17 -> img_wel_word_title, which
+                                 stays INVISIBLE while the list is empty
+     isAdvVideoEM() ? playPptBGImage()   GetAdvImage?type=1, MZBannerView 5 s a page
+                    : getWelcomeVideo()  GetAdvVideoEM -> isPlayVideo
+     getWelcomeWord()      showHotelManager(false) + GetClient?mac=; CheckPerson
+                           becomes persionName, Client.language is applied, then
+                           showGuestName() and getWelcomeWordData()
+                           (GetWelcomWord?mac=) -> showWelcomeText() + showWeekDay()
+     getManagerSignImg()   GetAdvImage?type=12 -> manager_sign_img
+     postDelayed(playWelcomeVideoOrNot, 1500)
+     getWeather()          apk/getWeatherDays -> setShowWeather() + the three days
+     getBgMusic()          apk/getClientBackgroundMusics, random and looped
+
+   onKeyDown: UP/LEFT -> tv_chinese, DOWN/RIGHT -> tv_english, anything else is
+   swallowed; onClick stores IptvSP.setSelectLanguage(0 for English, 1 otherwise)
+   and calls openMain(). The screen therefore waits for the guest, exactly like
+   the APK - only Settings.skipWelcomePage walks straight through.
+   --------------------------------------------------------------------------- */
+async function enterWelcome() {
   show("scr-welcome", false);
-  const c = S.client || {};
-  const en = S.lang === "en";
-  const name = (en ? c.welcomeWordEn : c.welcomeWord) || "";
-  /* Client.welcomeWord is the guest's name on the hotel platform; a residential
-     welcome is generic, so only the hotel flavour prints it. */
-  if (name && S.mode === "hotel") $("#wel-name").textContent = t("welcome_word_guest_name", "جناب آقای/سرکار خانم {0}").replace("{0}", name);
-  /* residential: the venue line is the complex name from the branding, and the
-     hotel-manager signature image (GetAdvImage?type=12) does not apply. */
-  $("#wel-hotel").textContent = (S.mode === "hotel"
-    ? ((S.settings && (en ? S.settings.hotelNameEn : S.settings.hotelName)) || "")
-    : ((en ? S.branding.subtitle_en : S.branding.subtitle) || ""));
-  const sign = $("#wel-sign"); if (sign) sign.hidden = (S.mode !== "hotel");
-  loadWeather("#wel-weather", "#wel-weather-img", "#wel-weather-temp", "#wel-weather-txt");
-  loadWelcomeAdv();
-  $$("#wel-langs .langbtn").forEach(b => {
-    b.onclick = () => { S.lang = b.dataset.lang; apiPost("/api/settings", { app_language: S.lang }); applyI18n(); enterHome(); };
-  });
-  // any key skips after 800ms (mirrors "press any key to skip")
-  setTimeout(() => {
-    const skip = (e) => { if (S.cur !== "scr-welcome") return; enterHome(); window.removeEventListener("keydown", skip); };
-    window.addEventListener("keydown", skip);
-  }, 800);
+  S.persionName = "";
+  S.welcomeWordZh = ""; S.welcomeWordEn = "";
+  S.isGetWelcomeWordSuccessCh = false; S.isGetWelcomeWordSuccessEn = false;
+  S.welcomeWordText = "";
+  await refreshConnection();                       // getSettingsFromServer()
+  const st = S.settings || {};
+  if (st.skipWelcomePage) {                        // initData(): straight to main
+    S.selectLanguage = selectLanguageFromLocale();
+    openMain();
+    return;
+  }
+  resetWelcomeCard();
+  getWelcomeWordTitleImage();
+  if (st.advVideoEM) playWelcomePpt();             // playPptBGImage()
+  else await getWelcomeVideo();                    // GetAdvVideoEM -> isPlayVideo
+  getWelcomeWord();
+  getManagerSignImg();
+  clearTimeout(S.welDelay);
+  S.welDelay = setTimeout(playWelcomeVideoOrNot, 1500);
+  getWeatherWelcome();
+  loadBgMusic();
+  initWelcomeListener();
+  const zh = $("#wel-zh"); if (zh) { try { zh.focus(); } catch (e) {} }   // initPPT()
 }
 
-/* ------------- v2.7.2.06: welcome screen advertising -------------
-   WelcomeStyleZero/OtherActivity.initData():
-     settings.advVideoEM ? playPptBGImage()            -> GetAdvImage?type=1, 5 s a page
-                         : getWelcomeVideo()           -> GetAdvVideoEM as background
-   plus getManagerSignImg() (GetAdvImage?type=12) and getBgMusic()
-   (apk/getClientBackgroundMusics -> res/adv/music/<url>, random, looped). */
-async function loadWelcomeAdv() {
-  stopWelcomeAdv();
-  if (S.mode === "hotel") loadManagerSign();     // GetAdvImage?type=12 is the hotel manager's signature
-  loadBgMusic();
-  S.isPlayVideo = false;
-  if (!(S.settings && S.settings.advVideoEM)) {
-    try { S.welVideos = sanitiseAdvPaths(await apiGet("adv_video_em")); } catch (e) { S.welVideos = []; }
-    S.isPlayVideo = S.welVideos.length > 0;
+/* initListener(): tv_chinese and tv_english are the only clickable views. */
+function initWelcomeListener() {
+  const zh = $("#wel-zh"), en = $("#wel-en");
+  if (zh) {
+    zh.onclick = () => welcomeLanguage("zh");
+    zh.onfocus = () => showWelcomeText(false);      // onFocusChange -> Chinese text
   }
+  if (en) {
+    en.onclick = () => welcomeLanguage("en");
+    en.onfocus = () => showWelcomeText(true);       // onFocusChange -> English text
+  }
+}
+
+/* WelcomeStyleZeroActivity.getSettingsFromServer(): every activity re-reads the
+   handshake before it draws, so the screens always show the server's Settings. */
+async function refreshConnection() {
+  try { applyConnection(await (await fetch("/api/connection")).json()); } catch (e) {}
+  return S.conn;
+}
+
+/* initData(): "en" (or ar with appLanguageType 35, ru with 30) -> selectLanguage
+   0 = English, everything else -> 1. */
+function selectLanguageFromLocale() {
+  const loc = String((window.navigator && navigator.language) || S.lang || "").toLowerCase();
+  return loc.indexOf("en") === 0 ? 0 : 1;
+}
+
+/* The card as activity_welcome.xml declares it: tv_user_name, tv_welcome_word_en
+   and welcome_end_hotel_manager GONE, img_wel_word_title INVISIBLE, both weather
+   layouts empty until apk/getWeatherDays answers. */
+function resetWelcomeCard() {
+  ["#wel-user", "#wel-word-en", "#wel-manager", "#wel-sign", "#wel-title-img",
+   "#wel-weather", "#wel-forecast"].forEach(sel => { const n = $(sel); if (n) n.hidden = true; });
+  const w = $("#wel-word"); if (w) { w.textContent = ""; w.hidden = false; }
+  applyBranding();                                  // branding is the fallback text
+}
+
+const advList = (r) => (Array.isArray(r) ? r : ((r && r.list) || [])).filter(x => x);
+
+/* GetAdvImage?type=17 -> img_wel_word_title (Glide .error(@mipmap/iv_welcome)) */
+async function getWelcomeWordTitleImage() {
+  const img = $("#wel-title-img");
+  if (!img) return;
+  img.hidden = true;
+  let list = [];
+  try { list = advList(await apiGet("adv_image", { type: 17 })); } catch (e) { list = []; }
+  if (!list.length || S.cur !== "scr-welcome") return;
+  img.onerror = () => { img.src = "/assets/img/mipmap__iv_welcome.png"; };
+  img.src = imgUrl(list[0]);
+  img.hidden = false;
+}
+
+/* GetAdvVideoEM?mac= -> WelcomeStyleZeroActivity$4: isPlayVideo = the list is
+   not empty; playWelcomeVideoOrNot() runs 1500 ms later. */
+async function getWelcomeVideo() {
+  try { S.welVideos = sanitiseAdvPaths(await apiGet("adv_video_em")); } catch (e) { S.welVideos = []; }
+  S.isPlayVideo = S.welVideos.length > 0;
+}
+function playWelcomeVideoOrNot() {
   if (S.cur !== "scr-welcome") return;
-  if (S.isPlayVideo) playWelcomeVideo(0);
-  else playWelcomePpt();
+  if (!S.isPlayVideo) playWelcomePpt();
+  else playWelcomeVideo(Math.floor(Math.random() * S.welVideos.length));
 }
 function playWelcomeVideo(i) {
   const video = $("#wel-video"), ppt = $("#wel-ppt");
@@ -507,12 +797,16 @@ function playWelcomeVideo(i) {
   const idx = ((i % S.welVideos.length) + S.welVideos.length) % S.welVideos.length;
   if (ppt) ppt.hidden = true;
   video.hidden = false;
-  // onCompletion -> another random clip; onError -> fall back to the slideshow
+  // onCompletion -> another random clip; onError -> isPlayVideo = 0, slideshow
   video.onended = () => { if (S.cur === "scr-welcome") playWelcomeVideo(Math.floor(Math.random() * S.welVideos.length)); };
   video.onerror = () => { S.isPlayVideo = false; if (S.cur === "scr-welcome") playWelcomePpt(); };
   video.src = mediaSrc(iptvUrl(S.welVideos[idx]));
   tryPlay(video);
 }
+
+/* playPptBGImage() / getBgPptAndMusic(): GetAdvImage?type=1 into the
+   MZBannerView - initPPT() sets 5000 ms a page and hides nothing else. A single
+   image is not rotated (setAutoPlay(size != 1)). */
 async function playWelcomePpt() {
   const video = $("#wel-video"), ppt = $("#wel-ppt");
   if (video) {
@@ -521,10 +815,7 @@ async function playWelcomePpt() {
   }
   if (!ppt) return;
   let list = [];
-  try {
-    const r = await apiGet("adv_image", { type: 1 });
-    list = (Array.isArray(r) ? r : ((r && r.list) || [])).filter(x => x);
-  } catch (e) { list = []; }
+  try { list = advList(await apiGet("adv_image", { type: 1 })); } catch (e) { list = []; }
   if (!list.length || S.cur !== "scr-welcome") { ppt.hidden = true; return; }
   S.pptImages = list; S.pptIndex = 0;
   ppt.hidden = false;
@@ -537,45 +828,208 @@ async function playWelcomePpt() {
   };
   paint();
   clearInterval(S.pptTimer); S.pptTimer = null;
-  // MZBannerView: a single page is not rotated (setAutoPlay(size != 1))
   if (list.length > 1) S.pptTimer = setInterval(paint, 5000);
 }
-async function loadManagerSign() {
+
+/* getWelcomeWord(): showHotelManager(false) first, then GetClient?mac= ($8) -
+   CheckPerson becomes persionName, Client.language is applied through
+   setAppLanguageData(), and finally showGuestName() + getWelcomeWordData(). */
+async function getWelcomeWord() {
+  showHotelManager(false);
+  let c = null;
+  try { c = await apiGet("client"); } catch (e) { c = null; }
+  if (c && typeof c === "object") {
+    S.client = c;
+    if (c.checkPerson) S.persionName = String(c.checkPerson);
+    const flag = parseInt(c.language, 10);
+    if (!isNaN(flag)) {
+      S.appLanguageType = flag;
+      apiPost("/api/settings", { server_language_defalut_select_flag: flag, server_language_flag: flag }).catch(() => {});
+      applyServerLanguage(flag);
+    }
+  }
+  showGuestName();
+  getWelcomeWordData();
+}
+
+/* showGuestName(): tv_user_name */
+function showGuestName() {
+  const n = $("#wel-user");
+  if (!n) return;
+  const st = S.settings || {};
+  if (!S.persionName) {
+    n.textContent = t("welcome_title_text_default", "میهمانان عزیز:");
+  } else {
+    const key = Number(st.pmsType) === 4 ? "welcome_word_guest_name_no_male" : "welcome_word_guest_name";
+    n.textContent = t(key, "آقای/خانم . {0}").replace("{0}", S.persionName);
+  }
+  n.hidden = false;
+}
+
+/* showHotelManager(isEn): welcome_end_hotel_manager = "<hotel> <sign_text>", or
+   "sign_text_hotel sign_text" when Settings carries no name. The residential
+   deployment's complex name comes from the branding when the server is quiet. */
+function showHotelManager(isEn) {
+  const n = $("#wel-manager");
+  if (!n) return;
+  const st = S.settings || {}, b = S.branding || {};
+  let name = isEn ? (st.hotelNameEn || "") : (st.hotelName || "");
+  if (!name && S.mode !== "hotel") name = isEn ? (b.subtitle_en || "") : (b.subtitle || "");
+  n.textContent = (name || t("sign_text_hotel", "هتل")) + " " + t("sign_text", "مدیرکل");
+  n.hidden = false;
+}
+
+/* getWelcomeWordData(): GetWelcomWord?mac= ($9). "%s%" is the guest's name and
+   "%s%:" the salutation; a missing side falls back to welcome_text_en. */
+async function getWelcomeWordData() {
+  const dflt = t("welcome_text_en", "به هتل ما خوش آمدید. در خدمت شما هستیم!");
+  let w = null;
+  try { w = await apiGet("welcome_word"); } catch (e) { w = null; }
+  if (!w || typeof w !== "object") {
+    S.isGetWelcomeWordSuccessEn = false; S.isGetWelcomeWordSuccessCh = false;
+    S.welcomeWordEn = dflt; S.welcomeWordZh = dflt;
+  } else {
+    const en = w.content_en || "", zh = w.content || "";
+    if (S.persionName) {
+      S.isGetWelcomeWordSuccessEn = !!en;
+      S.welcomeWordEn = en ? en.split("%s%").join(S.persionName) : dflt;
+      S.isGetWelcomeWordSuccessCh = !!zh;
+      S.welcomeWordZh = zh ? zh.split("%s%").join(S.persionName) : dflt;
+    } else {
+      S.isGetWelcomeWordSuccessEn = !!en;
+      S.welcomeWordEn = en ? en.split("%s%:").join(t("welcome_title_text_default_en", "Guests:")) : dflt;
+      S.isGetWelcomeWordSuccessCh = !!zh;
+      S.welcomeWordZh = zh ? zh.split("%s%:").join(t("welcome_title_text_default_cur", "میهمانان عزیز:")) : dflt;
+    }
+  }
+  S.welcomeWordText = S.welcomeWordZh;              // applyBranding() steps aside
+  showWelcomeText(S.selectLanguage === 0);
+}
+
+/* showWelcomeText(isEnglish): tv_welcome_word_zh. Text that carries HTML goes to
+   the WebView in the APK (tv_welcome_word_zh_web); the port renders it into the
+   same view - the head-end is the author of both. */
+function showWelcomeText(isEn) {
+  const n = $("#wel-word");
+  if (!n) return;
+  const ok = isEn ? S.isGetWelcomeWordSuccessEn : S.isGetWelcomeWordSuccessCh;
+  const txt = ok ? (isEn ? S.welcomeWordEn : S.welcomeWordZh)
+                 : t("welcome_text_en", "به هتل ما خوش آمدید. در خدمت شما هستیم!");
+  if (/style|&nbsp;|<p>/i.test(txt)) n.innerHTML = txt;
+  else n.textContent = txt;
+  n.hidden = false;
+  const en2 = $("#wel-word-en"); if (en2) en2.hidden = true;      // GONE in the layout
+  showWeekDay();
+}
+
+/* showWeekDay(): cur_date_view is "yyyy/MM/dd  EEEE" and the three forecast
+   cells print "EE" of +1, +2 and +3 days (WelcomeStyleZeroActivity$10.onStart). */
+function showWeekDay() {
+  const d = serverNow();
+  const n = $("#wel-date");
+  if (n) n.textContent = fmtDate(d) + "  " + fmtWeek(d, "long");
+  [["#wel-f1-week", 1], ["#wel-f2-week", 2], ["#wel-f3-week", 3]].forEach(pair => {
+    const x = $(pair[0]);
+    if (x) x.textContent = fmtWeek(new Date(d.getTime() + pair[1] * 86400000), "short");
+  });
+}
+function localeTag() {
+  return S.lang === "fa" ? "fa-IR" : (S.lang === "zh" ? "zh-CN" : (S.lang === "ar" ? "ar" : "en-GB"));
+}
+function fmtDate(d) {
+  const p = (x) => String(x).padStart(2, "0");
+  return d.getFullYear() + "/" + p(d.getMonth() + 1) + "/" + p(d.getDate());
+}
+function fmtWeek(d, len) {
+  try { return d.toLocaleDateString(localeTag(), { weekday: len }); } catch (e) { return ""; }
+}
+
+/* GetAdvImage?type=12 -> manager_sign_img (a random entry, h=70dp) */
+async function getManagerSignImg() {
   const img = $("#wel-sign");
   if (!img) return;
   img.hidden = true;
-  try {
-    const r = await apiGet("adv_image", { type: 12 });
-    const list = (Array.isArray(r) ? r : ((r && r.list) || [])).filter(x => x);
-    if (!list.length || S.cur !== "scr-welcome") return;
-    img.src = imgUrl(list[Math.floor(Math.random() * list.length)]);
-    img.hidden = false;
-  } catch (e) { /* signature optional */ }
+  let list = [];
+  try { list = advList(await apiGet("adv_image", { type: 12 })); } catch (e) { return; }
+  if (!list.length || S.cur !== "scr-welcome") return;
+  img.src = imgUrl(list[Math.floor(Math.random() * list.length)]);
+  img.hidden = false;
 }
+
+/* getWeather(): apk/getWeatherDays -> WeatherBean{status:"1000", data:[DataBean]}
+   with DataBean{type, wendu, low, high}. data[0] is today, the rest are the
+   three forecast cells; setShowWeather() makes both layouts visible. */
+async function getWeatherWelcome() {
+  let w = null;
+  try { w = await apiGet("weather_days"); } catch (e) { return; }
+  const list = (w && w.status != null && String(w.status) !== "1000") ? null : ((w && w.data) || null);
+  if (!Array.isArray(list) || !list.length) return;
+  S.weatherToday = list[0];
+  if (S.cur === "scr-home") { initMainWeather(); return; }
+  setShowWeather(true);
+  const cur = list[0];
+  const img = $("#wel-weather-img");
+  if (img) img.src = weatherIcon(cur);
+  const txt = $("#wel-weather-txt"); if (txt) txt.textContent = cur.wendu || "";
+  const rng = $("#wel-weather-range"); if (rng) rng.textContent = rangeOf(cur);
+  [["#wel-f1-img", 1], ["#wel-f2-img", 2], ["#wel-f3-img", 3]].forEach(pair => {
+    const day = list[pair[1]], n = $(pair[0]);
+    if (day && n) { n.src = weatherIcon(day, true); n.parentNode.hidden = false; }
+  });
+}
+function rangeOf(d) {
+  if (!d) return "";
+  const lo = d.low != null ? d.low : "", hi = d.high != null ? d.high : "";
+  return (lo === "" && hi === "") ? "" : (lo + "~" + hi);
+}
+/* setShowWeather(): no data -> weather_layout_gone GONE and
+   weather_layout_invisible INVISIBLE; data -> both VISIBLE. */
+function setShowWeather(has) {
+  const inv = $("#wel-weather"), gone = $("#wel-forecast");
+  if (inv) inv.hidden = !has;
+  if (gone) gone.hidden = !has;
+}
+/* WeatherBean.WEATHER_FORECAST_STATUS_MAP keys the icon off the Chinese label,
+   with an "n"/"d" suffix added before 06:00 and after 20:00. The port ships the
+   four mipmaps the APK's map resolves to. */
+function weatherIcon(d, forecast) {
+  const type = String((d && (d.convertType || d.type)) || "");
+  const hhmm = fmtHM(serverNow());
+  const night = !forecast && (hhmm <= "06:00" || hhmm >= "20:00");
+  let f = "sun";
+  if (/雨|rain/i.test(type)) f = "rainy";
+  else if (/云|cloud|阴|overcast/i.test(type)) f = "cloudy";
+  else if (/雪|snow/i.test(type)) f = "cloudy";
+  else if (/晴|clear|sun/i.test(type)) f = night ? "moon" : "sun";
+  return "/assets/img/mipmap__" + f + ".png";
+}
+function fmtHM(d) {
+  return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+}
+
+/* apk/getClientBackgroundMusics -> res/adv/music/<url>, a random entry looped */
 async function loadBgMusic() {
   let list = [];
-  try {
-    const r = await apiGet("bg_musics");
-    list = (Array.isArray(r) ? r : ((r && r.list) || [])).filter(x => x && x.url);
-  } catch (e) { return; }
+  try { list = (advList(await apiGet("bg_musics"))).filter(x => x && x.url); } catch (e) { return; }
   if (!list.length || S.cur !== "scr-welcome") return;
-  let el = S.bgMusic;
-  if (!el) {
-    el = document.createElement("audio");
-    el.id = "bg-music";
-    document.body.appendChild(el);
-    S.bgMusic = el;
+  let a = S.bgMusic;
+  if (!a) {
+    a = document.createElement("audio");
+    a.id = "bg-music";
+    document.body.appendChild(a);
+    S.bgMusic = a;
   }
-  el.onended = () => { if (S.bgMusic && S.cur === "scr-welcome") next(); };   // loop another random track
   const next = () => {
     const b = list[Math.floor(Math.random() * list.length)];
-    el.src = mediaSrc(iptvUrl("res/adv/music/" + enc(b.url)));
-    tryPlay(el);
+    a.src = mediaSrc(iptvUrl("res/adv/music/" + enc(b.url)));
+    tryPlay(a);
   };
+  a.onended = () => { if (S.bgMusic && S.cur === "scr-welcome") next(); };
   next();
 }
 function stopWelcomeAdv() {
   clearInterval(S.pptTimer); S.pptTimer = null;
+  clearTimeout(S.welDelay);
   const video = $("#wel-video"), ppt = $("#wel-ppt");
   if (video) {
     video.onended = null; video.onerror = null; video.hidden = true;
@@ -585,102 +1039,508 @@ function stopWelcomeAdv() {
   stopBgMusic();
 }
 function stopBgMusic() {
-  const el = S.bgMusic;
-  if (!el) return;
-  el.onended = null;
-  try { el.pause(); el.removeAttribute("src"); el.load(); } catch (e) {}
+  const a = S.bgMusic;
+  if (!a) return;
+  a.onended = null;
+  try { a.pause(); a.removeAttribute("src"); a.load(); } catch (e) {}
 }
 
-async function loadWeather(boxSel, imgSel, tempSel, txtSel) {
-  try {
-    const w = await apiGet("weather_days");
-    const d = w && (w.data || w.result || w);
-    if (!d) return;
-    const box = $(boxSel); box.hidden = false;
-    const cur = d.now || d.current || (d.forecast && d.forecast[0]) || {};
-    $(tempSel).textContent = (cur.temp || cur.temperature || "") + "°";
-    $(txtSel).textContent = cur.text || cur.weather || "";
-  } catch (e) { /* weather optional */ }
+/* onClick(tv_chinese / tv_english) -> setAppLanguageData() + setSelectLanguage()
+   + openMain(). The APK's two buttons are Chinese and English; the port keeps
+   both views and maps the non-English one to the language this deployment
+   actually uses (Persian here), so the guest never lands in a language nobody
+   in the building reads. */
+function welcomeLanguage(which) {
+  S.selectLanguage = which === "en" ? 0 : 1;
+  apiPost("/api/settings", { select_language_flag: S.selectLanguage }).catch(() => {});
+  const want = which === "en" ? "en" : (S.lang === "fa" ? "fa" : "zh");
+  if (want !== S.lang) {
+    S.lang = want;
+    apiPost("/api/settings", { app_language: want }).catch(() => {});
+    applyI18n();
+    startClock();
+  }
+  openMain();
 }
 
-/* ----------------------------- home / menu ----------------------------- */
-function enterHome() {
+/* openMain(): IptvSP.setAppLayoutStyle(settings.getLayout()); 0 ->
+   MainStyleThirdActivity (activity_main_ijk_style_third), anything else ->
+   MainStyleFourthActivity (activity_main_ijk_style_fourth). */
+function openMain() {
+  const st = S.settings || {};
+  const layout = Number(st.layout != null ? st.layout : (S.config.settings.app_layout_style || 0));
+  apiPost("/api/settings", { app_layout_style: layout }).catch(() => {});
+  const scr = $("#scr-home");
+  if (scr) scr.classList.toggle("style-four", layout !== 0);
+  stopWelcomeAdv();
+  enterMain(layout);
+}
+
+/* ---------------------------------------------------------------------------
+   MainStyleThirdActivity - activity_main_ijk_style_third.xml
+   (MainStyleFourthActivity is the same code on activity_main_ijk_style_fourth)
+
+   onCreate posts a Runnable that runs initTitleData() and then, according to
+   Settings.indexArea, one of:
+     1 -> initPpt() + getBgPptAndMusic() (GetAdvImage?type=0, 8 s a page) + getBgMusic()
+     2 -> initBgVideo() + getBgVideo()   (apk/getClientBackgroundVideos)
+     3 -> initPlayer() + getLiveProgList() (GetLiveTV?packageId=0 behind the menu)
+   and re-posts itself after 30 s while BaseApplication.isConnected() is false.
+
+   initView()  binds the views and paints main_layout_background_img with
+               IptvSP.getMainBgImg(), else @mipmap/bg_welcome.
+   initData()  isShowAppInMenu / isEpg, then the auto-entry:
+               isEnabled() && settings.isEnterLivePage() -> LivePlayer(WithEpg)Activity.
+   onResume()  switchToPlayBg(1) + right_show_action(): ll_main_menu slides in
+               from the left over 2000 ms (it starts INVISIBLE).
+   getMainPageMenu() -> GetHomepageIcon; a failed or empty answer means
+               addMenuItemData(null) -> addDefaultMenu().
+   Every startActivity() is gated by isConnectServer() (Toast status_disconnected)
+   and isEnabled() (Toast status_disabled).
+   onKeyDown() collects digits; when the buffer equals IptvSP.getPassword()
+   (111999) it opens SettingsActivity, and a 2 s timer clears the buffer.
+   --------------------------------------------------------------------------- */
+function enterMain(layout) {
+  S.mainEntered = false;                  // show() must not re-run initData()
   show("scr-home", false);
   S.stack = [];
+  const scr = $("#scr-home");
+  if (scr) scr.classList.remove("menu-in");
+  initMainView(layout);
+  initMainTitleData();
+  isShowWifi();
+  initMainWeather();
+  getMainPageMenu();
+  /* right_show_action(): the strip slides in, 2000 ms */
+  clearTimeout(S.mainMenuTimer);
+  S.mainMenuTimer = setTimeout(() => { const s2 = $("#scr-home"); if (s2) s2.classList.add("menu-in"); }, 60);
+  initMainBackground();
+  initMainData();
+  S.mainEntered = true;
+}
+
+/* initView(): backgrounds, logo, room number, wifi, weather, clock. */
+function initMainView(layout) {
   const st = S.settings || {};
-  $("#home-room").textContent = (S.config.settings.iptv_room_number || (S.client && S.client.name) || "");
-  if (S.mode === "hotel" && S.client && S.client.wifiName) {
-    $("#home-wifi").hidden = false;
-    $("#home-wifi-name").textContent = t("wifi_name", "Wifi: {0}").replace("{0}", S.client.wifiName);
-    $("#home-wifi-pass").textContent = t("wifi_passwd", "Password: {0}").replace("{0}", S.client.wifiPassword || "");
+  S.playTypendex = Number(st.indexArea || 0);
+  /* main_layout_background_img: IptvSP.getMainBgImg() else @mipmap/bg_welcome */
+  const bg = $("#main-bg");
+  if (bg) {
+    const saved = (S.config && S.config.settings && S.config.settings.main_bg_image) || "";
+    bg.style.backgroundImage = saved ? 'url("' + imgUrl(saved) + '")'
+      : 'url("/assets/img/mipmap__bg_welcome.png")';
   }
-  loadWeather("#home-weather", "#home-weather-img", "#home-weather-txt", "#home-weather-txt");
-  buildMenu(st);
+  /* tv_room_num: initTitleData() prints Client.name; the room label stays GONE */
+  const room = $("#main-room-num");
+  if (room) room.textContent = (S.client && S.client.name) || (S.config.settings.iptv_room_number || "");
+  const rl = $("#main-room-label"); if (rl) rl.hidden = true;
+  const tt = $("#main-title"); if (tt) tt.hidden = true;
+  /* iv_logo has no src in the layout: it stays blank until GetAdvImage?type=2 */
+  const logo = $("#main-logo"); if (logo) logo.hidden = true;
+  startClock();
 }
-function buildMenu(st) {
-  const nav = $("#home-menu"); nav.innerHTML = "";
-  /* The hotel platform services (catering, room service, hotel intro, folio) are
-     not part of Pardik's residential deployment: they stay in the code base for
-     APK parity but only appear when the backend runs with IPTV_MODE=hotel. */
-  const hotel = S.mode === "hotel";
-  const items = [
-    { id: "live",    label: t("live", "پخش زنده"),        icon: "icon_live_large",    act: () => openLive() },
-    { id: "vod",     label: t("vod", "ویدئو"),            icon: "icon_vod_large",     act: () => openVod(),      show: st.menuVodVisible !== false },
-    { id: "rec",     label: t("main_menu_rec", "بازپخش"), icon: "icon_rec_large",     act: () => openRec(),      show: !!st.menuRecVisible },
-    { id: "scenery", label: t("scenery", "مناظر"),        icon: "icon_scenery_large", act: () => openScenery(),  show: st.menuSceneryVisible !== false },
-    { id: "dinner",  label: t("dinner", "غذا"),           icon: "icon_dinner_large",  act: () => openDinner(),   show: hotel && st.menuCaterVisible !== false },
-    { id: "service", label: t("hotel_service", "خدمات"), icon: "icon_service_large", act: () => openService(),  show: hotel && st.menuRoomServiceVisible !== false },
-    { id: "music",   label: t("play_music", "موسیقی"),    icon: "icon_music_large",   act: () => openMusic(),    show: st.menuMusicVisible !== false },
-    { id: "hotel",   label: t("hotel", "هتل"),            icon: "icon_hotel_large",   act: () => openHotel(),    show: hotel && st.menuHotelVisible !== false },
-    { id: "consume", label: t("main_menu_consume", "صورتحساب"), icon: "icon_money",   act: () => openConsume(),  show: hotel && st.menuConsumeVisible !== false },
-    { id: "settings",label: t("settings_system", "تنظیمات"), icon: "icon_settings_large", act: () => openSettings(), show: st.menuSystemVisible !== false },
-  ].filter(i => i.show !== false);
-  /* v2.7.2.06: when the server sets appShowInMenu, MainStyleFourthActivity
-     drops the single "third app" tile and adds one tile per chosen local app
-     (addLocalThirdAppInMenu). The Windows port does the same with the apps
-     selected in Settings -> "APP show in menu". */
-  if (st.appShowInMenu && S.appsSelected && S.appsSelected.length) {
-    S.appsSelected.forEach(name => items.push({
-      id: "app:" + name, label: name, icon: "icon_third_app_large",
-      isApp: true, appName: name, act: () => launchApp(name),
-    }));
+
+/* initTitleData(): GetAdvImage?mac=&type=2 -> iv_logo (a random entry). */
+async function initMainTitleData() {
+  let list = [];
+  try { list = advList(await apiGet("adv_image", { type: 2 })); } catch (e) { list = []; }
+  const logo = $("#main-logo");
+  if (!logo || !list.length || S.cur !== "scr-home") return;
+  logo.src = imgUrl(list[Math.floor(Math.random() * list.length)]);
+  logo.hidden = false;
+}
+
+/* isShowWifi(): Client.wifiName + wifiPassword, formatted with R$string.account
+   and R$string.password; anything missing hides wifi_status_layout. */
+function isShowWifi() {
+  const box = $("#main-wifi");
+  if (!box) return;
+  const c = S.client || {};
+  const name = c.wifiName || "", pass = c.wifiPassword || "";
+  if (!name || !pass) { box.hidden = true; return; }
+  box.hidden = false;
+  const pic = $(".main-wifi-pic", box); if (pic) pic.hidden = true;   // GONE in the layout
+  $("#main-wifi-name").textContent = t("account", "نام：{0}").replace("{0}", name);
+  $("#main-wifi-pass").textContent = t("password", "رمز：{0}").replace("{0}", pass);
+}
+
+/* EVENT_TODAY_WEATHER (posted by the welcome screen) fills weather_layout_main;
+   without weather data the layout's own @mipmap/sun stays and the texts are
+   empty, as on a head-end that does not publish weather. */
+function initMainWeather() {
+  const box = $("#main-weather");
+  if (!box) return;
+  const st = S.settings || {};
+  const d = S.weatherToday;
+  if (!d) {
+    /* EVENT_TODAY_WEATHER is sticky in the APK: the welcome screen already
+       fetched it. Entering main directly (skipWelcomePage) has to fetch it. */
+    box.hidden = true;
+    if (st.showWeather !== false) getWeatherWelcome().then(() => initMainWeather());
+    return;
   }
-  // overlay server-provided icons/labels where present
-  apiGet("homepage_icon").then(list => {
-    if (Array.isArray(list)) {
-      S.serverIcons = list;
-      list.forEach(si => {
-        const m = items.find(i => matchIconKey(i.id, si));
-        if (m) { m.serverIcon = si.icon || si.icon1; m.serverLabel = labelFor(si); }
-      });
-      renderMenu(items);
+  if (st.showWeather === false) { box.hidden = true; return; }
+  box.hidden = false;
+  const img = $("#main-weather-img"); if (img) img.src = weatherIcon(d);
+  const s1 = $("#main-weather-status"); if (s1) s1.textContent = d.wendu || "";
+  const s2 = $("#main-weather-range"); if (s2) s2.textContent = rangeOf(d);
+}
+
+/* getMainPageMenu(): GetHomepageIcon -> addMenuItemData(list); onFailure or an
+   empty list -> addMenuItemData(null) -> addDefaultMenu(). */
+async function getMainPageMenu() {
+  let list = null;
+  try {
+    const r = await apiGet("homepage_icon");
+    list = Array.isArray(r) ? r : ((r && r.list) || null);
+  } catch (e) { list = null; }
+  S.homepageIcons = Array.isArray(list) ? list : [];
+  const st = S.settings || {};
+  S.isShowPackage = !!st.showPackage;
+  addMenuItemData(S.homepageIcons.length ? S.homepageIcons : null);
+}
+
+/* bean.MainMenu as the port needs it: id (the APK's type), icon/iconFocus (the
+   server's icon1/icon), errorIcon/errorIconFocus (the built-in mipmaps), name,
+   appName (the Intent extra), act (the activity to start), skip (false for the
+   two popup tiles). */
+function MainMenu(id, icon, iconFocus, mip, name, appName, act, skip) {
+  return { id: id, icon: icon || "", iconFocus: iconFocus || "",
+           errorIcon: "mipmap__icon_" + mip + ".png",
+           errorIconFocus: "mipmap__icon_" + mip + "_large.png",
+           name: name || "", appName: appName || "", act: act || null, skip: skip !== false };
+}
+
+/* The tile label: getMenuItemName() picks englishName when selectLanguage is 0
+   and chineseName otherwise. MainPageItemBean has no Persian column, so a
+   Persian UI uses the same string resource the APK uses for that tile type. */
+function menuItemName(bean, typeKey) {
+  if (!bean) return t(typeKey, typeKey);
+  const en = bean.englishName || "", zh = bean.chineseName || "";
+  if (S.lang === "fa") return t(typeKey, en || zh || typeKey);
+  if (S.selectLanguage === 0) return en || zh || t(typeKey, typeKey);
+  return zh || en || t(typeKey, typeKey);
+}
+
+/* addDefaultMenu(): what the APK shows when GetHomepageIcon fails - live, vod,
+   playback (recordMode 2 -> the all-time list), scenery, dinner, the service
+   popup, the third-app popup and the hotel/complex introduction. */
+function addDefaultMenu() {
+  const st = S.settings || {};
+  const m = S.mainMenus = [];
+  m.push(MainMenu(1, "", "", "live", t("live", "پخش زنده"), "activity_title_name_live",
+    () => playLiveTV(), true));
+  m.push(MainMenu(2, "", "", "vod", t("vod", "ویدئو"), "activity_title_name_vod",
+    () => openVod(), true));
+  m.push(MainMenu(3, "", "", "rec", t("main_menu_rec", "بازپخش"), "activity_title_name_play_back",
+    () => openRec(), true));
+  m.push(MainMenu(6, "", "", "scenery", t("scenery", "مناظر"), "activity_title_name_scenery",
+    () => openScenery(), true));
+  m.push(MainMenu(5, "", "", "dinner", t("dinner", "شام"), "activity_title_name_dinner",
+    () => (st.caterSub ? openCountry() : openDinner()), true));
+  m.push(MainMenu(7, "", "", "service", t("hotel_service", "خدمات"), "hotelService",
+    () => openServicePopup(), false));
+  m.push(MainMenu(8, "", "", "third_app", t("third_app", "اپلیکیشن سوم"), "thirdApp",
+    () => openThirdAppPopup(), false));
+  m.push(MainMenu(4, "", "", "hotel", t("hotel", "هتل"), "activity_title_name_hotel_intro",
+    () => openHotel(), true));
+  if ((S.loacalThirdApkBeans || []).length && S.isShowAppInMenu) addLocalThirdAppInMenu();
+  renderMainMenu();
+}
+
+/* addMenuItemData(list): the switch on MainPageItemBean.getType(). */
+function addMenuItemData(list) {
+  const st = S.settings || {};
+  S.isShowEpgInfo = !!st.epg;
+  S.isShowAppInMenu = !!st.appShowInMenu;
+  S.isShowPackage = !!st.showPackage;
+  S.recordMode = Number(st.recordMode || 0);
+  const m = S.mainMenus = [];
+  if (!list || !list.length) { addDefaultMenu(); return; }
+  list.forEach(bean => {
+    const type = Number(bean.type);
+    const icon = bean.icon1 || "", iconFocus = bean.icon || "";
+    switch (type) {
+      case 0: {
+        /* a third-party apk from GetAPK, matched by packageName or by name, and
+           only while Settings.appShowInMenu is on. Its icon lives under
+           ../res/client/apk/ on the head-end. */
+        if (!S.isShowAppInMenu) break;
+        const hit = (S.thirdApkBeanList || []).find(a =>
+          (bean.packageName ? String(a.packageName || "") === String(bean.packageName)
+                            : String(a.name || "") === (bean.chineseName || bean.englishName || "")));
+        if (!hit) break;
+        m.push(MainMenu(55, "res/client/apk/" + hit.icon, "res/client/apk/" + hit.icon, "settings",
+          hit.name, hit.packageName, () => openThirdApkUrl(hit.url), true));
+        break;
+      }
+      case 1:
+        m.push(MainMenu(1, icon, iconFocus, "live", menuItemName(bean, "live"),
+          "activity_title_name_live", () => playLiveTV(), true));
+        break;
+      case 2:
+        m.push(MainMenu(2, icon, iconFocus, "vod", menuItemName(bean, "vod"),
+          "activity_title_name_vod", () => openVod(), true));
+        break;
+      case 3:
+        m.push(MainMenu(3, icon, iconFocus, "rec", menuItemName(bean, "main_menu_rec"),
+          "activity_title_name_play_back", () => openRec(), true));
+        break;
+      case 4:
+        m.push(MainMenu(4, icon, iconFocus, "hotel", menuItemName(bean, "hotel"),
+          "activity_title_name_hotel_intro", () => openHotel(), true));
+        break;
+      case 5:
+        m.push(MainMenu(5, icon, iconFocus, "dinner", menuItemName(bean, "dinner"),
+          "activity_title_name_dinner", () => (st.caterSub ? openCountry() : openDinner()), true));
+        break;
+      case 6:
+        m.push(MainMenu(6, icon, iconFocus, "scenery", menuItemName(bean, "scenery"),
+          "activity_title_name_scenery", () => openScenery(), true));
+        break;
+      case 7:
+        m.push(MainMenu(7, icon, iconFocus, "service", menuItemName(bean, "hotel_service"),
+          "hotelService", () => openServicePopup(), false));
+        break;
+      case 8:
+        /* with appShowInMenu the single tile is dropped: addLocalThirdAppInMenu()
+           lists every chosen app instead. */
+        if (S.isShowAppInMenu) break;
+        m.push(MainMenu(8, icon, iconFocus, "third_app", menuItemName(bean, "third_app"),
+          "thirdApp", () => openThirdAppPopup(), false));
+        break;
+      case 9:
+        m.push(MainMenu(9, icon, iconFocus, "music", menuItemName(bean, "play_music"),
+          "music_activity_title_name", () => openMusic(), true));
+        break;
+      default: break;
     }
-  }).catch(() => renderMenu(items));
-  renderMenu(items);
+  });
+  if ((S.loacalThirdApkBeans || []).length && S.isShowAppInMenu) addLocalThirdAppInMenu();
+  renderMainMenu();
 }
-function matchIconKey(id, si) {
-  const k = ((si.packageName || "") + " " + (si.englishName || "") + " " + (si.chineseName || "")).toLowerCase();
-  return k.indexOf(id) >= 0 || (id === "live" && /live|tv/.test(k)) || (id === "vod" && /vod|movie/.test(k)) ||
-    (id === "rec" && /rec|playback/.test(k)) || (id === "scenery" && /scen/.test(k)) || (id === "dinner" && /cater|food|dinner/.test(k)) ||
-    (id === "service" && /service|room/.test(k)) || (id === "hotel" && /hotel/.test(k)) || (id === "consume" && /consume|bill/.test(k));
+
+/* addLocalThirdAppInMenu(): readLocalThirdAppDatas() - the apps the installer
+   chose in Settings, each as its own tile (type 55). */
+function addLocalThirdAppInMenu() {
+  (S.loacalThirdApkBeans || []).forEach(a => {
+    S.mainMenus.push(MainMenu(55, "", "", "settings", a.name, a.packageName || a.name,
+      () => launchApp(a.name), true));
+  });
 }
-function labelFor(si) {
-  if (S.lang === "en") return si.englishName || si.chineseName;
-  if (S.lang === "zh") return si.chineseName || si.englishName;
-  return si.englishName || si.chineseName;
-}
-function renderMenu(items) {
-  const nav = $("#home-menu"); nav.innerHTML = "";
-  items.forEach(i => {
-    const b = el("button", "menu-item focusable");
-    const img = el("img"); img.src = i.serverIcon ? imgUrl(i.serverIcon) : ("/assets/img/mipmap__" + i.icon + ".png");
-    img.onerror = () => { img.src = "/assets/img/mipmap__" + i.icon + ".png"; };
+
+/* initAdapter() + StyleZeroMenuAdapter.convert(): adapter_main_menu_layout.xml,
+   iv_menu 190x140dp and tv_menu_name 20sp #FFFFDD94. A server icon is loaded
+   through IptvSP.getImagePath(); with none, the built-in mipmap shows - and the
+   focused tile swaps to its *_large variant (onItemSelected). */
+function renderMainMenu() {
+  const nav = $("#home-menu");
+  if (!nav) return;
+  nav.innerHTML = "";
+  S.mainMenus.forEach((item, i) => {
+    const b = el("button", "mm-item focusable");
+    b.dataset.index = String(i);
+    const img = el("img");
+    const local = (f) => "/assets/img/" + f;
+    const paint = (focused) => {
+      const srv = focused ? item.iconFocus : item.icon;
+      const fallback = local(focused ? item.errorIconFocus : item.errorIcon);
+      img.onerror = () => { img.onerror = null; img.src = fallback; };
+      img.src = srv ? imgUrl(srv) : fallback;
+    };
+    paint(false);
     b.appendChild(img);
-    b.appendChild(el("span", null, i.label));
-    b.onclick = i.act;
+    b.appendChild(el("span", null, esc(item.name)));
+    b.addEventListener("focus", () => paint(true));      // $7.onItemSelected
+    b.addEventListener("blur", () => paint(false));      // $7.onItemPreSelected
+    b.onclick = () => onMainMenuItem(i);
     nav.appendChild(b);
   });
+  /* initAdapter(): fewer than six tiles are padded so the first one sits where
+     the centred selection would put it (length_840/640/450/300/150). */
+  const pad = { 1: 840, 2: 640, 3: 450, 4: 300, 5: 150 }[S.mainMenus.length];
+  nav.style.paddingInlineStart = pad ? "calc(" + pad + " * var(--u))" : "";
+  nav.style.paddingInlineEnd = pad ? "calc(" + pad + " * var(--u))" : "";
   focusFirst("scr-home");
+}
+
+/* $7.onItemClick(): a tile with skip=false opens its popup instead of an
+   activity; both paths go through startActivity()'s two gates. */
+function onMainMenuItem(i) {
+  const item = S.mainMenus[i];
+  if (!item) return;
+  if (!item.skip) { item.act && item.act(); return; }
+  startMainMenuActivity(item);
+}
+
+/* startActivity(cls, menu, title): isConnectServer() then isEnabled(). */
+function startMainMenuActivity(item) {
+  if (!isConnectServer()) return;
+  if (!isEnabled()) return;
+  stopMainBackground();
+  if (item.act) item.act();
+}
+function isConnectServer() {
+  if (S.connected) return true;
+  toast(t("status_disconnected", "سرور قطع شد!"));
+  return false;
+}
+function isEnabled() {
+  const st = S.settings || {};
+  if (!st.needCheekIn) return true;
+  if (S.client && !S.client.enable) {
+    toast(t("status_disabled", "درهتل پذیرش نشده."));
+    return false;
+  }
+  return true;
+}
+
+/* The type 1 tile: !isShowPackage -> LivePlayer(WithEpg)Activity; isShowPackage
+   -> showPackageStyle 1 ? LivePlayerWithPackageActivity : LivePackageActivity. */
+function playLiveTV() {
+  openLive();
+}
+
+/* The two popup tiles (type 7 service, type 8 third app). */
+async function openServicePopup() {
+  if (!isConnectServer() || !isEnabled()) return;
+  openService();
+}
+async function openThirdAppPopup() {
+  if (!isConnectServer() || !isEnabled()) return;
+  openApps();
+}
+function openThirdApkUrl(url) {
+  if (!url) return;
+  window.open(iptvUrl(url), "_blank");
+}
+
+/* initData(): isShowAppInMenu / isEpg, then the auto-entry into live TV. */
+function initMainData() {
+  const st = S.settings || {};
+  S.isShowAppInMenu = !!st.appShowInMenu;
+  S.isShowEpgInfo = !!st.epg;
+  if (isEnabled() && st.enterLivePage) {
+    /* LivePlayerActivity, or LivePlayerWithEpgActivity when settings.epg */
+    setTimeout(() => { if (S.cur === "scr-home") playLiveTV(); }, 400);
+  }
+  /* GetAPK (the type 0 tiles) and the locally chosen apps */
+  apiGet("apk").then(r => { S.thirdApkBeanList = Array.isArray(r) ? r : []; })
+    .catch(() => { S.thirdApkBeanList = []; });
+  S.loacalThirdApkBeans = (S.appsSelected || []).map(n => ({ name: n, packageName: n }));
+  if (S.isShowAppInMenu && S.loacalThirdApkBeans.length) getMainPageMenu();
+}
+
+/* The indexArea background: 1 = the MZBannerView slideshow (GetAdvImage?type=0,
+   initPPT() -> 8000 ms a page) plus apk/getClientBackgroundMusics, 2 =
+   apk/getClientBackgroundVideos in main_my_ijkplayer_view_vod, 3 = live TV in
+   main_my_ijkplayer_view (getLiveProgList() -> playLiveTV()). */
+function initMainBackground() {
+  stopMainBackground();
+  const kind = Number(S.playTypendex || 0);
+  if (kind === 1) { mainPpt(); mainBgMusic(); }
+  else if (kind === 2) { mainBgVideo(); }
+  else if (kind === 3) { mainLiveBackground(); }
+}
+async function mainPpt() {
+  const img = $("#main-banner");
+  if (!img) return;
+  let list = [];
+  try { list = advList(await apiGet("adv_image", { type: 0 })); } catch (e) { list = []; }
+  if (!list.length || S.cur !== "scr-home") return;
+  S.mainBannerImages = list;
+  let i = 0;
+  const paint = () => {
+    if (S.cur !== "scr-home") return;
+    img.hidden = false;
+    img.src = imgUrl(list[i % list.length]);
+    i++;
+  };
+  paint();
+  clearInterval(S.mainBannerTimer); S.mainBannerTimer = null;
+  if (list.length > 1) S.mainBannerTimer = setInterval(paint, 8000);   // initPPT()
+}
+async function mainBgMusic() {
+  let list = [];
+  try { list = (advList(await apiGet("bg_musics"))).filter(x => x && x.url); } catch (e) { return; }
+  if (!list.length || S.cur !== "scr-home") return;
+  let a = S.mainMusic;
+  if (!a) { a = document.createElement("audio"); a.id = "main-music"; document.body.appendChild(a); S.mainMusic = a; }
+  const next = () => {
+    const b = list[Math.floor(Math.random() * list.length)];
+    a.src = mediaSrc(iptvUrl("res/adv/music/" + enc(b.url)));
+    tryPlay(a);
+  };
+  a.onended = () => { if (S.mainMusic && S.cur === "scr-home") next(); };
+  next();
+}
+async function mainBgVideo() {
+  const v = $("#main-bgvideo");
+  if (!v) return;
+  let list = [];
+  try { list = sanitiseAdvPaths(await apiGet("bg_videos")); } catch (e) { list = []; }
+  if (!list.length || S.cur !== "scr-home") return;
+  S.mainBgVideos = list;
+  v.hidden = false;
+  v.onended = () => { if (S.cur === "scr-home") attachSource(v, iptvUrl(list[Math.floor(Math.random() * list.length)]), "mainHls"); };
+  attachSource(v, iptvUrl(list[0]), "mainHls");
+}
+/* getLiveProgList(): GetLiveTV?packageId=0 -> playLiveTV() behind the menu;
+   lambda$initPlayer$0 retries at most three times on error. */
+async function mainLiveBackground() {
+  const v = $("#main-live");
+  if (!v) return;
+  let list = [];
+  try {
+    if (m3uActive()) list = (S.m3uChannels || []).map(m3uChannel);
+    else list = (await apiGet("live_tv", { packageId: 0 })) || [];
+  } catch (e) { list = []; }
+  if (!Array.isArray(list) || !list.length || S.cur !== "scr-home") return;
+  S.mainLiveList = list;
+  const idx = Math.max(0, list.findIndex(c => c.id === S.config.settings.last_channel));
+  const item = list[idx];
+  const [src] = pickSource(item);
+  if (!src) return;
+  v.hidden = false;
+  S.mainLiveErrors = 0;
+  v.onerror = () => {
+    S.mainLiveErrors = (S.mainLiveErrors || 0) + 1;
+    if (S.mainLiveErrors <= 3 && S.cur === "scr-home") mainLiveBackground();
+  };
+  attachSource(v, src, "mainHls");
+  reportPlaying(nm(item) || item.name || "");
+}
+/* one place that knows how to hand a URL to a <video>: HLS through the proxy
+   with hls.js, everything else through the local remux. */
+function attachSource(video, url, hlsKey) {
+  const src = mediaSrc(url);
+  try {
+    if (classify(url) === "hls" && window.Hls && Hls.isSupported()) {
+      if (S[hlsKey]) { try { S[hlsKey].destroy(); } catch (e) {} }
+      const h = new Hls({ manifestLoadingTimeOut: 12000, manifestLoadingMaxRetry: 2 });
+      S[hlsKey] = h;
+      h.loadSource(src);
+      h.attachMedia(video);
+      h.on(Hls.Events.MANIFEST_PARSED, () => tryPlay(video));
+      return;
+    }
+  } catch (e) {}
+  video.src = src;
+  tryPlay(video);
+}
+/* switchToPlayBg(0) / onPause / onDestroy: everything behind the menu stops. */
+function stopMainBackground() {
+  clearInterval(S.mainBannerTimer); S.mainBannerTimer = null;
+  const img = $("#main-banner"); if (img) { img.hidden = true; img.removeAttribute("src"); }
+  ["#main-bgvideo", "#main-live"].forEach(sel => {
+    const v = $(sel);
+    if (!v) return;
+    v.onended = null; v.onerror = null; v.hidden = true;
+    try { v.pause(); v.removeAttribute("src"); v.load(); } catch (e) {}
+  });
+  if (S.mainHls) { try { S.mainHls.destroy(); } catch (e) {} S.mainHls = null; }
+  const a = S.mainMusic;
+  if (a) { a.onended = null; try { a.pause(); a.removeAttribute("src"); a.load(); } catch (e) {} }
 }
 
 /* ----------------------------- LIVE ----------------------------- */
@@ -810,6 +1670,10 @@ function m3uActive() {
   return !!(S.m3u && S.m3u.enabled && (S.m3uChannels || []).length);
 }
 
+/* playLiveTV(): !isShowPackage -> LivePlayerActivity, or LivePlayerWithEpgActivity
+   when settings.epg (both are this port's player screen, with or without the EPG
+   panel). isShowPackage -> showPackageStyle 1 ? LivePlayerWithPackageActivity
+   (the player, packages switchable inside it) : LivePackageActivity (the list). */
 async function openLive() {
   const st = S.settings || {};
   try {
@@ -821,6 +1685,11 @@ async function openLive() {
     }
     if (st.showPackage) {
       S.packages = (await apiGet("live_packages")) || [];
+      if (Number(st.showPackageStyle) === 1 && S.packages.length) {
+        await loadChannels(S.packages[0].id);
+        startPlayer("live");
+        return;
+      }
       renderPackages();
       show("scr-livepkg");
     } else {
@@ -906,6 +1775,8 @@ function playItem(item, opts) {
     pet0.setAttribute("data-i18n", "decoding_video_failed"); applyI18n();
   }
   const [src, proto] = pickSource(item);
+  /* BaseApplication.curPlayingLiveProgramName -> UpdateClient?name=... */
+  reportPlaying(S.playerCtx.kind === "live" ? (nm(item) || item.name || "") : "");
   /* v2.7.2.06: use_vlc_paly_live_prg hands live playback to the external
      player (LivePlayerActivity.playWithVlc). If VLC is missing the Android app
      toasts vlc_player_install_tips and keeps playing internally. */
@@ -984,6 +1855,7 @@ function playItem(item, opts) {
   video.onerror = () => { $("#player-loading").style.display = "none"; stopLoadAnim(); $("#player-error").hidden = false; };
 }
 function stopVideo(hideScreen) {
+  reportPlaying("");                    // UpdateClient?name= is empty again
   const video = $("#video");
   try { if (S.hls) { S.hls.destroy(); S.hls = null; } } catch (e) {}
   try { video.pause(); video.removeAttribute("src"); video.load(); } catch (e) {}
@@ -1783,10 +2655,12 @@ async function loadMusic(albumId) {
 }
 
 /* ----------------------------- SETTINGS ----------------------------- */
-function openSettings() {
+/* `unlocked` is MainStyleThirdActivity.onKeyDown(): the code was already typed
+   on the main screen, so the gate does not ask for it a second time. */
+function openSettings(unlocked) {
   show("scr-settings");
   const gate = $("#set-gate"), body = $("#set-body");
-  const need = S.config.settings.need_password !== false;
+  const need = !unlocked && S.config.settings.need_password !== false;
   gate.style.display = need ? "flex" : "none";
   body.hidden = need;
   if (!need) fillSettings();
@@ -1844,6 +2718,7 @@ function fillSettings() {
   }
   const dl = $("#set-diag-label");
   if (dl) dl.textContent = t("diag_live_check", "بررسی پخش زنده");
+  fillConnectionRows();
   const mrow = $("#set-m3u");
   if (mrow) {
     mrow.querySelector(".set-label").textContent = t("m3u_source", "فهرست کانال‌ها (m3u)");
@@ -1886,9 +2761,25 @@ function fillSettings() {
   $("#set-apps").onclick = () => openApps();
   if ($("#set-m3u")) $("#set-m3u").onclick = () => openM3u();
   if ($("#set-diag")) $("#set-diag").onclick = () => runDiagnose();
+  /* the handshake again from the top: BaseApplication.onCreate() + the
+     PingServerActivity timer, without reloading the screen */
   $("#set-reconnect").onclick = async () => {
     try { await fetch("/api/network"); } catch (e) {}
-    location.reload();
+    const r = await apiPost("/api/connection/retry", {});
+    if (r && r.connection) applyConnection(r.connection);
+    fillConnectionRows();
+    toast(t("settings_network", "تنظیمات شبکه") + " ↻");
+  };
+  /* the sweep is the Windows-port aid for a head-end that does not announce
+     itself on UDP 27777: it walks the local subnet looking for GetSettings. */
+  const sw = $("#set-sweep");
+  if (sw) sw.onclick = async () => {
+    const v = $("#set-sweep-value");
+    if (v) v.textContent = "…";
+    const r = await apiPost("/api/connection/sweep", {});
+    if (r && r.connection) applyConnection(r.connection);
+    setTimeout(fillConnectionRows, 2500);
+    fillConnectionRows();
   };
   $("#set-lang").parentElement.onclick = () => {
     const order = ["fa", "en", "zh"];
@@ -1896,6 +2787,43 @@ function fillSettings() {
     apiPost("/api/settings", { app_language: S.lang }); applyI18n(); fillSettings();
   };
 }
+/* The three connection rows: exactly the facts the APK's own handshake holds -
+   BaseApplication.isConnected(), the address in use, the UDP 27777 listener and
+   the sweep that stands in for an announce on a Windows machine. */
+async function fillConnectionRows() {
+  await refreshConnection();
+  const c = S.conn;
+  if (!c) return;
+  const cv = $("#set-conn-value");
+  if (cv) {
+    const srv = c.server || {};
+    /* "متصل" is a port string: the APK has no "connected" label because its boot
+       screen simply moves on when the handshake answers. */
+    cv.textContent = (c.connected ? "● " + (S.lang === "en" ? "Connected" : "متصل")
+                                  : "○ " + t("status_disconnected", "سرور قطع شد!"))
+      + " · " + (srv.address || "-")
+      + (c.unit ? " · " + (S.mode === "hotel" ? t("room", "اتاق") : t("unit_number", "شمارهٔ واحد")) + " " + c.unit : "")
+      + " · " + (c.settings_ok ? "GetSettings ✓" : "GetSettings ✗");
+    cv.classList.toggle("ok", !!c.connected);
+    cv.classList.toggle("bad", !c.connected);
+  }
+  const dv = $("#set-disc-value");
+  if (dv) {
+    const d = c.discovery || {};
+    dv.textContent = d.bound
+      ? ("● UDP " + (d.port || 27777) + " · " + (d.packets || 0) + (S.lang === "en" ? " packet(s)" : " بسته"))
+      : ("○ " + (d.error || "-"));
+    dv.classList.toggle("ok", !!d.bound);
+    dv.classList.toggle("bad", !d.bound);
+  }
+  const sv = $("#set-sweep-value");
+  if (sv) {
+    const w = c.sweep || {};
+    sv.textContent = w.found ? ("● " + w.found) : (w.running ? "…" : (w.tried ? String(w.tried) : "⟳"));
+    sv.classList.toggle("ok", !!w.found);
+  }
+}
+
 function editSetting(key) {
   const m = $("#input-modal"); m.hidden = false;
   const h = $("#input-hint"); if (h) { h.hidden = true; h.textContent = ""; }
@@ -1951,11 +2879,10 @@ async function openApps() {
 }
 
 /* ----------------------------- enter-screen hook ----------------------------- */
-const HOTEL_SCREENS = ["scr-dinner", "scr-country", "scr-orders", "scr-service", "scr-svcrecord",
-  "scr-rent", "scr-wakeup", "scr-consume", "scr-hotel"];
-
 function onEnter(id) {
-  if (S.mode !== "hotel" && HOTEL_SCREENS.indexOf(id) >= 0) { show("scr-home", false); return; }
+  /* The menu is whatever GetHomepageIcon publishes (or addDefaultMenu()), so no
+     screen is locked by the deployment flavour: a residential head-end that
+     lists the service or introduction tiles gets exactly those screens. */
   if (id !== "scr-player") {
     clearInterval(S._epgT); stopLoadAnim();
     if (S.ad) { clearInterval(S.adTimer); S.ad = null; const ac = $("#ad-countdown"); if (ac) ac.hidden = true; }
@@ -1966,9 +2893,24 @@ function onEnter(id) {
   }
   if (id !== "scr-welcome") stopWelcomeAdv();     // welcome activity finished
   if (id !== "scr-bootvideo") stopBootVideo();
-  if (id === "scr-home") {
-    // keep the menu in sync with the apps chosen in Settings
-    cfg().then(c => { S.config = c; S.appsSelected = c.apps_selected || []; buildMenu(S.settings || {}); }).catch(() => {});
+  /* onPause() -> switchToPlayBg(0): whatever plays behind the menu stops when
+     another activity covers it. onResume() -> switchToPlayBg(1) +
+     right_show_action(): coming back re-reads the handshake, rebuilds the menu
+     (the apps chosen in Settings may have changed) and restarts the background. */
+  if (id !== "scr-home") stopMainBackground();
+  if (id === "scr-home" && S.mainEntered) {
+    cfg().then(c => {
+      S.config = c;
+      S.appsSelected = c.apps_selected || [];
+      S.loacalThirdApkBeans = (S.appsSelected || []).map(n => ({ name: n, packageName: n }));
+      return refreshConnection();
+    }).then(() => {
+      if (S.cur !== "scr-home") return;
+      initMainView(Number((S.settings || {}).layout || 0));
+      isShowWifi(); initMainWeather(); getMainPageMenu(); initMainBackground();
+      const scr = $("#scr-home");
+      if (scr) scr.classList.add("menu-in");
+    }).catch(() => {});
   }
 }
 
