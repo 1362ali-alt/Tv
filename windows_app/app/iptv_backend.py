@@ -330,6 +330,24 @@ def append_log(line):
     except Exception:
         pass
 
+
+# --- deployment-baked head-end (install\headend.txt -> launch.ps1 -> env) ----
+# tools/extract_headend.py reads 10.21.0.10:8030 (RTSP 554) out of the vendor
+# APK's IptvConfig - the only building address embedded in the software - and
+# the installer ships it as headend.txt. It is applied as a *seed*: once a
+# resident changes the address from Settings the marker matches and their
+# choice survives restarts; re-editing headend.txt re-seeds it.
+_seed_ip = os.environ.get("IPTV_SERVER_IP", "").strip()
+_seed_port = os.environ.get("IPTV_SERVER_PORT", "").strip()
+if _seed_ip:
+    _seed = "%s:%s" % (_seed_ip, _seed_port or SETTINGS.get("server_port"))
+    if SETTINGS.get("headend_seed") != _seed:
+        SETTINGS.d["server_ip"] = _seed_ip
+        if _seed_port.isdigit():
+            SETTINGS.d["server_port"] = int(_seed_port)
+        SETTINGS.d["headend_seed"] = _seed
+        SETTINGS.save()
+
 # --------------------------------------------------------------------------- #
 # HTTP API client (mirrors HttpUtil / OkGo usage)
 # --------------------------------------------------------------------------- #

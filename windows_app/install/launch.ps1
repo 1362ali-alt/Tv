@@ -23,6 +23,19 @@ if (Test-Path $modeFile) {
 }
 $env:IPTV_MODE = $mode
 
+# --- deployment-baked head-end address --------------------------------------
+# tools/extract_headend.py pulled this out of the vendor APK (IptvConfig.
+# DEFAULT_SERVER_IP / DEFAULT_SERVER_PORT = the building head-end). It ships
+# as headend.txt (line 1 = ip, line 2 = port) next to mode.txt so an installer
+# can re-bake it per building without touching code; the backend applies it as
+# a seed and a resident's own Settings edit always wins afterwards.
+$headFile = Join-Path $root "headend.txt"
+if (Test-Path $headFile) {
+    $hl = @(Get-Content -Path $headFile | Where-Object { $_.Trim() -ne "" })
+    if ($hl.Count -ge 1) { $env:IPTV_SERVER_IP = $hl[0].Trim() }
+    if ($hl.Count -ge 2) { $env:IPTV_SERVER_PORT = $hl[1].Trim() }
+}
+
 function Find-Python {
     foreach ($c in @("py","python","python3")) {
         $p = Get-Command $c -ErrorAction SilentlyContinue

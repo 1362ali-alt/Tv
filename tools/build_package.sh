@@ -26,6 +26,9 @@ cp windows_app/PARDIK-SMART-IPTV.bat windows_app/PARDIK-SMART-IPTV-silent.vbs \
    windows_app/README-FA.md windows_app/README-EN.md "$STAGE/PARDIK-SMART-IPTV/"
 # launch.ps1 reads mode.txt to pick the deployment flavour (IPTV_MODE)
 printf '%s\r\n' "$MODE" > "$STAGE/PARDIK-SMART-IPTV/mode.txt"
+if [ -f windows_app/headend.txt ]; then
+    cp windows_app/headend.txt "$STAGE/PARDIK-SMART-IPTV/headend.txt"
+fi
 rm -rf "$STAGE/PARDIK-SMART-IPTV/app/_userdata"
 find "$STAGE" -name "__pycache__" -type d -exec rm -rf {} +
 cd "$STAGE"

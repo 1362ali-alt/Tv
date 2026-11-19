@@ -630,7 +630,34 @@ after the menu is up still produces the `status_disconnected` toast («سرور 
 gateway → `x.y.z.1` → `x.y.z.254` → the whole /24 in 64-thread chunks, accepting
 only a host whose `/iptv2/GetSettings` returns a non-empty object.
 
-## 9.3 Verification
+## 9.3 The building head-end, extracted from the APKs
+
+`tools/extract_headend.py` scans every DEX / resource / asset blob of an APK for
+IPv4 literals, filters vendor noise (Baidu map CDNs `182.61.*`, `119.75.*`,
+`180.*`, multicast `239.255.0.100`, loopback) and ranks the private-range
+candidates the way a constant would appear (several dex files, standard port).
+Both supplied APKs yield exactly one embedded head-end:
+
+| APK | embedded default | source |
+|---|---|---|
+| v2.7.2.06 | `10.21.0.10 : 8030` (RTSP 554) | `IptvConfig.DEFAULT_SERVER_IP/PORT/RTSP_PORT`, classes3.dex |
+| v2.7.1.71 | `10.21.0.10 : 8030` (RTSP 554) | same constants, classes.dex + classes2.dex; the distribution file name also carries `10.21.0.10` |
+
+The other private literals (`192.168.200.106:8060` in a hard-coded test HLS
+URL, `192.168.1.211:8030` in a test VOD URL) are the vendor's debug machines.
+Nothing else in the APK names a building address - by design: a Pardik install
+learns its head-end at run time from the UDP 27777 announcement (§9.1), which is
+why the Android box connects with zero configuration.
+
+The Windows port therefore ships the extracted address twice over: as the
+factory default (`DEFAULTS`), and explicitly as `headend.txt` next to
+`mode.txt` (line 1 = ip, line 2 = port). `launch.ps1` feeds it to the backend as
+`IPTV_SERVER_IP` / `IPTV_SERVER_PORT`; the backend applies it as a *seed*
+(`headend_seed` marker in settings.json) so an installer can re-bake the
+building address per site without touching code, while a resident's own
+Settings edit always survives restarts.
+
+## 9.4 Verification
 
 `tools/mock_iptv_server.py` answers the full contract (`GetSettings`,
 `GetClient`, `GetRoomInfo`, `UpdateClient`, `GetCurrentTimeAndZone`,
