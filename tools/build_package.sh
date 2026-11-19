@@ -30,6 +30,7 @@ if [ "$MODE" = "source" ]; then
        windows_app/README-FA.md windows_app/README-EN.md \
        windows_app/README-PORTABLE-FA.md "$STAGE/PARDIK-SOURCE/" 2>/dev/null || true
     cp analysis/REVERSE_ENGINEERING_REPORT.md "$STAGE/PARDIK-SOURCE/" 2>/dev/null || true
+    cp tools/build_package.sh tools/fetch_portable_deps.sh "$STAGE/PARDIK-SOURCE/" 2>/dev/null || true
     find "$STAGE" -name "__pycache__" -type d -exec rm -rf {} +
     cd "$STAGE"
     zip -qr "/home/user/Tv/$OUT" PARDIK-SOURCE
@@ -59,6 +60,17 @@ if [ "$MODE" = "portable" ]; then
     printf 'portable\r\n' > "$STAGE/PARDIK-SMART-IPTV/portable.flag"
     cp windows_app/PORTABLE.bat "$STAGE/PARDIK-SMART-IPTV/PORTABLE.bat"
     cp windows_app/README-PORTABLE-FA.md "$STAGE/PARDIK-SMART-IPTV/README-PORTABLE-FA.md"
+    # FULL bundle: python + ffmpeg + vlc ship INSIDE the zip, so the target
+    # machine needs no internet, no installer, no preinstalled anything.
+    # tools/fetch_portable_deps.sh populates vendor/ before this runs.
+    if [ ! -f vendor/python/python.exe ] || [ ! -f vendor/ffmpeg.exe ] \
+       || [ ! -f vendor/vlc/vlc.exe ]; then
+        bash tools/fetch_portable_deps.sh
+    fi
+    mkdir -p "$STAGE/PARDIK-SMART-IPTV/runtime"
+    cp -r vendor/python "$STAGE/PARDIK-SMART-IPTV/runtime/python"
+    cp vendor/ffmpeg.exe "$STAGE/PARDIK-SMART-IPTV/tools/ffmpeg.exe"
+    cp -r vendor/vlc "$STAGE/PARDIK-SMART-IPTV/tools/vlc"
 fi
 # launch.ps1 reads mode.txt to pick the deployment flavour (IPTV_MODE)
 printf '%s\r\n' "$MODE" > "$STAGE/PARDIK-SMART-IPTV/mode.txt"
@@ -68,7 +80,7 @@ fi
 rm -rf "$STAGE/PARDIK-SMART-IPTV/app/_userdata"
 find "$STAGE" -name "__pycache__" -type d -exec rm -rf {} +
 cd "$STAGE"
-zip -qr "/home/user/Tv/$OUT" PARDIK-SMART-IPTV
+zip -qr9 "/home/user/Tv/$OUT" PARDIK-SMART-IPTV
 cd /home/user/Tv
 rm -rf "$STAGE"
 ls -la "$OUT"
