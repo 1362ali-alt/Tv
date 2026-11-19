@@ -194,6 +194,26 @@ window.I18N = {
   "fa": "فهرست پخش (m3u)",
   "zh": "Playlist source (m3u)",
  },
+ "diag_handshake": {
+  "en": "Head-end handshake",
+  "fa": "دست‌دادن با هداند",
+  "zh": "Head-end handshake",
+ },
+ "diag_multicast_recv": {
+  "en": "Multicast reception (live channels)",
+  "fa": "دریافت مولتی‌کست (کانال‌های زنده)",
+  "zh": "Multicast reception (live channels)",
+ },
+ "diag_server_announce": {
+  "en": "Head-end announce packet",
+  "fa": "بستهٔ اعلام هداند",
+  "zh": "Head-end announce packet",
+ },
+ "diag_udp_announce": {
+  "en": "Announce listener (UDP 27777)",
+  "fa": "شنوندهٔ اعلام سرور (UDP 27777)",
+  "zh": "Announce listener (UDP 27777)",
+ },
  "diag_network_adapter": {
   "en": "Network adapter",
   "fa": "کارت شبکه",

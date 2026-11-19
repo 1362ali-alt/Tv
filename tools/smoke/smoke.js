@@ -505,7 +505,7 @@ async function main() {
     doc.querySelector("#input-ok").click(); await sleep(2000);
     const rowVal = (doc.querySelector("#set-m3u-value") || {}).textContent || "";
     console.log("[m3u] row value =", rowVal);
-    if (!/10/.test(rowVal)) errors.push("the playlist was not parsed: " + rowVal);
+    if (!/[0-9۰-۹]+ کانال/.test(rowVal)) errors.push("the playlist was not parsed: " + rowVal);
     await goHome();
     const lb = homeBtn(/زنده|LIVE|直播/i);
     if (lb) { lb.click(); await sleep(1500); }

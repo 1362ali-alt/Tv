@@ -127,6 +127,8 @@ def channels():
         tv(8, "فرانس ۲۴", "France 24", 8, {"hlsUrl": vod + "test.m3u8"}),
         tv(9, "الجزیره", "Al Jazeera", 9, {"httpUrl": vod + "test.ts"}),
         tv(10, "دویچه وله", "DW English", 10, {"httpUrl": vod + "welcome.mp4"}),
+        # a multicast-fed channel, like the real building head-end hands out
+        tv(91, "شبکه مولتی‌کست", "Multicast Test", 11, {"url": "udp://224.3.0.2:10002"}, ts=True),
     ]
 
 

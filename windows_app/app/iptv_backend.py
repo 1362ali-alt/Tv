@@ -1572,6 +1572,21 @@ def diagnose():
             chk("get_live_tv", False, "هیچ کانالی برنگشت",
                 "سرور کانالی برای این MAC/واحد برنگرداند؛ ثبت دستگاه در پنل پردیک را بررسی کنید.")
 
+    # 5. can THIS machine actually receive the head-end's multicast? Android
+    #    joins the group inside IjkMediaPlayer; on Windows the firewall or a
+    #    VPN adapter can swallow the membership silently - VLC's cone and a
+    #    zero-byte ffmpeg remux both look like "decoding failed" then.
+    murl = next((c.get("url") or "" for c in chans
+                 if (c.get("url") or "").startswith(("udp://", "rtp://"))), "")
+    if murl:
+        got, merr = _multicast_probe(murl, ip)
+        chk("multicast_recv", got > 0,
+            ("%s → %d بایت در ۲٫۵ ثانیه" % (murl, got)) if got else (merr or "۰ بایت"),
+            "هیچ بستهٔ مولتی‌کستی به این دستگاه نرسید. روی ویندوز معمولاً فایروال یا "
+            "آداپتر VPN مقصر است: install\\allow_multicast.bat را با دسترسی ادمین اجرا "
+            "کنید، VPN را موقتاً ببندید و دوباره بررسی کنید. اندرویدباکس همین جریان "
+            "را می‌گیرد، پس ایراد از شبکهٔ خودِ ویندوز است نه سرور.")
+
     # 5. can those URLs be played here?
     kinds = {}
     for c in chans:
@@ -1713,6 +1728,9 @@ def play_with_vlc(url, title=""):
     args = [vlc, "--play-and-exit", "--no-video-title-show"]
     if title:
         args += ["--meta-title=" + title]
+    lip = NETWORK.get("ip") or ""
+    if url.startswith(("udp://", "rtp://")) and lip and not lip.startswith("169.254."):
+        args += ["--miface-addr", lip]
     args.append(url)
     try:
         subprocess.Popen(args, close_fds=True)
@@ -1980,6 +1998,57 @@ def _vlc_fetch_loop(reason):
             pass
 
 
+def udp_bind_url(url):
+    """Pin a udp:// multicast input to this machine's LAN interface.
+
+    Windows joins a multicast group on the *default* interface; with a VPN
+    adapter installed that can be the tunnel, and then the building's
+    multicast never arrives (VLC shows its cone, ffmpeg reads zero bytes).
+    ffmpeg's udp protocol accepts ?localaddr= to choose the membership
+    interface, so hand it the wired LAN address we already know."""
+    if not url or not url.startswith(("udp://", "rtp://")) or "?" in url:
+        return url
+    lip = NETWORK.get("ip") or ""
+    if not lip or lip.startswith("169.254."):
+        return url
+    return url + "?localaddr=" + lip
+
+
+def _multicast_probe(url, local_ip, secs=2.5):
+    """Join the group like a player would and count bytes for `secs`."""
+    m = re.match(r"udp://([^:/?]+):(\d+)", url or "")
+    if not m:
+        return 0, "bad url"
+    grp, port = m.group(1), int(m.group(2))
+    sk = None
+    try:
+        sk = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sk.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sk.bind(("", port))
+        iface = local_ip if local_ip and not local_ip.startswith("169.254.") else "0.0.0.0"
+        sk.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP,
+                      socket.inet_aton(grp) + socket.inet_aton(iface))
+        sk.settimeout(secs)
+        got = 0
+        while got < 3000000:
+            try:
+                b = sk.recv(65536)
+            except socket.timeout:
+                break
+            if not b:
+                break
+            got += len(b)
+        return got, ""
+    except Exception as e:
+        return 0, str(e)
+    finally:
+        try:
+            if sk:
+                sk.close()
+        except Exception:
+            pass
+
+
 class StreamSession(object):
     """One ffmpeg -> HLS remux job."""
 
@@ -2007,7 +2076,7 @@ class StreamSession(object):
         args = [ff, "-hide_banner", "-loglevel", "error", "-y"]
         if self.protocol == "rtsp":
             args += ["-rtsp_transport", "tcp"]
-        args += ["-i", self.source,
+        args += ["-i", udp_bind_url(self.source),
                  "-c", "copy",
                  "-f", "hls",
                  "-hls_time", "2",
@@ -2046,7 +2115,7 @@ class StreamSession(object):
             ff = find_ffmpeg()
             if not ff:
                 return
-            p = subprocess.Popen([ff, "-hide_banner", "-i", self.source,
+            p = subprocess.Popen([ff, "-hide_banner", "-i", udp_bind_url(self.source),
                                   "-t", "0", "-f", "null", "-"],
                                  stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                                  creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))

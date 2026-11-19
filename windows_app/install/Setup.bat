@@ -21,6 +21,8 @@ xcopy "%SRC%\install" "%DST%\install\" /e /i /q /y >nul
 if exist "%SRC%\runtime" xcopy "%SRC%\runtime" "%DST%\runtime\" /e /i /q /y >nul
 copy /y "%SRC%\PARDIK-SMART-IPTV.bat" "%DST%\" >nul
 copy /y "%SRC%\PARDIK-SMART-IPTV-silent.vbs" "%DST%\" >nul
+rem best effort: multicast needs admin, so a plain-user install just skips it
+call "%~dp0allow_multicast.bat" <nul >nul 2>&1
 rem deployment flavour (residential | hotel); launch.ps1 exports it as IPTV_MODE
 set "MODE=residential"
 if exist "%SRC%\mode.txt" set /p MODE=<"%SRC%\mode.txt"

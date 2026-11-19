@@ -1922,7 +1922,7 @@ function playItem(item, opts) {
       video.play().catch(() => {});
     }
   } catch (e) {
-    $("#player-error").hidden = false;
+    showPlayerError("player setup exception: " + ((e && e.message) || e));
   }
   video.onplaying = () => { $("#player-loading").style.display = "none"; stopLoadAnim(); $("#player-error").hidden = true; applySpeed(); };
   video.onwaiting = () => { $("#player-loading").style.display = "flex"; startLoadAnim(); };
@@ -1952,6 +1952,7 @@ async function showPlayerError(extra, opts) {
     || sessions[sessions.length - 1] || null;
   const codec = (mine && mine.codec) || "";
   const lines = [];
+  if ((S.playerCtx || {}).origSrc) lines.push("src: " + S.playerCtx.origSrc);
   if (codec) lines.push((S.lang === "fa" ? "کدک جریان: " : "stream codec: ") + codec);
   if (mine && mine.error) lines.push("ffmpeg: " + String(mine.error).slice(-160));
   else if (mine && mine.log && mine.log.length) lines.push("ffmpeg: " + mine.log[mine.log.length - 1].slice(-160));
@@ -1982,6 +1983,12 @@ async function showPlayerError(extra, opts) {
     apiPost("/api/player_report", { text: lines.join(" | ") + (extra ? " | " + extra : "") });
   } catch (e) {}
 }
+
+window.addEventListener("error", (ev) => {
+  if (S.cur === "scr-player" && ev && ev.message) {
+    showPlayerError("js: " + ev.message);
+  }
+});
 
 function handToVlc() {
   const src = (S.playerCtx || {}).origSrc;
