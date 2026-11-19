@@ -77,6 +77,14 @@ async function main() {
       const errShown = !doc.querySelector("#player-error").hidden;
       console.log("[v2] after skip: overlay hidden =", adBox().hidden, "| src =", afterSrc.slice(0, 90),
         errShown ? "| banner = " + errTxt.slice(0, 60) : "");
+      /* the decode-failure panel must carry the diagnosis + recovery actions */
+      if (errShown) {
+        console.log("[v2] error detail hidden =", doc.querySelector("#player-error-detail").hidden,
+          "| retry btn =", !!doc.querySelector("#player-retry"),
+          "| vlc btn hidden =", doc.querySelector("#player-vlc").hidden);
+        if (!doc.querySelector("#player-retry")) errors.push("the decode-failure panel has no retry button");
+        if (!doc.querySelector("#player-error-detail")) errors.push("the decode-failure panel has no diagnosis line");
+      }
       /* the channel must either be loading, or the player must say exactly why it
          is not - a missing ffmpeg.exe is the only accepted reason here */
       if (!/stream\/play|proxy\?url=/.test(afterSrc) && !(errShown && /FFmpeg/.test(errTxt))) {

@@ -1895,6 +1895,9 @@ class StreamSession(object):
         self.last_use = time.time()
         self.error = None
         self.restarting = False
+        self.restarts = 0
+        self.codec = ""                    # probed: "hevc (main10)" / "h264 ..."
+        self.log = collections.deque(maxlen=40)   # ffmpeg stderr tail
 
     def start(self):
         ff = find_ffmpeg()
@@ -1916,24 +1919,72 @@ class StreamSession(object):
             self.proc = subprocess.Popen(
                 args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-            return True
         except Exception as e:
             self.error = str(e)
             return False
+        # Nobody reading a PIPE lets it fill up (64 KB) and then ffmpeg blocks
+        # forever mid-remux - which on a chatty stream looks exactly like
+        # "Decoding video failed!" in the browser. Drain it, keep the tail.
+        threading.Thread(target=self._drain, daemon=True, name="ff-stderr").start()
+        threading.Thread(target=self._probe, daemon=True, name="ff-probe").start()
+        return True
+
+    def _drain(self):
+        try:
+            for line in iter(self.proc.stderr.readline, b""):
+                txt = line.decode("utf-8", "replace").strip()
+                if txt:
+                    self.log.append(txt)
+        except Exception:
+            pass
+
+    def _probe(self):
+        """Read the stream header once so the UI can name the real codec
+        (an H.265 head-end cannot be decoded by Edge's MSE - the player must
+        say so and hand over to VLC instead of a generic banner)."""
+        try:
+            ff = find_ffmpeg()
+            if not ff:
+                return
+            p = subprocess.Popen([ff, "-hide_banner", "-i", self.source,
+                                  "-t", "0", "-f", "null", "-"],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            try:
+                err = (p.communicate(timeout=8)[1] or b"").decode("utf-8", "replace")
+            except Exception:
+                try: p.kill()
+                except Exception: pass
+                return
+            v = re.search(r"Video: ([^,\r\n]+)", err)
+            a = re.search(r"Audio: ([^,\r\n]+)", err)
+            self.codec = " / ".join(x.group(1).strip() for x in (v, a) if x)
+        except Exception:
+            pass
 
     def alive(self):
         return self.proc is not None and self.proc.poll() is None
 
     def check(self):
-        """Record a hard failure when ffmpeg exited non-zero (bad source)."""
+        """Record a hard failure when ffmpeg exited non-zero (bad source), and
+        give a session that died mid-watch one automatic restart (a flaky
+        RTSP hop must not strand the viewer on an error banner)."""
         if self.proc is not None and self.proc.poll() not in (None, 0):
-            try:
-                err = self.proc.stderr.read() if self.proc.stderr else b""
-                err = (err or b"").decode("utf-8", "replace")[-300:]
-            except Exception:
-                err = ""
             if not os.path.exists(self.playlist):
-                self.error = "ffmpeg exit %s %s" % (self.proc.poll(), err)
+                self.error = "ffmpeg exit %s %s" % (
+                    self.proc.poll(), " | ".join(list(self.log)[-4:]))
+            if (not self.restarting and self.restarts < 2
+                    and time.time() - self.last_use < 60):
+                self.restarts += 1
+                self.restarting = True
+                threading.Thread(target=self._restart, daemon=True,
+                                 name="ff-restart").start()
+
+    def _restart(self):
+        time.sleep(1.0)
+        self.proc = None
+        self.restarting = False
+        self.start()
 
     def stop(self):
         try:
@@ -1999,6 +2050,8 @@ class StreamEngine(object):
                 "key": s.key, "source": s.source, "protocol": s.protocol,
                 "alive": s.alive(), "error": s.error,
                 "age": int(time.time() - s.started),
+                "codec": s.codec, "restarts": s.restarts,
+                "log": list(s.log)[-6:],
             } for s in self.sessions.values()]
 
 

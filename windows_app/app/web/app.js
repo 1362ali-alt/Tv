@@ -1835,6 +1835,8 @@ function playItem(item, opts) {
     pet0.setAttribute("data-i18n", "decoding_video_failed"); applyI18n();
   }
   const [src, proto] = pickSource(item);
+  S.playerCtx.origSrc = src;
+  S.playerCtx.proto = proto;
   /* BaseApplication.curPlayingLiveProgramName -> UpdateClient?name=... */
   reportPlaying(S.playerCtx.kind === "live" ? (nm(item) || item.name || "") : "");
   /* v2.7.2.06: use_vlc_paly_live_prg hands live playback to the external
@@ -1883,6 +1885,11 @@ function playItem(item, opts) {
   // v2: report how long the previous live programme was watched (AddAdvHistory type=1)
   if (S.playerCtx.kind === "live") reportLiveWatch(item);
   applyVolume();
+  video.onerror = () => {
+    if (S.cur === "scr-player") {
+      showPlayerError("video element error " + ((video.error && video.error.code) || "?"));
+    }
+  };
   if (noFfmpeg) {
     $("#player-loading").style.display = "none"; stopLoadAnim();
     $("#player-error").hidden = false;
@@ -1895,6 +1902,17 @@ function playItem(item, opts) {
     healFfmpeg(item);
     return;
   }
+  const retryBtn = $("#player-retry");
+  if (retryBtn) retryBtn.onclick = () => {
+    $("#player-error").hidden = true;
+    S.vlcTried = false;
+    playItem(S.playerCtx.item, { noAd: true });
+  };
+  const vlcBtn = $("#player-vlc");
+  if (vlcBtn) {
+    vlcBtn.hidden = !S.config.vlc;
+    vlcBtn.onclick = () => handToVlc();
+  }
   try {
     if (useHls) {
       S.hls = new Hls({ manifestLoadingTimeOut: 12000, manifestLoadingMaxRetry: 2, levelLoadingTimeOut: 12000, fragLoadingTimeOut: 20000 });
@@ -1902,7 +1920,7 @@ function playItem(item, opts) {
       S.hls.attachMedia(video);
       S.hls.on(Hls.Events.MANIFEST_PARSED, () => { video.play().catch(() => {}); });
       S.hls.on(Hls.Events.ERROR, (e, d) => {
-        if (d.fatal) { $("#player-loading").style.display = "none"; stopLoadAnim(); $("#player-error").hidden = false; }
+        if (d.fatal) showPlayerError("hls: " + d.type + "/" + d.details);
       });
     } else {
       video.src = playUrl;
@@ -1919,6 +1937,53 @@ function playItem(item, opts) {
    install day; the backend fetches the same static Windows build through
    Python's own TLS while the app runs. Ask it to, poll /api/config, and replay
    the channel the moment tools\ffmpeg.exe lands - no restart, no user action. */
+/* IjkMediaPlayer's "Decoding video failed!" is what the APK shows for every
+   playback death; the port keeps the string but no longer leaves the user
+   guessing: it names the real codec (an H.265 head-end cannot be decoded by
+   the browser's MSE), shows ffmpeg's own stderr tail, offers a retry, and
+   hands the stream to VLC exactly like LivePlayerActivity.playWithVlc(). */
+async function showPlayerError(extra) {
+  $("#player-loading").style.display = "none";
+  stopLoadAnim();
+  $("#player-error").hidden = false;
+  let sessions = [];
+  try { sessions = (await (await fetch("/api/streams")).json()) || []; } catch (e) {}
+  const mine = sessions.find(x => x.source === (S.playerCtx || {}).origSrc)
+    || sessions[sessions.length - 1] || null;
+  const codec = (mine && mine.codec) || "";
+  const lines = [];
+  if (codec) lines.push((S.lang === "fa" ? "کدک جریان: " : "stream codec: ") + codec);
+  if (mine && mine.error) lines.push("ffmpeg: " + String(mine.error).slice(-160));
+  else if (mine && mine.log && mine.log.length) lines.push("ffmpeg: " + mine.log[mine.log.length - 1].slice(-160));
+  if (extra) lines.push(String(extra).slice(0, 160));
+  const det = $("#player-error-detail");
+  if (det) {
+    det.hidden = !lines.length;
+    det.textContent = lines.join("\n");
+  }
+  const hevc = /hevc|h265/i.test(codec);
+  const vlcBtn = $("#player-vlc");
+  if (vlcBtn) vlcBtn.hidden = !S.config.vlc;
+  if (hevc && !S.config.vlc && det) {
+    det.textContent += "\n" + t("hevc_need_vlc",
+      "این کانال H.265/HEVC است و مرورگر آن را کدگشایی نمی‌کند؛ VLC را نصب کنید تا پخش خودکار سپرده شود.");
+  }
+  if (hevc && S.config.vlc && !S.vlcTried) {
+    S.vlcTried = true;
+    handToVlc();
+  }
+}
+
+function handToVlc() {
+  const src = (S.playerCtx || {}).origSrc;
+  if (!src) return;
+  apiPost("/api/external_player", { url: src, title: (S.playerCtx.item && S.playerCtx.item.name) || "" })
+    .then(r => {
+      if (r && r.ok) toast(t("external_player_on", "پخش به پخش‌کنندهٔ خارجی سپرده شد") + " (VLC)");
+      else toast(t("vlc_player_install_tips", "پخش‌کننده VLC شناسایی نشد. لطفاً ابتدا آن را نصب کنید!"));
+    }).catch(() => {});
+}
+
 function healFfmpeg(item) {
   if (!(S.config.ffmpeg_fetch || {}).enabled) return;
   apiPost("/api/ffmpeg/ensure", {}).catch(() => {});

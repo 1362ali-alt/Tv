@@ -152,7 +152,14 @@
     <video id="video" playsinline></video>
     <img id="watermark" class="watermark" alt="" hidden>
     <div class="player-loading" id="player-loading"><img id="load-anim" class="load-anim" alt="" src="/assets/img/drawable__loading1.png"><span data-i18n="brvah_loading">در حال بارگذاری…</span></div>
-    <div class="player-error" id="player-error" hidden><span id="player-error-txt" data-i18n="decoding_video_failed">کدگشایی ویدئو ناموفق بود.</span></div>
+    <div class="player-error" id="player-error" hidden>
+      <span id="player-error-txt" data-i18n="decoding_video_failed">کدگشایی ویدئو ناموفق بود.</span>
+      <div class="player-error-detail" id="player-error-detail" hidden></div>
+      <div class="player-error-actions">
+        <button class="btn focusable" id="player-retry">تلاش دوباره</button>
+        <button class="btn focusable" id="player-vlc" hidden>پخش با VLC</button>
+      </div>
+    </div>
     <div class="ch-badge" id="ch-badge" hidden><span id="ch-number"></span><span id="ch-name"></span></div>
     <div class="player-osd" id="player-osd" hidden>
       <div class="osd-left">
