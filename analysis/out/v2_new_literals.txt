@@ -1,0 +1,61 @@
++ ' LaunchAppActivity appLanguageType === ' x1
++ ' TvRecyclerView setItemSelected---------- mSelectedPosition == ' x1
++ ' getAdapter().getItemCount() ' x1
++ ' getEpgInfoData responseData == ' x1
++ ' getEpgInfoData url == ' x1
++ ' open vlc play live program, and play url == ' x3
++ ' play Rec Prg : currentTime == ' x1
++ ' programsEpgList.size==' x2
++ ' tcl TV -------------------- and macaddr = ' x1
++ ') != -1) && (v1_7.lastIndexOf(' x1
++ ')) && (!v8_11.getWifiPassword().contentEquals(' x2
++ ')) || ((this.appLanguageType == 35) && (this.local2.contains(' x2
++ ', 1, v2_2.getPackageName(), ' x1
++ ', 1, v2_5.getPackageName(), ' x1
++ '------------------- createPlayer 1:sysplayer 2:msplayer 3:ExoPlayer' x1
++ '----------------------------------------- ready and will open sip app' x1
++ '-----------is tcl TV -------------------- and mac addr is: ' x1
++ '?parentId=' x1
++ 'BaseApplication ' x1
++ 'ExoPlayer' x6
++ 'GetClothingType' x2
++ 'GetServiceOrder' x2
++ 'LaunchAppActivity' x1
++ 'LiveExoTestActivity' x1
++ 'LivePlayerWithEpgActivity' x6
++ 'LiveWithEpgActivity' x1
++ 'RecEpgPrgPlayerActivity' x1
++ 'Selected Audio Format: ${group.mediaTrackGroup.getFormat(0).sampleMimeType}  ' x1
++ 'TvRecyclerView 11 input play number currentPosition == ' x1
++ 'TvRecyclerView 22 input play number currentPosition == ' x1
++ 'TvRecyclerView KEYCODE_DPAD_DOWN currentPosition == ' x1
++ 'TvRecyclerView KEYCODE_DPAD_UP currentPosition == ' x1
++ 'TvRecyclerView openMenu currentPosition == ' x1
++ 'android.intent.action.LOCKED_BOOT_COMPLETED' x1
++ 'android.intent.action.QUICKBOOT_POWERON' x1
++ 'app' x8
++ 'app.db' x3
++ 'app_launch_type' x2
++ 'app_layout_style' x3
++ 'catering_of_order_id' x2
++ 'catering_of_order_list_data' x2
++ 'catering_of_order_status' x2
++ 'catering_of_order_toatl_price' x4
++ 'com.htc.intent.action.QUICKBOOT_POWERON' x1
++ 'drop table if exists app' x2
++ 'http://192.168.200.106:8060/hls/2_512/2_512.m3u8' x1
++ 'on SettingAppShowActivity onCreate()' x1
++ 'onItemViewFocusChanged tvRvProgEpgListView -------00000-------== ' x2
++ 'org.videolan.vlc' x3
++ 'use_vlc_paly_live_prg' x3
+
+- ')) && (!v8_10.getWifiPassword().contentEquals(' x2
+- ', 2131558454, 2131558455, this.getResources().getString(2131755081), ' x2
+- ', 2131558459, 2131558460, this.getResources().getString(2131755098), ' x2
+- ', 2131558463, 2131558464, this.getResources().getString(2131755123), ' x4
+- ', 2131558491, 2131558492, this.getResources().getString(2131755134), ' x2
+- ', 2131558495, 2131558496, this.getResources().getString(2131755255), ' x2
+- ', 2131558498, 2131558499, this.getResources().getString(2131755115), ' x2
+- ', 2131558502, 2131558503, this.getResources().getString(2131755300), ' x2
+- ', 2131558504, 2131558505, this.getResources().getString(2131755320), ' x2
+- 'select_app_style_flag' x3
