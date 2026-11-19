@@ -147,7 +147,26 @@ function Test-BackendEngine {
         return ($r.StatusCode -eq 200)
     } catch { return $false }
 }
+function Get-BackendBuild {
+    try {
+        $j = (Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 -Uri ($url + "api/config")).Content | ConvertFrom-Json
+        return [string]$j.build
+    } catch { return "" }
+}
+# A backend that answers /api/connection but runs OLD code (left over from a
+# half-failed install) would keep serving stale APIs forever - /api/config
+# carries the zip's build stamp, so a mismatch means "restart the backend".
+$wantBuild = ""
+$biFile = Join-Path $root "build_info.json"
+if (Test-Path $biFile) {
+    try { $wantBuild = [string]((Get-Content -Raw $biFile | ConvertFrom-Json).commit) } catch { }
+}
 $up = Test-BackendEngine
+if ($up -and $wantBuild -and ((Get-BackendBuild) -ne $wantBuild)) {
+    Stop-StaleBackend
+    Start-Sleep -Milliseconds 800
+    $up = Test-BackendEngine
+}
 if (-not $up) {
     Stop-StaleBackend
     Start-Sleep -Milliseconds 800
