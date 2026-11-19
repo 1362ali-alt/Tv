@@ -43,6 +43,22 @@ for _stream in (sys.stdout, sys.stderr):
         pass
 
 APP_VERSION_NAME = "2.7.2.06"
+
+
+def build_stamp():
+    """commit sha baked into the zip by build_package.sh - the title bar and
+    the diagnosis panel quote it, so a single photo proves which build runs."""
+    try:
+        for base in (os.path.dirname(HERE), HERE):
+            p = os.path.join(base, "build_info.json")
+            if os.path.exists(p):
+                return json.load(open(p, encoding="utf-8")).get("commit") or ""
+    except Exception:
+        pass
+    return ""
+
+
+BUILD_STAMP = build_stamp()
 APP_VERSION_CODE = 20702006
 
 # --------------------------------------------------------------------------- #
@@ -2292,11 +2308,20 @@ def choose_play_source(item, settings_obj=None):
     if proto == "http" and http:
         return http, "http"
     if proto == "udp" and url.startswith("udp"):
+        # multicast is the last resort on Windows: the firewall and subnet
+        # borders swallow it silently, while the APK's own unicast rtsp feed
+        # routes exactly like the HTTP API does.
+        if rtsp and find_ffmpeg():
+            return rtsp, "rtsp"
+        if hls:
+            return hls, "hls"
+        if http:
+            return http, "http"
         return url, "udp"
     if proto == "rtsp" and rtsp:
         return rtsp, "rtsp"
     # graceful fallbacks
-    for cand, p in ((hls, "hls"), (http, "http"), (url, "auto"), (rtsp, "rtsp")):
+    for cand, p in ((hls, "hls"), (http, "http"), (rtsp, "rtsp"), (url, "auto")):
         if cand:
             return cand, p
     return url or rtsp or http or hls, proto
@@ -2620,6 +2645,7 @@ class Handler(BaseHTTPRequestHandler):
                     "vlc_installed": bool(find_vlc()),
                     "vlc_fetch": vlc_fetch_state(),
                     "multicast": dict(MULTICAST),
+                    "build": BUILD_STAMP,
                     "autostart": autostart_state(),
                     "apps_selected": load_apps().get("selected", []),
                     # residential deployment (Pardik / Ronika Palace Kahak)

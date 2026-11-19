@@ -139,7 +139,11 @@ function applyBranding() {
 
 /* ----------------------------- API ----------------------------- */
 async function cfg() {
-  const r = await fetch("/api/config"); return r.json();
+  const r = await fetch("/api/config"); const d = await r.json();
+  try {
+    if (d && d.build) document.title = "PARDIK IPTV " + d.build;
+  } catch (e) {}
+  return d;
 }
 async function apiGet(ep, params) {
   const q = new URLSearchParams(Object.assign({ ep: ep }, params || {}));
@@ -1792,7 +1796,36 @@ async function loadChannels(packageId) {
   }
   S.channels.forEach(c => { if (S.favourites.indexOf(c.id) >= 0) c._fav = true; });
 }
+function pickSourceAll(item) {
+  const proto = ((S.settings && S.settings.protocol) || "rtsp").toLowerCase();
+  let rtsp = item.rtspUrl || "";
+  const hls = item.hlsUrl || "", http = item.httpUrl || "", url = item.url || "";
+  if (!rtsp && item.number != null && S.config && S.config.settings) {
+    rtsp = "rtsp://" + (S.config.settings.server_ip || "") + ":" +
+      (S.config.settings.rtsp_port || 554) + "/live/" + item.number + ".sdp";
+  }
+  const ff = !!(S.config && S.config.ffmpeg);
+  const needsFf = (u) => { const k = classify(u); return k === "rtsp" || k === "udp" || k === "mpegts"; };
+  let order;
+  if (proto === "hls") order = [hls, rtsp, http, url];
+  else if (proto === "http") order = [http, hls, rtsp, url];
+  else order = [rtsp, hls, http, url];   // rtsp first: unicast beats multicast
+  const protos = { };
+  const out = [];
+  for (const u of order) {
+    if (!u || out.some(x => x[0] === u)) continue;
+    if (!ff && needsFf(u)) continue;
+    out.push([u, u === rtsp ? "rtsp" : (u === hls ? "hls" : (u === http ? "http" : "auto"))]);
+  }
+  if (!out.length) for (const u of order) if (u) out.push([u, "auto"]);
+  return out;
+}
+
 function pickSource(item) {
+  return pickSourceAll(item)[0] || ["", ""];
+}
+
+function pickSourceLegacy(item) {
   const proto = ((S.settings && S.settings.protocol) || "rtsp").toLowerCase();
   let rtsp = item.rtspUrl || "";
   const hls = item.hlsUrl || "", http = item.httpUrl || "", url = item.url || "";
@@ -1819,12 +1852,18 @@ function pickSource(item) {
   const needsFf = (u) => { const k = classify(u); return k === "rtsp" || k === "udp" || k === "mpegts"; };
   if (proto === "hls" && hls) return [hls, "hls"];
   if (proto === "http" && http) return [http, "http"];
-  if (proto === "udp" && url.indexOf("udp") === 0) return [url, "udp"];
+  if (proto === "udp" && url.indexOf("udp") === 0) {
+    /* multicast is the last resort on Windows - see choose_play_source() */
+    if (rtsp && ff) return [rtsp, "rtsp"];
+    if (hls) return [hls, "hls"];
+    if (http) return [http, "http"];
+    return [url, "udp"];
+  }
   if (proto === "rtsp" && rtsp) {
     if (ff || (!hls && !http)) return [rtsp, "rtsp"];
     return [hls || http, hls ? "hls" : "http"];
   }
-  const cands = [[hls, "hls"], [http, "http"], [url, "auto"], [rtsp, "rtsp"]];
+  const cands = [[hls, "hls"], [http, "http"], [rtsp, "rtsp"], [url, "auto"]];
   for (const c of cands) {
     if (!c[0]) continue;
     if (!ff && needsFf(c[0])) continue;
@@ -1862,7 +1901,9 @@ function playItem(item, opts) {
   if (pet0 && !pet0.hasAttribute("data-i18n")) {
     pet0.setAttribute("data-i18n", "decoding_video_failed"); applyI18n();
   }
-  const [src, proto] = pickSource(item);
+  S.playerCtx.queue = (opts && opts.keepQueue && S.playerCtx.queue && S.playerCtx.queue.length)
+    ? S.playerCtx.queue : pickSourceAll(item);
+  const [src, proto] = S.playerCtx.queue[0] || ["", ""];
   S.playerCtx.origSrc = src;
   S.playerCtx.proto = proto;
   /* BaseApplication.curPlayingLiveProgramName -> UpdateClient?name=... */
@@ -1929,6 +1970,7 @@ function playItem(item, opts) {
   if (retryBtn) retryBtn.onclick = () => {
     $("#player-error").hidden = true;
     S.vlcTried = false;
+    S.playerCtx.autoTried = false;
     playItem(S.playerCtx.item, { noAd: true });
   };
   const vlcBtn = $("#player-vlc");
@@ -1971,6 +2013,14 @@ function playItem(item, opts) {
    the browser's MSE), shows ffmpeg's own stderr tail, offers a retry, and
    hands the stream to VLC exactly like LivePlayerActivity.playWithVlc(). */
 async function showPlayerError(extra, opts) {
+  const q = (S.playerCtx && S.playerCtx.queue) || [];
+  if (q.length > 1 && !S.playerCtx.autoTried) {
+    S.playerCtx.autoTried = true;
+    S.playerCtx.queue = q.slice(1);
+    toast(t("src_fallback", "این منبع پخش نشد؛ منبع بعدی همان کانال امتحان می‌شود…"));
+    playItem(S.playerCtx.item, { noAd: true, keepQueue: true });
+    return;
+  }
   $("#player-loading").style.display = "none";
   stopLoadAnim();
   $("#player-error").hidden = false;
@@ -1980,6 +2030,8 @@ async function showPlayerError(extra, opts) {
     || sessions[sessions.length - 1] || null;
   const codec = (mine && mine.codec) || "";
   const lines = [];
+  lines.push("build " + ((S.config && S.config.build) || "?") +
+    " · proto " + (((S.settings && S.settings.protocol) || "?")));
   if ((S.playerCtx || {}).origSrc) lines.push("src: " + S.playerCtx.origSrc);
   if (codec) lines.push((S.lang === "fa" ? "کدک جریان: " : "stream codec: ") + codec);
   if (mine && mine.error) lines.push("ffmpeg: " + String(mine.error).slice(-160));
@@ -2968,7 +3020,9 @@ function fillSettings() {
       : (m.enabled ? "● " + (m.error || "—") : "○ " + t("not_enabled", "غیرفعال"));
   }
   $("#set-lang").textContent = S.lang;
-  $("#set-version").textContent = S.config.version + (S.config.ffmpeg ? "" : "  (ffmpeg: —)");
+  $("#set-version").textContent = S.config.version +
+    (S.config.build ? " (" + S.config.build + ")" : "") +
+    (S.config.ffmpeg ? "" : "  (ffmpeg: —)");
   $$("#set-body .set-row[data-edit]").forEach(row => {
     row.onclick = () => editSetting(row.dataset.edit);
   });

@@ -24,6 +24,10 @@ cp -r windows_app/install "$STAGE/PARDIK-SMART-IPTV/install"
 cp -r windows_app/tools "$STAGE/PARDIK-SMART-IPTV/tools"
 cp windows_app/PARDIK-SMART-IPTV.bat windows_app/PARDIK-SMART-IPTV-silent.vbs \
    windows_app/README-FA.md windows_app/README-EN.md "$STAGE/PARDIK-SMART-IPTV/"
+# every screenshot of the title bar must identify the exact build running
+COMMIT=$(git -C /home/user/Tv rev-parse --short HEAD 2>/dev/null || echo unknown)
+printf '{"commit": "%s", "date": "%s"}\n' "$COMMIT" "$(date -u +%Y%m%d-%H%M)" \
+  > "$STAGE/PARDIK-SMART-IPTV/build_info.json"
 # launch.ps1 reads mode.txt to pick the deployment flavour (IPTV_MODE)
 printf '%s\r\n' "$MODE" > "$STAGE/PARDIK-SMART-IPTV/mode.txt"
 if [ -f windows_app/headend.txt ]; then
