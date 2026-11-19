@@ -1890,7 +1890,7 @@ function startPlayer(kind, item, list) {
   playItem(item);
   armOsd();
 }
-function playItem(item, opts) {
+async function playItem(item, opts) {
   S.playerCtx.item = item;
   const video = $("#video");
   stopVideo(false);
@@ -1912,10 +1912,19 @@ function playItem(item, opts) {
      player (LivePlayerActivity.playWithVlc). If VLC is missing the Android app
      toasts vlc_player_install_tips and keeps playing internally. */
   if (S.playerCtx.kind === "live" && S.vlc && src) {
-    apiPost("/api/external_player", { url: src, title: item.name || "" }).then(r => {
-      if (r && r.ok) { toast(t("external_player_on", "پخش به پخش‌کنندهٔ خارجی سپرده شد") + " (VLC)"); }
-      else { toast(t("vlc_player_install_tips", "پخش‌کننده VLC شناسایی نشد. لطفاً ابتدا آن را نصب کنید!")); }
-    }).catch(() => {});
+    /* LivePlayerActivity.playWithVlc(): once the external player takes the
+       stream it IS the player - the internal one must not race it. */
+    let handed = false;
+    try {
+      const r = await apiPost("/api/external_player", { url: src, title: item.name || "" });
+      handed = !!(r && r.ok);
+    } catch (e) { handed = false; }
+    if (handed) {
+      $("#player-loading").style.display = "none"; stopLoadAnim();
+      toast(t("external_player_on", "پخش به پخش‌کنندهٔ خارجی سپرده شد") + " (VLC)");
+      return;
+    }
+    toast(t("vlc_player_install_tips", "پخش‌کننده VLC شناسایی نشد. لطفاً ابتدا آن را نصب کنید!"));
   }
   const kind = classify(src);
   /* RTSP / UDP / MPEG-TS are remuxed to HLS by the local FFmpeg, so without

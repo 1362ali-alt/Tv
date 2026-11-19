@@ -11,11 +11,28 @@ set "DST=%LOCALAPPDATA%\PARDIK-SMART-IPTV"
 echo Installing to %DST% ...
 rem a RUNNING install locks its own files: rmdir would silently leave
 rem the old code behind and the next launch keeps the old build - the
-rem exact symptom of "nothing changed". Stop everything first.
+rem exact symptom of "nothing changed". Stop everything first, retry,
+rem and VERIFY afterwards so a half-install can never pass unnoticed.
+set "KILLPS=powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Process | Where-Object { $_.Path -like ($env:LOCALAPPDATA + '\PARDIK-SMART-IPTV\*') -or $_.CommandLine -like '*iptv_backend.py*' } | Stop-Process -Force -ErrorAction SilentlyContinue; Get-Process msedge -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -like 'PARDIK IPTV*' } | Stop-Process -Force -ErrorAction SilentlyContinue""
+set TRY=0
+:KILLLOOP
+set /a TRY+=1
 taskkill /f /fi "WINDOWTITLE eq PARDIK IPTV*" >nul 2>&1
-powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*iptv_backend.py*' -or $_.CommandLine -like '*PARDIK-SMART-IPTV*launch.ps1*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+%KILLPS% >nul 2>&1
 timeout /t 2 /nobreak >nul
 if exist "%DST%" rmdir /s /q "%DST%"
+if exist "%DST%" if %TRY% LSS 3 goto KILLLOOP
+if exist "%DST%" (
+  echo.
+  echo ==== INSTALL ABORTED ==================================================
+  echo The old installation is still locked by a running process.
+  echo Close every PARDIK IPTV window \(and Task Manager ^> python.exe /
+  echo msedge.exe with that window title^), or simply RESTART WINDOWS,
+  echo then run Setup.bat again. Nothing was changed.
+  echo =======================================================================
+  pause
+  exit /b 1
+)
 mkdir "%DST%"
 xcopy "%SRC%\app"     "%DST%\app\"     /e /i /q /y >nul
 rem app_assets holds every icon/background the UI serves from /assets/img/
@@ -29,6 +46,18 @@ copy /y "%SRC%\PARDIK-SMART-IPTV.bat" "%DST%\" >nul
 copy /y "%SRC%\PARDIK-SMART-IPTV-silent.vbs" "%DST%\" >nul
 rem best effort: multicast needs admin, so a plain-user install just skips it
 call "%~dp0allow_multicast.bat" <nul >nul 2>&1
+rem verify the copy really landed: a half-install kept the old backend
+findstr /c:"BUILD_STAMP" "%DST%\app\iptv_backend.py" >nul 2>&1
+if errorlevel 1 (
+  echo.
+  echo ==== INSTALL ABORTED: old files still locked ==========================
+  echo RESTART WINDOWS and run Setup.bat again before launching the app.
+  echo =======================================================================
+  pause
+  exit /b 1
+)
+type "%DST%\build_info.json"
+echo Install OK.
 rem deployment flavour (residential | hotel); launch.ps1 exports it as IPTV_MODE
 set "MODE=residential"
 if exist "%SRC%\mode.txt" set /p MODE=<"%SRC%\mode.txt"
