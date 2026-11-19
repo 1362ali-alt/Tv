@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PARDIK IPTV</title>
+<link rel="icon" href="/assets/img/mipmap__ic_launcher.png">
+<link rel="stylesheet" href="/web/styles.css">
+</head>
+<body>
+<div id="app" class="app">
+
+  <!-- ============ PING SERVER  (activity_ping_server.xml) ============
+       RelativeLayout#ping_ser_layout (black)
+         > RelativeLayout#ping_ser_bg  (@mipmap/pic_ping_bg, or the server image
+                                        from GetAdvImage?type=11)
+             > ProgressBar 100dp, marginBottom 20dp, @drawable/progress_bg
+             > TextView#text_view 24sp white, centred  (connecting_server_tips)
+         > TextView#tips_txt 24sp white, bottom|end, margins 60dp (welcome_alert)
+       PingServerActivity.setLanguageData() fills both texts. -->
+  <section id="scr-boot" class="screen active">
+    <div class="ping-bg" id="ping-bg"></div>
+    <div class="ping-center">
+      <div class="ping-progress" id="ping-progress"></div>
+      <div class="ping-text" id="ping-text" data-i18n="connecting_server_tips">در حال دریافت آدرس سرور…</div>
+    </div>
+    <div class="ping-tips" id="ping-tips" data-i18n="welcome_alert">برای رد شدن هر کلیدی را بزنید</div>
+    <!-- Windows-port addition (the APK logs this to logcat): why the handshake
+         has not finished yet - attempt n/20, the address in use, whether the
+         head-end announced itself on UDP 27777. -->
+    <div class="ping-state" id="ping-state"></div>
+  </section>
+
+  <!-- ============ BOOT ADVERT VIDEO (BootVideoActivity, GetAdvVideoEM) ============ -->
+  <section id="scr-bootvideo" class="screen">
+    <video id="boot-video" class="bootvideo-player" playsinline></video>
+    <div class="bootvideo-hint" id="bootvideo-hint" data-i18n="welcome_alert">برای رد شدن هر کلیدی را بزنید</div>
+  </section>
+
+  <!-- ============ WELCOME  (activity_welcome.xml / WelcomeStyleZeroActivity) ====
+       FrameLayout#welcome_layout_background_img (@mipmap/bg_welcome)
+         > MZBannerView#welcome_mz_bg      GetAdvImage?type=1, 5 s a page
+         > IjkVideoView#welcome_my_ijkplayer_view   GetAdvVideoEM (advVideoEM=false)
+         > LinearLayout centred, 900x450dp, @drawable/bg_welcome_text (#BB000000 r5dp)
+             > column weight 3: img_wel_word_title 400x60dp (@mipmap/iv_welcome,
+               replaced by GetAdvImage?type=17), tv_user_name 18sp,
+               tv_welcome_word_zh 22sp, WebView, tv_welcome_word_en 22sp,
+               welcome_end_hotel_manager 20sp, manager_sign_img h=70dp (type=12)
+             > View 1dp @mipmap/line_colume_welcome
+             > column weight 1: cur_time_view 26sp, cur_date_view 16sp,
+               weather_layout_invisible (icon 60dp, text 18sp, range 14sp),
+               weather_layout_gone (3 x [weekday 10sp + icon 36dp]),
+               tv_chinese "中文" and tv_english "English" 120x30dp -->
+  <section id="scr-welcome" class="screen">
+    <div class="welcome-bg" id="welcome-bg"></div>
+    <img id="wel-ppt" class="welcome-media" alt="" hidden>
+    <video id="wel-video" class="welcome-media" playsinline hidden></video>
+    <div class="wel-card">
+      <div class="wel-left">
+        <img class="wel-title-img" id="wel-title-img" src="/assets/img/mipmap__iv_welcome.png" alt="">
+        <div class="wel-body">
+          <div class="wel-user" id="wel-user" hidden></div>
+          <div class="wel-word" id="wel-word"></div>
+          <div class="wel-word-en" id="wel-word-en" hidden></div>
+          <div class="wel-manager" id="wel-manager" hidden></div>
+        </div>
+        <img class="wel-sign" id="wel-sign" alt="" hidden>
+      </div>
+      <div class="wel-divider"></div>
+      <div class="wel-right">
+        <div class="wel-time" id="wel-time">--:--</div>
+        <div class="wel-date" id="wel-date"></div>
+        <div class="wel-weather" id="wel-weather" hidden>
+          <img id="wel-weather-img" src="" alt="">
+          <div class="wel-weather-txt" id="wel-weather-txt"></div>
+          <div class="wel-weather-range" id="wel-weather-range"></div>
+        </div>
+        <div class="wel-forecast" id="wel-forecast" hidden>
+          <div class="wel-fday"><span id="wel-f1-week"></span><img id="wel-f1-img" alt=""></div>
+          <div class="wel-fday"><span id="wel-f2-week"></span><img id="wel-f2-img" alt=""></div>
+          <div class="wel-fday" hidden><span id="wel-f3-week"></span><img id="wel-f3-img" alt=""></div>
+        </div>
+        <button class="wel-lang focusable" id="wel-zh" data-lang="zh">中文</button>
+        <button class="wel-lang focusable" id="wel-en" data-lang="en">English</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ MAIN  (activity_main_ijk_style_third.xml / MainStyleThirdActivity)
+       FrameLayout#main_layout_background_img (IptvSP.getMainBgImg(), else @mipmap/bg_welcome)
+         > MZBannerView#mzbv_bg_image        GetAdvImage?type=2 (initTitleData)
+         > IjkVideoView#main_my_ijkplayer_view_vod / #main_my_ijkplayer_view
+         > top LinearLayout (margins L/R 60dp, T 20dp):
+             activity_title_name (gone) | iv_logo 120x60dp | tv_room_num 30sp +
+             tv_room_text_view (gone) | spacer weight 1 | wifi_status_layout
+             (wifi_name_View / wifi_passwd_view 20sp) | weather_layout_main
+             (icon h=50dp @mipmap/sun, status 30sp, range 14sp) | clock column
+             (cur_time_view 36sp HH:mm, cur_date_view 14sp yyyy/MM/dd EEEE)
+         > LinearLayout#ll_main_menu (bottom, #77000000, marginBottom 80dp)
+             > TvRecyclerView#tv_rv_main_menu (horizontal, h=180dp, centred selection)
+                 items = adapter_main_menu_layout.xml: iv_menu 190x140dp (padding
+                 5dp, margins L/R 10dp, T 5dp) + tv_menu_name 20sp #FFFFDD94 -->
+  <section id="scr-home" class="screen">
+    <div class="main-bg" id="main-bg"></div>
+    <!-- mzbv_bg_image (indexArea 1: GetAdvImage?type=0, 8 s a page),
+         main_my_ijkplayer_view_vod (indexArea 2: apk/getClientBackgroundVideos)
+         and main_my_ijkplayer_view (indexArea 3: GetLiveTV?packageId=0) -->
+    <img class="main-media" id="main-banner" alt="" hidden>
+    <video class="main-media" id="main-bgvideo" playsinline hidden></video>
+    <video class="main-media" id="main-live" playsinline hidden></video>
+    <header class="main-top">
+      <div class="main-title" id="main-title" hidden></div>
+      <img class="main-logo" id="main-logo" src="/assets/img/mipmap__ic_launcher.png" alt="">
+      <div class="main-room">
+        <div class="main-room-num" id="main-room-num"></div>
+        <div class="main-room-label" id="main-room-label" hidden></div>
+      </div>
+      <div class="main-spacer"></div>
+      <div class="main-wifi" id="main-wifi" hidden>
+        <img class="main-wifi-pic" src="/assets/img/mipmap__wifi_pic.png" alt="" hidden>
+        <div class="main-wifi-txt">
+          <div id="main-wifi-name"></div>
+          <div id="main-wifi-pass"></div>
+        </div>
+      </div>
+      <div class="main-weather" id="main-weather" hidden>
+        <img id="main-weather-img" src="/assets/img/mipmap__sun.png" alt="">
+        <div class="main-weather-txt">
+          <div id="main-weather-status"></div>
+          <div id="main-weather-range"></div>
+        </div>
+      </div>
+      <div class="main-clock">
+        <div class="main-time" id="main-time">--:--</div>
+        <div class="main-date" id="main-date"></div>
+      </div>
+    </header>
+    <div class="main-menu-bar" id="main-menu-bar">
+      <nav class="main-menu focuslist" id="home-menu"></nav>
+    </div>
+  </section>
+
+  <!-- ============ LIVE: packages ============ -->
+  <section id="scr-livepkg" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="live">پخش زنده</h2></header>
+    <div class="pkg-list focuslist" id="pkg-list"></div>
+  </section>
+
+  <!-- ============ PLAYER (live & vod) ============ -->
+  <section id="scr-player" class="screen">
+    <video id="video" playsinline></video>
+    <img id="watermark" class="watermark" alt="" hidden>
+    <div class="player-loading" id="player-loading"><img id="load-anim" class="load-anim" alt="" src="/assets/img/drawable__loading1.png"><span data-i18n="brvah_loading">در حال بارگذاری…</span></div>
+    <div class="player-error" id="player-error" hidden>
+      <span id="player-error-txt" data-i18n="decoding_video_failed">کدگشایی ویدئو ناموفق بود.</span>
+      <div class="player-error-detail" id="player-error-detail" hidden></div>
+      <div class="player-error-actions">
+        <button class="btn focusable" id="player-retry">تلاش دوباره</button>
+        <button class="btn focusable" id="player-vlc" hidden>پخش با VLC</button>
+        <button class="btn focusable" id="player-vlc-install" hidden>نصب خودکار VLC</button>
+      </div>
+    </div>
+    <div class="ch-badge" id="ch-badge" hidden><span id="ch-number"></span><span id="ch-name"></span></div>
+    <div class="player-osd" id="player-osd" hidden>
+      <div class="osd-left">
+        <div class="osd-title" id="osd-title"></div>
+        <div class="osd-sub" id="osd-sub"></div>
+      </div>
+      <div class="osd-right">
+        <button class="osdbtn focusable" id="btn-fav" title="F">★</button>
+        <button class="osdbtn focusable" id="btn-list" title="L">☰</button>
+        <button class="osdbtn focusable" id="btn-epg" title="E" hidden>📅</button>
+        <button class="osdbtn focusable" id="btn-speed" title="S"><span data-i18n="play_speed_txt">سرعت</span> <b id="speed-val">1x</b></button>
+        <button class="osdbtn focusable" id="btn-ratio" title="Z">⤢</button>
+      </div>
+    </div>
+    <aside class="side-list" id="side-list" hidden></aside>
+    <!-- v2.7.2.06: LivePlayerWithEpgActivity programme guide -->
+    <aside class="epg-panel" id="epg-panel" hidden>
+      <div class="epg-head"><span data-i18n="epg_program_list">برنامه‌ها</span><span class="epg-ch" id="epg-ch"></span></div>
+      <div class="epg-list focuslist" id="epg-list"></div>
+      <div class="epg-foot" data-i18n="live_epg_tips">OK = پخش / پخش با تأخیر، ←→ = جزئیات</div>
+    </aside>
+    <div class="epg-detail" id="epg-detail" hidden>
+      <div class="epg-detail-title" id="epg-detail-title"></div>
+      <div class="epg-detail-time" id="epg-detail-time"></div>
+      <div class="epg-detail-content" id="epg-detail-content"></div>
+    </div>
+    <!-- v2.7.2.06: in-player advertising (ll_adv_video_times_remains) -->
+    <div class="ad-countdown" id="ad-countdown" hidden><span id="ad-countdown-txt"></span></div>
+    <div class="vol-osd" id="vol-osd" hidden><span>🔊</span><div class="volbar"><i id="vol-fill"></i></div><span id="vol-num"></span></div>
+  </section>
+
+  <!-- ============ VOD ============ -->
+  <section id="scr-vod" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="vod">ویدئو به‌درخواست</h2></header>
+    <div class="vod-types focuslist" id="vod-types"></div>
+    <div class="vod-grid focusgrid" id="vod-grid"></div>
+  </section>
+
+  <!-- ============ VOD detail modal ============ -->
+  <div class="modal" id="vod-detail" hidden>
+    <div class="modal-card">
+      <img class="vd-poster" id="vd-poster" alt="">
+      <div class="vd-info">
+        <h3 id="vd-title"></h3>
+        <div class="vd-row"><span data-i18n="synopsis">خلاصه داستان:</span><span id="vd-syn"></span></div>
+        <div class="vd-row"><span data-i18n="director">کارگردان:</span><span id="vd-dir"></span></div>
+        <div class="vd-row"><span data-i18n="duration">مدت:</span><span id="vd-dur"></span></div>
+        <div class="vd-row"><span data-i18n="vod_price">قیمت:</span><span id="vd-price"></span></div>
+        <div class="vd-actions">
+          <button class="btn focusable" id="vd-play" data-i18n="vod_select_num">انتخاب جهت نمایش</button>
+          <button class="btn focusable" id="vd-close" data-i18n="cancel">انصراف</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ PLAYBACK / EPG ============ -->
+  <section id="scr-rec" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="main_menu_rec">پخش دوباره</h2></header>
+    <div class="rec-cols">
+      <div class="rec-col focuslist" id="rec-channels"></div>
+      <div class="rec-col focuslist" id="rec-dates"></div>
+      <div class="rec-col focuslist" id="rec-progs"></div>
+    </div>
+  </section>
+
+  <!-- ============ SCENERY ============ -->
+  <section id="scr-scenery" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="scenery">صحنه</h2></header>
+    <div class="scen-grid focusgrid" id="scen-grid"></div>
+  </section>
+
+  <!-- ============ CATERING ============ -->
+  <section id="scr-dinner" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="dinner">شام</h2></header>
+    <div class="dinner-wrap">
+      <div class="dinner-side">
+        <div class="dinner-types focuslist" id="dinner-types"></div>
+        <button class="btn focusable dinner-orders" id="dinner-orders" data-i18n="my_order">سفارش من</button>
+      </div>
+      <div class="dinner-items focusgrid" id="dinner-items"></div>
+    </div>
+  </section>
+
+  <!-- ============ CATERING: country selector (v2 settings.caterSub) ============ -->
+  <section id="scr-country" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="catering_country">انتخاب کشور</h2></header>
+    <div class="country-tip" data-i18n="tips_of_catering_country">برای مشاهده اطلاعات غذا دکمه OK را بزنید</div>
+    <div class="country-list focusgrid" id="country-list"></div>
+  </section>
+
+  <!-- ============ MY ORDERS (v2 MyHistoryOrderList/Detail) ============ -->
+  <section id="scr-orders" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="my_hostory_order">سفارش‌های من</h2></header>
+    <div class="orders-tip" data-i18n="my_hostory_order_tips">برای لغو سفارش دکمه OK را بزنید</div>
+    <div class="order-list focuslist" id="order-list"></div>
+  </section>
+  <div class="modal" id="order-detail" hidden>
+    <div class="modal-card">
+      <div class="vd-info">
+        <h3 data-i18n="my_order_details">جزئیات سفارش</h3>
+        <div class="order-items" id="od-items"></div>
+        <div class="vd-row"><span data-i18n="total">کل:</span><span id="od-total"></span></div>
+        <div class="vd-row"><span data-i18n="order_status">وضعیت:</span><span id="od-status"></span></div>
+        <div class="vd-actions">
+          <button class="btn focusable" id="od-cancel" data-i18n="cancel_the_order">لغو سفارش</button>
+          <button class="btn focusable" id="od-close" data-i18n="ok">تأیید</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SERVICE RECORD (v2 GetServiceOrder) ============ -->
+  <section id="scr-svcrecord" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="service_record">سوابق خدمات</h2></header>
+    <table class="consume-table"><thead><tr>
+      <th data-i18n="service_name">خدمت</th><th data-i18n="consume_time">زمان</th>
+      <th data-i18n="goods_service">اقلام</th><th data-i18n="order_status">وضعیت</th>
+    </tr></thead><tbody id="svcrec-body"></tbody></table>
+  </section>
+
+  <!-- ============ APP SHOW IN MENU (v2 SettingAppShowActivity / app.db) ============ -->
+  <section id="scr-apps" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="setting_app">تنظیم برنامه</h2></header>
+    <div class="apps-tip" data-i18n="app_show_in_menu">برنامه‌های نمایش داده‌شده در منو را انتخاب کنید</div>
+    <div class="app-grid focusgrid" id="app-grid"></div>
+    <div class="apps-add">
+      <input id="app-name" class="focusable" placeholder="نام برنامه">
+      <input id="app-path" class="focusable" placeholder="مسیر فایل (exe یا lnk)">
+      <button class="btn focusable" id="app-add" data-i18n="submit">افزودن</button>
+      <button class="btn focusable" id="app-back" data-i18n="ok">بازگشت</button>
+    </div>
+  </section>
+
+  <!-- ============ SERVICE ============ -->
+  <section id="scr-service" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="hotel_service">خدمات</h2></header>
+    <div class="svc-grid focusgrid" id="svc-grid"></div>
+  </section>
+
+  <!-- ============ SERVICE sub-screens ============ -->
+  <section id="scr-rent" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 id="rent-title">خدمات</h2></header>
+    <div class="rent-grid focusgrid" id="rent-grid"></div>
+  </section>
+  <section id="scr-wakeup" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="wake_up_service">سرویس بیدارباش</h2></header>
+    <div class="wakeup-card">
+      <div class="wk-row"><span id="wk-label" data-i18n="wake_up_setting_time">تنظیم زمان بیداری:</span></div>
+      <div class="wk-pickers">
+        <select id="wk-day" class="focusable"></select>
+        <select id="wk-hour" class="focusable"></select>
+        <select id="wk-min" class="focusable"></select>
+      </div>
+      <div class="wk-note" data-i18n="wake_up_notice">لطفاً توجه کنید محدودیت زمانی ۲۴ ساعت است.</div>
+      <button class="btn focusable" id="wk-submit" data-i18n="submit">ارسال</button>
+    </div>
+  </section>
+  <section id="scr-consume" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="main_menu_consume">صورتحساب</h2></header>
+    <table class="consume-table"><thead><tr>
+      <th data-i18n="consume_time">زمان</th><th data-i18n="consume_type">نوع</th>
+      <th data-i18n="consume_content">محتوا</th><th data-i18n="consume_price">قیمت</th>
+    </tr></thead><tbody id="consume-body"></tbody></table>
+    <div class="consume-total"><span data-i18n="total">کل:</span><span id="consume-total"></span></div>
+  </section>
+
+  <!-- ============ HOTEL INTRO ============ -->
+  <section id="scr-hotel" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="hotel">هتل</h2></header>
+    <div class="hotel-wrap" id="hotel-wrap"></div>
+  </section>
+
+  <!-- ============ MUSIC ============ -->
+  <section id="scr-music" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2>موسیقی</h2></header>
+    <div class="music-types focuslist" id="music-types"></div>
+    <div class="music-grid focusgrid" id="music-grid"></div>
+    <audio id="audio"></audio>
+  </section>
+
+  <!-- ============ SETTINGS ============ -->
+  <section id="scr-settings" class="screen">
+    <div class="page-bg"></div>
+    <header class="page-head"><button class="backbtn focusable" data-back>⟵</button><h2 data-i18n="settings_system">تنظیمات سیستم</h2></header>
+    <div class="set-gate" id="set-gate">
+      <div class="gate-card">
+        <div class="gate-title">رمز تنظیمات</div>
+        <input id="gate-pass" class="focusable gate-input" type="password" inputmode="numeric" autocomplete="off">
+        <div class="gate-actions">
+          <button class="btn focusable" id="gate-ok" data-i18n="submit">تأیید</button>
+          <button class="btn focusable" id="gate-cancel" data-i18n="cancel">انصراف</button>
+        </div>
+        <div class="gate-err" id="gate-err" hidden>رمز نادرست است</div>
+        <div class="gate-err" id="gate-hint" hidden>رمز پیش‌فرض کارخانه: 111999</div>
+      </div>
+    </div>
+    <div class="set-body" id="set-body" hidden>
+      <div class="set-section" data-i18n="settings_network">تنظیمات شبکه</div>
+      <div class="set-row focusable" data-edit="iptv_room_number"><span class="set-label" id="set-room-label">شماره واحد</span><span class="set-value" id="set-room"></span></div>
+      <div class="set-row" id="set-link"><span class="set-label" id="set-link-label">اتصال دستگاه</span><span class="set-value" id="set-link-value"></span></div>
+      <div class="set-row focusable" data-edit="server_ip"><span class="set-label" data-i18n="settings_network_ip">آی‌پی سرور</span><span class="set-value" id="set-ip"></span></div>
+      <div class="set-row focusable" data-edit="server_port"><span class="set-label" data-i18n="settings_network_port">پورت سرور</span><span class="set-value" id="set-port"></span></div>
+      <div class="set-row" ><span class="set-label" data-i18n="settings_local_network">شبکه محلی</span><span class="set-value" id="set-localip"></span></div>
+      <div class="set-row" ><span class="set-label" data-i18n="settings_local_mac">مک محلی</span><span class="set-value" id="set-mac"></span></div>
+      <div class="set-row" id="set-headend"><span class="set-label" id="set-headend-label">هداند</span><span class="set-value" id="set-headend-value"></span></div>
+      <!-- the handshake itself: BaseApplication.onCreate() + PingServerActivity.
+           `connected` is only true once GetSettings/GetClient/GetRoomInfo/
+           UpdateClient answered, which is what the live-TV gate checks. -->
+      <div class="set-row" id="set-conn"><span class="set-label" id="set-conn-label">وضعیت اتصال</span><span class="set-value" id="set-conn-value"></span></div>
+      <div class="set-row" id="set-disc"><span class="set-label" id="set-disc-label">اعلان سرور (UDP ۲۷۷۷۷)</span><span class="set-value" id="set-disc-value"></span></div>
+      <div class="set-row focusable" data-act="sweep" id="set-sweep"><span class="set-label" id="set-sweep-label">جست‌وجوی هداند در شبکه</span><span class="set-value" id="set-sweep-value">⟳</span></div>
+      <!-- pre-flight check: head-end reachable? channels handed out? ffmpeg present? -->
+      <div class="set-row focusable" data-act="diag" id="set-diag"><span class="set-label" id="set-diag-label">بررسی پخش زنده</span><span class="set-value" id="set-diag-value"></span></div>
+      <div class="set-section" data-i18n="settings_play">تنظیمات پخش</div>
+      <div class="set-row" id="set-ffmpeg"><span class="set-label" id="set-ffmpeg-label">FFmpeg (کانال‌های RTSP/TS)</span><span class="set-value" id="set-ffmpeg-value"></span></div>
+      <!-- residential head-ends usually publish a playlist instead of GetLiveTV -->
+      <div class="set-row focusable" data-act="m3u" id="set-m3u"><span class="set-label">فهرست کانال‌ها (m3u)</span><span class="set-value" id="set-m3u-value"></span></div>
+      <!-- v2.7.2.06: setting_vlc_decode_layout / vlc_decode_value -->
+      <div class="set-row focusable" data-act="vlc" id="set-vlc"><span class="set-label" data-i18n="enable_vlc_decoding">کدگشایی با VLC</span><span class="set-value" id="set-vlc-value"></span></div>
+      <div class="set-row focusable" data-act="speed" id="set-speed"><span class="set-label" data-i18n="play_speed_txt">سرعت پخش</span><span class="set-value" id="set-speed-value"></span></div>
+      <div class="set-row focusable" data-act="autostart" id="set-autostart"><span class="set-label" data-i18n="boot_auto_start">شروع خودکار با ویندوز</span><span class="set-value" id="set-autostart-value"></span></div>
+      <div class="set-section" data-i18n="setting_app">تنظیم برنامه</div>
+      <div class="set-row focusable" data-act="apps" id="set-apps"><span class="set-label" data-i18n="app_show_in_menu">برنامه نمایش در منو</span><span class="set-value" id="set-apps-value"></span></div>
+      <div class="set-section" data-i18n="settings_other">سایر</div>
+      <div class="set-row focusable" data-edit="app_language"><span class="set-label">زبان / Language</span><span class="set-value" id="set-lang"></span></div>
+      <div class="set-row focusable" data-act="reconnect" id="set-reconnect"><span class="set-label">اتصال مجدد به سرور</span><span class="set-value">↻</span></div>
+      <div class="set-row focusable" data-act="update" id="set-update"><span class="set-label" data-i18n="settings_update">بروزرسانی نسخه</span><span class="set-value" id="set-version"></span></div>
+    </div>
+  </section>
+
+  <!-- ============ generic input dialog ============ -->
+  <div class="modal" id="input-modal" hidden>
+    <div class="modal-card small">
+      <h3 id="input-title"></h3>
+      <div class="input-hint" id="input-hint" hidden></div>
+      <input id="input-field" class="focusable" type="text" autocomplete="off">
+      <div class="vd-actions">
+        <button class="btn focusable" id="input-ok" data-i18n="submit">تأیید</button>
+        <button class="btn focusable" id="input-cancel" data-i18n="cancel">انصراف</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ generic confirm dialog (v2 layout_dialog_new) ============ -->
+  <div class="modal" id="confirm-modal" hidden>
+    <div class="modal-card small">
+      <h3 id="confirm-title"></h3>
+      <div class="confirm-text" id="confirm-text"></div>
+      <div class="vd-actions">
+        <button class="btn focusable" id="confirm-ok" data-i18n="ok">تأیید</button>
+        <button class="btn focusable" id="confirm-cancel" data-i18n="cancel">انصراف</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+</div>
+<script src="/web/vendor/hls.min.js"></script>
+<script src="/web/i18n.generated.js"></script>
+<script src="/web/app.js"></script>
+</body>
+</html>
