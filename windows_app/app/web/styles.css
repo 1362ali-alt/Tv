@@ -235,6 +235,7 @@ body{
 .player-loading{position:absolute; inset:0; display:flex; flex-direction:column; gap:1em; align-items:center; justify-content:center; background:rgba(0,0,0,.55); z-index:6;}
 .spinner{width:3.4em; height:3.4em; border:.35em solid rgba(255,255,255,.25); border-top-color:var(--accent); border-radius:50%; animation:spin 1s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg)}}
+.diag-report{direction:ltr; text-align:left; font-size:calc(11 * var(--u)); background:#0d1117; color:#9ecbff; padding:calc(8 * var(--u)); max-height:calc(240 * var(--u)); overflow:auto; white-space:pre-wrap; border-radius:calc(6 * var(--u)); margin-top:calc(8 * var(--u)); width:100%;}
 .player-error-detail{margin-top:calc(8 * var(--u)); font-size:calc(14 * var(--u)); color:#ffb4b4; white-space:pre-wrap; max-width:calc(760 * var(--u)); text-align:center;}
 .player-error-actions{margin-top:calc(10 * var(--u)); display:flex; gap:calc(10 * var(--u)); justify-content:center;}
 .player-error{flex-direction:column; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.7); z-index:7; color:#ff8080; font-size:1.3em;}

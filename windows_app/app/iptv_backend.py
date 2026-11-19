@@ -1474,6 +1474,7 @@ def diagnose():
         "ffmpeg_path": find_ffmpeg() or "",
         "vlc": bool(find_vlc()),
         "vlc_fetch": vlc_fetch_enabled(),
+        "multicast": dict(MULTICAST),
         "checks": [], "issues": [], "ok": True,
     }
 
@@ -1580,6 +1581,7 @@ def diagnose():
                  if (c.get("url") or "").startswith(("udp://", "rtp://"))), "")
     if murl:
         got, merr = _multicast_probe(murl, ip)
+        MULTICAST.update(url=murl, bytes=got, at=time.time(), error=merr)
         chk("multicast_recv", got > 0,
             ("%s → %d بایت در ۲٫۵ ثانیه" % (murl, got)) if got else (merr or "۰ بایت"),
             "هیچ بستهٔ مولتی‌کستی به این دستگاه نرسید. روی ویندوز معمولاً فایروال یا "
@@ -1613,8 +1615,20 @@ def diagnose():
     out["sample_channels"] = [
         {"number": c.get("number"), "name": c.get("name") or c.get("name_1") or "",
          "src": (c.get("hlsUrl") or c.get("httpUrl") or c.get("url") or c.get("rtspUrl") or "")[:120],
-         "kind": classify(c.get("hlsUrl") or c.get("httpUrl") or c.get("url") or c.get("rtspUrl") or "")}
+         "kind": classify(c.get("hlsUrl") or c.get("httpUrl") or c.get("url") or c.get("rtspUrl") or ""),
+         "urls": {k: c.get(k) for k in ("url", "rtspUrl", "hlsUrl", "httpUrl") if c.get(k)}}
         for c in chans[:6]]
+    out["multicast"] = dict(MULTICAST)
+    try:
+        tail = []
+        lp = os.path.join(data_dir(), "backend.log")
+        if os.path.exists(lp):
+            for ln in open(lp, encoding="utf-8", errors="replace").read().splitlines():
+                if ln.startswith("PLAYER ") or ln.startswith("MULTICAST "):
+                    tail.append(ln)
+        out["player_log"] = tail[-6:]
+    except Exception:
+        out["player_log"] = []
     return out
 
 
@@ -1731,6 +1745,11 @@ def play_with_vlc(url, title=""):
     lip = NETWORK.get("ip") or ""
     if url.startswith(("udp://", "rtp://")) and lip and not lip.startswith("169.254."):
         args += ["--miface-addr", lip]
+        m = re.match(r"(udp|rtp)://([^@:/?]+):", url)
+        if m and not url.startswith(m.group(1) + "://@"):
+            host = m.group(2)
+            if host.split(".")[0].isdigit() and 224 <= int(host.split(".")[0]) <= 239:
+                url = url.replace("://" + host, "://@" + host, 1)
     args.append(url)
     try:
         subprocess.Popen(args, close_fds=True)
@@ -2014,6 +2033,27 @@ def udp_bind_url(url):
     return url + "?localaddr=" + lip
 
 
+MULTICAST = {"url": "", "bytes": -1, "at": 0.0, "error": ""}
+
+
+def schedule_multicast_probe(chans, force=False):
+    url = next((c.get("url") or "" for c in chans
+                if (c.get("url") or "").startswith(("udp://", "rtp://"))), "")
+    if not url:
+        return
+    now = time.time()
+    if not force and MULTICAST["url"] == url and now - MULTICAST["at"] < 120:
+        return
+    MULTICAST["url"] = url
+
+    def run():
+        got, err = _multicast_probe(url, NETWORK.get("ip") or "")
+        MULTICAST.update(bytes=got, at=time.time(), error=err)
+        append_log("MULTICAST %s bytes=%d %s" % (url, got, err))
+        CONNECTION.note("multicast probe %s -> %d bytes %s" % (url, got, err))
+    threading.Thread(target=run, daemon=True, name="mc-probe").start()
+
+
 def _multicast_probe(url, local_ip, secs=2.5):
     """Join the group like a player would and count bytes for `secs`."""
     m = re.match(r"udp://([^:/?]+):(\d+)", url or "")
@@ -2238,6 +2278,15 @@ def choose_play_source(item, settings_obj=None):
     hls = item.get("hlsUrl") or ""
     http = item.get("httpUrl") or ""
     url = item.get("url") or ""
+    if not rtsp and item.get("number") is not None:
+        # IptvSP.getLiveRtspUrl(n) = rtsp://{server_ip}:554/live/{n}.sdp - the
+        # APK's unicast feed. Without it a bean with only a udp:// url drags
+        # the player onto multicast, which never crosses subnets/firewalls.
+        try:
+            rtsp = "rtsp://%s:%d/live/%s.sdp" % (
+                s.get("server_ip"), int(s.get("rtsp_port") or 554), item.get("number"))
+        except Exception:
+            pass
     if proto == "hls" and hls:
         return hls, "hls"
     if proto == "http" and http:
@@ -2570,6 +2619,7 @@ class Handler(BaseHTTPRequestHandler):
                     # v2.7.2.06 additions
                     "vlc_installed": bool(find_vlc()),
                     "vlc_fetch": vlc_fetch_state(),
+                    "multicast": dict(MULTICAST),
                     "autostart": autostart_state(),
                     "apps_selected": load_apps().get("selected", []),
                     # residential deployment (Pardik / Ronika Palace Kahak)
@@ -2623,7 +2673,10 @@ class Handler(BaseHTTPRequestHandler):
                     fn = getattr(API, "get_" + ep) if hasattr(API, "get_" + ep) else None
                     if fn is None:
                         return self._json({"error": "unknown endpoint"}, 404)
-                    return self._json(fn(**params) if params else fn())
+                    res = fn(**params) if params else fn()
+                    if ep == "live_tv" and isinstance(res, list):
+                        schedule_multicast_probe(res)
+                    return self._json(res)
                 except Exception as e:
                     return self._json({"error": str(e)}, 502)
             if path == "/api/raw":

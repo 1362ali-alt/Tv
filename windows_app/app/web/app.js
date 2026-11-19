@@ -1690,6 +1690,18 @@ async function runDiagnose() {
       (c.number != null ? c.number + ". " : "") + (c.name || "") + "  [" + c.kind + "] " + (c.src || ""))));
     row.appendChild(body); list.appendChild(row);
   }
+  const rep = el("pre", "diag-report");
+  rep.dir = "ltr";
+  rep.textContent = JSON.stringify({
+    version: S.config.version,
+    ip: (S.config.network || {}).ip,
+    server: d.server,
+    multicast: d.multicast,
+    ffmpeg: d.ffmpeg, vlc: d.vlc,
+    channels: (d.sample_channels || []).map(c => ({ n: c.number, urls: c.urls })),
+    player_log: d.player_log || [],
+  }, null, 1);
+  list.appendChild(rep);
   /* the dialog's buttons carry data-i18n, so drop it while they read as a
      verdict and let applyI18n() put it back in closeDiag() */
   const okBtn = $("#input-ok"), cancel = $("#input-cancel");
@@ -1782,7 +1794,23 @@ async function loadChannels(packageId) {
 }
 function pickSource(item) {
   const proto = ((S.settings && S.settings.protocol) || "rtsp").toLowerCase();
-  const rtsp = item.rtspUrl || "", hls = item.hlsUrl || "", http = item.httpUrl || "", url = item.url || "";
+  let rtsp = item.rtspUrl || "";
+  const hls = item.hlsUrl || "", http = item.httpUrl || "", url = item.url || "";
+  if (!rtsp && item.number != null && S.config && S.config.settings) {
+    /* IptvSP.getLiveRtspUrl(n): the APK's UNICAST feed - rtsp://ip:554/live/n.sdp.
+       A bean that only carries udp:// must not drag the player onto multicast:
+       multicast dies at firewalls and subnet borders, unicast rtsp does not. */
+    rtsp = "rtsp://" + (S.config.settings.server_ip || "") + ":" +
+      (S.config.settings.rtsp_port || 554) + "/live/" + item.number + ".sdp";
+  }
+  const mc = (S.config && S.config.multicast) || null;
+  const mcDead = mc && mc.bytes === 0 && (Date.now() / 1000 - (mc.at || 0)) < 600;
+  if (mcDead && url.indexOf("udp") === 0) {
+    const ff = !!(S.config && S.config.ffmpeg);
+    if (rtsp && ff) return [rtsp, "rtsp"];
+    if (hls) return [hls, "hls"];
+    if (http) return [http, "http"];
+  }
   /* RTSP / UDP / MPEG-TS only play through the local FFmpeg remux
      (/stream/play). If ffmpeg.exe is missing - a machine installed without
      internet, or a blocked PyPI download - preferring the head-end's HLS or
@@ -1956,6 +1984,12 @@ async function showPlayerError(extra, opts) {
   if (codec) lines.push((S.lang === "fa" ? "کدک جریان: " : "stream codec: ") + codec);
   if (mine && mine.error) lines.push("ffmpeg: " + String(mine.error).slice(-160));
   else if (mine && mine.log && mine.log.length) lines.push("ffmpeg: " + mine.log[mine.log.length - 1].slice(-160));
+  if (((S.playerCtx || {}).origSrc || "").indexOf("udp") === 0) {
+    const mc = (S.config && S.config.multicast) || null;
+    lines.push(mc && mc.bytes >= 0
+      ? "multicast probe: " + mc.bytes + " bytes / 2.5s"
+      : "multicast probe: not run yet");
+  }
   if (extra) lines.push(String(extra).slice(0, 160));
   const det = $("#player-error-detail");
   if (det) {
