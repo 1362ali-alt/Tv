@@ -14,6 +14,8 @@ tools/smoke/node_modules/
 tools/smoke/package-lock.json
 node_modules/
 dist/*
+!dist/*.zip
+!dist/MANIFEST.json
 !dist/PARDIK-SMART-IPTV-Win10-x64-2.7.1.71.zip
 !dist/PARDIK-SMART-IPTV-Win10-x64-2.7.2.06.zip
 !dist/PARDIK-IPTV-RonikaPalace-Kohak-Win10-x64-2.7.2.06.zip
