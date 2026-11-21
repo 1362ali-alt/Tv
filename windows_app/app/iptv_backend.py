@@ -350,9 +350,33 @@ def detect_mac():
     return NETWORK["mac"] if NETWORK.get("mac") else _mac_fallback()
 
 
-# Resolved once at start-up (Get-NetAdapter / /sys/class/net); /api/network
-# recomputes it on demand so unplugging the cable is reflected without a restart.
-NETWORK = detect_network()
+# Seeded instantly, refreshed in the background. detect_network() shells out
+# to PowerShell (Get-NetAdapter) on Windows and on a cold/WMI-slow machine that
+# cost 10-20 s AT IMPORT TIME - before main() could bind the HTTP socket, so
+# the launcher's wait window expired while python was merely enumerating
+# adapters (external review of b53d3bb, field photos 2026-11-21). The previous
+# run's cached values are good enough for the first seconds; /api/network still
+# recomputes synchronously on demand so unplugging shows up without a restart.
+NETWORK = {"mac": _mac_fallback(), "iface": "", "kind": "unknown",
+           "ip": "", "wired": False, "interfaces": []}
+
+
+def refresh_network(background=False):
+    def _do():
+        global NETWORK
+        try:
+            net = detect_network()
+            if net:
+                NETWORK = net
+        except Exception as e:
+            try:
+                append_log("network refresh failed: %r" % (e,))
+            except Exception:
+                pass
+    if background:
+        threading.Thread(target=_do, daemon=True, name="net-detect").start()
+    else:
+        _do()
 
 SETTINGS = Settings()
 
@@ -1664,6 +1688,37 @@ def diagnose():
              "UDP مقصرش نیست: یا این کامپیوتر در VLAN دیگری نسبت به گیرنده‌های "
              "ساختمان است، یا سرور رسانه فقط به دستگاه‌های ثبت‌شده سرویس "
              "می‌دهد. با مدیر شبکهٔ مجتمع چک کنید." % (sip, rtsp_port)))
+
+    # 4b. what the head-end orders for playback: server_settings.protocol.
+    #     The 2026-11-21 field capture carried protocol=mscore with
+    #     streamMediaIp=127.0.0.1:8261 - on the Android box playback runs
+    #     through a LOCAL MStar middleware daemon on the box itself, which
+    #     does not exist on Windows. This port therefore ignores mscore and
+    #     plays the channels' direct urls; saying so in the diagnosis beats
+    #     another silent black screen.
+    ss = CONNECTION.state().get("server_settings") or {}
+    proto = (ss.get("protocol") or "").strip()
+    if proto:
+        sm = "%s:%s" % (ss.get("streamMediaIp") or "?",
+                        ss.get("streamMediaPort") or "?")
+        local_ms = False
+        try:
+            pnum = int(ss.get("streamMediaPort") or 0)
+            if pnum:
+                _s = socket.create_connection(("127.0.0.1", pnum), 0.4)
+                _s.close()
+                local_ms = True
+        except Exception:
+            local_ms = False
+        chk("headend_protocol", proto in ("rtsp", "hls", "http", "udp"),
+            "protocol=%s streamMedia=%s local_service=%s"
+            % (proto, sm, "up" if local_ms else "absent"),
+            ("هداند پروتکل mscore خواسته: روی گیرندهٔ اندرویدی پخش از سرویس محلی "
+             "روی خود جعبه (%s) می‌گذرد که روی ویندوز وجود ندارد. این پورت به‌جای آن "
+             "نشانی مستقیم کانال‌ها (rtsp/udp/hls) را می‌زند؛ اگر پخش سیاه است قاعدهٔ "
+             "فایروال مولتی‌کست (allow_multicast.bat با Run as administrator) و مسیر "
+             "rtsp را چک کنید." % sm)
+            if proto == "mscore" and not local_ms else "")
 
     # 5. can THIS machine actually receive the head-end's multicast? Android
     #    joins the group inside IjkMediaPlayer; on Windows the firewall or a
@@ -3430,6 +3485,7 @@ def main():
     # The APK's own boot screen is a poll of connection state; serving the
     # API instantly and letting the UI watch the handshake progress IS the
     # ported behaviour ("attempt N of 20" while ping_loop runs).
+    refresh_network(background=True)
     threading.Thread(target=CONNECTION.on_create, daemon=True,
                      name="on-create").start()
     srv = None

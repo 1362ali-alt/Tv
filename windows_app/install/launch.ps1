@@ -146,6 +146,12 @@ Log "python: $py"
 
 $ff = Ensure-FFmpeg
 Log $(if ($ff) { "ffmpeg: $ff" } else { "ffmpeg: NOT AVAILABLE (RTSP/UDP playback will not work)" })
+# downloaded zips carry Mark-of-the-Web; Defender then deep-scans every first
+# exec of python.exe/ffmpeg.exe/vlc.exe and the very first launch crawls.
+# Unblock-File on the three executables is instant and removes the penalty.
+foreach ($f in @((Join-Path $root "runtime\python\python.exe"), $ff, (Join-Path $root "tools\vlc\vlc.exe"))) {
+    if ($f -and (Test-Path $f)) { try { Unblock-File -LiteralPath $f -ErrorAction SilentlyContinue } catch { } }
+}
 
 # --- single instance, but NEVER a stale one ---------------------------------
 # An older install that is still running (auto-started at logon by the boot
@@ -205,21 +211,37 @@ function Dump-PortDiagnostics {
     }
     Log "---- end diagnostics ----"
 }
-function Test-BackendEngine {
+function Invoke-LocalApi($path) {
+    # Bypass ANY system/PAC proxy on purpose: Invoke-WebRequest honours the
+    # Windows proxy (Psiphon/Nova live on the field machines) and a localhost
+    # probe detoured through a VPN reads exactly like "no backend at all"
+    # (external review of b53d3bb). HttpWebRequest with Proxy=$null cannot
+    # be hijacked, on every PowerShell version.
     try {
-        $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 -Uri ($url + "api/connection")
-        return ($r.StatusCode -eq 200)
-    } catch { return $false }
+        $req = [System.Net.HttpWebRequest]::Create("http://127.0.0.1:$port$path")
+        $req.Proxy = $null
+        $req.Timeout = 2500
+        $resp = $req.GetResponse()
+        $sr = New-Object System.IO.StreamReader($resp.GetResponseStream())
+        $body = $sr.ReadToEnd(); $sr.Close(); $resp.Close()
+        return $body
+    } catch { return $null }
+}
+function Test-BackendEngine {
+    return ((Invoke-LocalApi "/api/connection") -ne $null)
 }
 function Get-BackendBuild {
     # /api/build is three keys and zero machine state - it answers even when
     # a broken section makes /api/config 500 (field photo 2026-11-21 21:10:
     # config died, launcher read build '', killed its OWN healthy backend).
-    foreach ($p in @("api/build", "api/config")) {
-        try {
-            $j = (Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 -Uri ($url + $p)).Content | ConvertFrom-Json
-            if ($j -and $j.build) { return [string]$j.build }
-        } catch { }
+    foreach ($p in @("/api/build", "/api/config")) {
+        $body = Invoke-LocalApi $p
+        if ($body) {
+            try {
+                $j = $body | ConvertFrom-Json
+                if ($j -and $j.build) { return [string]$j.build }
+            } catch { }
+        }
     }
     return ""
 }
@@ -232,12 +254,28 @@ if (Test-Path $biFile) {
     try { $wantBuild = [string]((Get-Content -Raw $biFile | ConvertFrom-Json).commit) } catch { }
 }
 function Start-OurBackend {
+    # a retry must never leave TWO pythons fighting over the port (external
+    # review: the old code started a second child while the first was still
+    # importing, and both then lost the bind race)
+    if ($script:backendProc -and -not $script:backendProc.HasExited) {
+        Log "our previous backend PID $($script:backendProc.Id) is still alive - stopping it before retry"
+        Stop-Process -Id $script:backendProc.Id -Force -ErrorAction SilentlyContinue
+        $script:backendProc.WaitForExit(5000)
+    }
+    for ($w = 0; $w -lt 12; $w++) {
+        $own = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
+        if (-not $own) { break }
+        Start-Sleep -Milliseconds 500
+    }
+    if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) {
+        Log "port $port is STILL listening after cleanup - the new backend will report why in backend.log"
+    }
     $env:IPTV_HOST = "127.0.0.1"
     $env:IPTV_PORT = "$port"
     if ($ff) { $env:IPTV_FFMPEG = $ff }
     Log "starting backend: $py $backend"
-    Start-Process -WindowStyle Hidden -FilePath $py -ArgumentList @("`"$backend`"") -WorkingDirectory $app
-    for ($i = 0; $i -lt 75; $i++) {
+    $script:backendProc = Start-Process -WindowStyle Hidden -FilePath $py -ArgumentList @("`"$backend`"") -WorkingDirectory $app -PassThru
+    for ($i = 0; $i -lt 100; $i++) {
         Start-Sleep -Milliseconds 400
         if ($i -eq 40) { Log "still waiting for the backend to answer (a first-run antivirus scan of python.exe can take a while)..." }
         if (Test-BackendEngine) { return $true }
