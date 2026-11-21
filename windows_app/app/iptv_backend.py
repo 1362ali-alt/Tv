@@ -1028,6 +1028,19 @@ class ConnectionEngine(object):
             dlang = data.get("defaultLanguage")
             if dlang is not None and SETTINGS.get("server_language_defalut_select_flag") != dlang:
                 SETTINGS.set("server_language_defalut_select_flag", dlang)
+            # Vendor support guidance for the boxes ("if Iranian channels have
+            # sound problems or play error, install VLC player"): the head-end
+            # can publish the VLC switch itself. Parity: when GetSettings
+            # carries use_vlc_paly_live_prg / vlc_decode_value, follow it -
+            # the port then hands live playback to its BUNDLED VLC exactly
+            # like LivePlayerActivity.playWithVlc on a provisioned box.
+            if "use_vlc_paly_live_prg" in data:
+                SETTINGS.set("use_vlc_paly_live_prg",
+                             bool(data.get("use_vlc_paly_live_prg")))
+            elif str(data.get("vlcDecodeValue") or
+                     data.get("vlc_decode_value") or "").lower() \
+                    in ("enable_vlc", "1", "true"):
+                SETTINGS.set("use_vlc_paly_live_prg", True)
             self.note("GetSettings ok: protocol=%s layout=%s showPackage=%s epg=%s "
                       "enterLivePage=%s pmsType=%s"
                       % (data.get("protocol"), data.get("layout"), data.get("showPackage"),

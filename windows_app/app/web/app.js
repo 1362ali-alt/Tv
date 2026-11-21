@@ -2098,7 +2098,13 @@ async function showPlayerError(extra, opts) {
     det.textContent += "\n" + t("hevc_need_vlc",
       "این کانال H.265/HEVC یا MPEG-2 است و مرورگر آن را کدگشایی نمی‌کند؛ VLC را نصب کنید تا پخش خودکار سپرده شود.");
   }
-  if ((hevc || decodeFail) && S.config.vlc_installed && !S.vlcTried) {
+  /* Vendor guidance for the Android boxes is literally "on play error use
+     VLC"; the port mirrors that: ANY dead end (undecodable codec, decode
+     failure, or the no-data/stall watchdogs) hands over to the bundled VLC
+     once - if VLC cannot play it either, the network is the problem and the
+     diagnosis lines above say so. */
+  const stall = !!(opts && opts.stall);
+  if ((hevc || decodeFail || stall) && S.config.vlc_installed && !S.vlcTried) {
     S.vlcTried = true;
     handToVlc();
   }
