@@ -1689,6 +1689,33 @@ def diagnose():
              "ساختمان است، یا سرور رسانه فقط به دستگاه‌های ثبت‌شده سرویس "
              "می‌دهد. با مدیر شبکهٔ مجتمع چک کنید." % (sip, rtsp_port)))
 
+    # 4c. media-port map for the network admin: which TCP ports of the
+    #     head-end reach this machine at all. The field capture of
+    #     2026-11-21 22:4x is the textbook case: control port 8030 answers
+    #     in 2 ms and returns 186 channels, while RTSP 554 times out and
+    #     every multicast group delivers 0 bytes - control plane routed,
+    #     media plane filtered (media VLAN / switch ACL / MAC registration
+    #     on the media server). One line of open/drop/refused per port is
+    #     exactly the evidence an admin ticket needs.
+    if sip and not sip.startswith("169.254."):
+        mp = []
+        for pn in (rtsp_port, 8060, 8080):
+            try:
+                s2 = socket.create_connection((sip, int(pn)), timeout=0.8)
+                s2.close()
+                mp.append("%s:open" % pn)
+            except socket.timeout:
+                mp.append("%s:drop" % pn)
+            except Exception:
+                mp.append("%s:refused" % pn)
+        media_ok = any(m.endswith(":open") for m in mp)
+        chk("media_ports", media_ok, " ".join(mp),
+            "" if media_ok else
+            ("پورت کنترل 8030 باز است ولی پورت‌های رسانه باز نیستند: فیلترینگ سطح "
+             "شبکه (VLAN رسانه / ACL سوئیچ / ثبت MAC در سرور رسانه). این مورد دیگر "
+             "نه تقصیر برنامه است نه فایروال ویندوز؛ متن آمادهٔ ticket برای مدیر "
+             "شبکه/پاردیک در README پورتابل آمده است."))
+
     # 4b. what the head-end orders for playback: server_settings.protocol.
     #     The 2026-11-21 field capture carried protocol=mscore with
     #     streamMediaIp=127.0.0.1:8261 - on the Android box playback runs
