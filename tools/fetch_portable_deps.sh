@@ -16,6 +16,22 @@
 # existing vendor parts are kept. NEVER commit vendor/ (see .gitignore).
 PY_MIRROR_COMMIT="${PY_MIRROR_COMMIT:-9d36aea98fb98f803a6b3166b9d6fbff8c9e4bbf}"
 VLC_MIRROR_COMMIT="${VLC_MIRROR_COMMIT:-7025703ef18c7a4bacb5b6ad588d367b86223607}"
+# sha256 of the KEY BINARIES produced by the mirror commits above. A mirror
+# fetch that does not reproduce these hashes fails the build loudly instead of
+# bundling unknown bits. Official-source downloads cannot be pinned from this
+# build sandbox (python.org / videolan.org are unreachable here); they are
+# hash-RECORDED in PROVENANCE.txt and should be pinned after a first verified
+# fetch on a machine with open internet.
+PY_MIRROR_SHA256="1a078825122b059f04b6c1545909f1d3ed0838dd24ab80d1c7fa60ca68ff9af5"
+VLC_MIRROR_SHA256="4cc729b554326ccc62205d46b95353dcb34cadf095b904e941814e902e0925b2"
+check_sha256() {  # <file> <expected> <label>
+    got=$(sha256sum "$1" | cut -d' ' -f1)
+    if [ "$got" != "$2" ]; then
+        echo "FATAL: $3 sha256 mismatch: got $got want $2" >&2
+        exit 1
+    fi
+    echo "$3 sha256 verified: $got"
+}
 set -e
 cd "$(dirname "$0")/.."
 mkdir -p vendor/src
@@ -32,11 +48,15 @@ if [ ! -f vendor/python/python.exe ]; then
         echo "python: official unreachable -> GitHub mirror @ $PY_MIRROR_COMMIT"
         if [ ! -d vendor/src/pym ]; then
             git clone -q https://github.com/dm1495122-dot/python-3.12.8-embeddable-amd64 vendor/src/pym
-            (cd vendor/src/pym && git checkout -q "$PY_MIRROR_COMMIT" 2>/dev/null || true)
         fi
+        # STRICT pin: a checkout that does not land on the reviewed commit
+        # must fail the build, not silently bundle whatever HEAD is.
+        (cd vendor/src/pym && git checkout -q "$PY_MIRROR_COMMIT") || {
+            echo "FATAL: python mirror checkout $PY_MIRROR_COMMIT failed" >&2; exit 1; }
         mkdir -p vendor/python
         (cd vendor/src/pym && tar cf - --exclude=.git --exclude=.gitignore \
             --exclude=.gitattributes .) | (cd vendor/python && tar xf -)
+        check_sha256 vendor/python/python.exe "$PY_MIRROR_SHA256" "python.exe (mirror)"
     fi
     # drop stdlib parts a pure-stdlib backend never imports (~400 KB)
     python3 - <<'TRIM'
@@ -99,10 +119,12 @@ if [ ! -f vendor/vlc/vlc.exe ]; then
         echo "vlc: official unreachable -> GitHub mirror @ $VLC_MIRROR_COMMIT"
         if [ ! -d vendor/src/vlc ]; then
             git clone -q https://github.com/Daniel-Paschoalinoto/vlc-portable vendor/src/vlc
-            (cd vendor/src/vlc && git checkout -q "$VLC_MIRROR_COMMIT" 2>/dev/null || true)
         fi
+        (cd vendor/src/vlc && git checkout -q "$VLC_MIRROR_COMMIT") || {
+            echo "FATAL: vlc mirror checkout $VLC_MIRROR_COMMIT failed" >&2; exit 1; }
         mkdir -p vendor/vlc
         cp -r vendor/src/vlc/App/vlc/. vendor/vlc/
+        check_sha256 vendor/vlc/vlc.exe "$VLC_MIRROR_SHA256" "vlc.exe (mirror)"
     fi
     # prune translations except Persian/English (41 MB -> ~2 MB)
     find vendor/vlc/locale -mindepth 1 -maxdepth 1 -type d \
@@ -118,6 +140,14 @@ if [ ! -f vendor/vlc/vlc.exe ]; then
            vendor/vlc/lua vendor/vlc/hrtfs
     echo "vendor/vlc ready: $(du -sh vendor/vlc | cut -f1)"
 fi
+# --- always-on audit: whatever is in vendor/ must be the pinned build ------
+if [ ! -f vendor/src/python-3.12.8-embed-amd64.zip ]; then
+    check_sha256 vendor/python/python.exe "$PY_MIRROR_SHA256" "python.exe (audit)"
+fi
+if [ ! -f vendor/src/vlc-3.0.21-win64.zip ]; then
+    check_sha256 vendor/vlc/vlc.exe "$VLC_MIRROR_SHA256" "vlc.exe (audit)"
+fi
+
 # --- provenance: what exactly was bundled, from where, with which hash -----
 {
     echo "PARDIK IPTV portable - bundled dependency provenance"

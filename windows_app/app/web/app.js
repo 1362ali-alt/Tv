@@ -2197,6 +2197,10 @@ function healFfmpeg(item) {
 
 function stopVideo(hideScreen) {
   reportPlaying("");                    // UpdateClient?name= is empty again
+  /* Leaving the player must disarm the watchdogs: a _playW/_stallW that
+     survives past stopVideo fires its overlay (and its one-shot VLC
+     hand-over) while the user is somewhere in the menus. */
+  clearTimeout(S._playW); clearTimeout(S._stallW);
   const video = $("#video");
   try { if (S.hls) { S.hls.destroy(); S.hls = null; } } catch (e) {}
   try { video.pause(); video.removeAttribute("src"); video.load(); } catch (e) {}

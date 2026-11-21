@@ -165,7 +165,9 @@ function Stop-StaleBackend {
             Select-Object -ExpandProperty OwningProcess -Unique |
             ForEach-Object {
                 $op = Get-CimInstance Win32_Process -Filter "ProcessId=$_" -ErrorAction SilentlyContinue
-                if ($op -and ($op.CommandLine -like "*iptv_backend*" -or $op.Name -like "python*")) {
+                # CommandLine match ONLY: "any python holding 8787" would
+                # execute an innocent script that merely chose our port.
+                if ($op -and $op.CommandLine -like "*iptv_backend*") {
                     Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue
                     Log "killed stale backend PID $_ ($($op.Name))"
                 } else {
@@ -230,7 +232,7 @@ if ($wantBuild) {
             Select-Object -ExpandProperty OwningProcess -Unique |
             ForEach-Object {
                 $op = Get-CimInstance Win32_Process -Filter "ProcessId=$_" -ErrorAction SilentlyContinue
-                if ($op -and ($op.CommandLine -like "*iptv_backend*" -or $op.Name -like "python*")) {
+                if ($op -and $op.CommandLine -like "*iptv_backend*") {
                     & taskkill /F /PID $_ 2>$null | Out-Null
                 } else {
                     Log "hard-kill: port owner PID $_ ($($op.Name)) is NOT ours - left running"

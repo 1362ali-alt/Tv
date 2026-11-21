@@ -1906,7 +1906,9 @@ def ffmpeg_major():
                     stderr=subprocess.DEVNULL, timeout=15,
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 ).stdout.decode("utf-8", "replace")
-                m = re.search(r"ffmpeg version\s+n?v?(\d+)", out)
+                # covers "4.2.2", "v6.0", "n4.4" and git builds like
+                # "N-116833-g45e0a58556" (master -> the new -timeout name)
+                m = re.search(r"ffmpeg version\s+\S*?(\d+)", out)
                 if m:
                     FFMPEG_MAJOR = int(m.group(1))
             except Exception:
