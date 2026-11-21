@@ -1757,11 +1757,14 @@ def diagnose():
         got, merr = _multicast_probe(murl, ip)
         MULTICAST.update(url=murl, bytes=got, at=time.time(), error=merr)
         chk("multicast_recv", got > 0,
-            ("%s → %d بایت در ۲٫۵ ثانیه" % (murl, got)) if got else (merr or "۰ بایت"),
-            "هیچ بستهٔ مولتی‌کستی به این دستگاه نرسید. روی ویندوز معمولاً فایروال یا "
-            "آداپتر VPN مقصر است: install\\allow_multicast.bat را با دسترسی ادمین اجرا "
-            "کنید، VPN را موقتاً ببندید و دوباره بررسی کنید. اندرویدباکس همین جریان "
-            "را می‌گیرد، پس ایراد از شبکهٔ خودِ ویندوز است نه سرور.")
+            ("%s → %d بایت در ۲٫۵ ثانیه (join روی %s)" % (murl, got, ip or "؟"))
+            if got else (merr or ("۰ بایت (join روی %s)" % (ip or "؟"))),
+            "هیچ بستهٔ مولتی‌کستی به این دستگاه نرسید، در حالی که عضویت گروه روی "
+            "همین نشانی پین شده بود (ffmpeg با ?localaddr، VLC با --miface-addr، "
+            "probe با IP_ADD_MEMBERSHIP روی همان رابط): پس نه آداپتر اشتباه مقصر است "
+            "نه VPN. اگر allow_multicast.bat را با ادمین زده‌اید و VPN خاموش است، "
+            "صفر بایت یعنی جریان در مسیر شبکه حذف می‌شود؛ آزمون جابه‌جایی پورت در "
+            "README پورتابل را انجام دهید.")
 
     # 5. can those URLs be played here?
     kinds = {}
