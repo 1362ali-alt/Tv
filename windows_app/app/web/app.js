@@ -2003,14 +2003,40 @@ async function playItem(item, opts) {
   } catch (e) {
     showPlayerError("player setup exception: " + ((e && e.message) || e));
   }
-  video.onplaying = () => { $("#player-loading").style.display = "none"; stopLoadAnim(); $("#player-error").hidden = true; applySpeed(); };
-  video.onwaiting = () => { $("#player-loading").style.display = "flex"; startLoadAnim(); };
+  video.onplaying = () => {
+    clearTimeout(S._playW); clearTimeout(S._stallW);
+    $("#player-loading").style.display = "none"; stopLoadAnim(); $("#player-error").hidden = true; applySpeed();
+  };
+  video.onwaiting = () => {
+    $("#player-loading").style.display = "flex"; startLoadAnim();
+    /* mid-play stall watchdog: no new media for 15 s must SAY so - the
+       field complaint was "no picture and no error message at all". */
+    clearTimeout(S._stallW);
+    S._stallW = setTimeout(() => {
+      if (!video.paused || video.readyState < 3) {
+        showPlayerError(t("stall_watchdog",
+          "تصویر متوقف شد: ۱۵ ثانیه دادهٔ جدید از سرچشمه نرسید"), { stall: true });
+      }
+    }, 15000);
+  };
+  video.ontimeupdate = () => { clearTimeout(S._playW); clearTimeout(S._stallW); };
   video.onerror = () => {
     /* MEDIA_ERR_DECODE/SRC_NOT_SUPPORTED on the main element is exactly the
        APK's "Decoding video failed!" - name the codec and recover. */
     showPlayerError("video element error " + ((video.error && video.error.code) || "?"),
                     { decode: true });
   };
+  /* start watchdog: whatever the backend/ffmpeg/hls.js state is, if 20 s
+     pass without a single frame the overlay MUST appear with the diagnosis
+     (session error, codec, multicast probe) - a silently black screen is
+     no longer a possible outcome of pressing play. */
+  clearTimeout(S._playW);
+  S._playW = setTimeout(() => {
+    if (video.currentTime < 0.2 && $("#player-error").hidden) {
+      showPlayerError(t("no_data_watchdog",
+        "پخش شروع نشد: در ۲۰ ثانیه هیچ داده‌ای از سرچشمه نرسید"), { stall: true });
+    }
+  }, 20000);
 }
 /* The installer's PowerShell download can die on old TLS stacks or an offline
    install day; the backend fetches the same static Windows build through

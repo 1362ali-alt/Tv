@@ -1326,6 +1326,10 @@ class ConnectionEngine(object):
                 self.app_tick()
             except Exception as e:
                 self._fail("maintenance loop", e)
+            try:
+                STREAMS.maintain()
+            except Exception as e:
+                self._fail("stream maintain", e)
 
     def sweep_loop(self):
         """Runs after the boot phase: if the APK's own paths found nothing, look
@@ -1842,6 +1846,32 @@ FFMPEG = None
 FF_DIR = os.environ.get("IPTV_FFMPEG_DIR") or os.path.join(os.path.dirname(HERE), "tools")
 
 
+FFMPEG_MAJOR = None
+
+
+def ffmpeg_major():
+    """Major version of the ffmpeg in use - 4.x names the RTSP socket timeout
+    -stimeout, 5.x+ renamed it to -timeout; passing the wrong one makes
+    ffmpeg exit on an unknown option."""
+    global FFMPEG_MAJOR
+    if FFMPEG_MAJOR is None:
+        FFMPEG_MAJOR = 4
+        ff = find_ffmpeg()
+        if ff:
+            try:
+                out = subprocess.run(
+                    [ff, "-version"], stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL, timeout=15,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                ).stdout.decode("utf-8", "replace")
+                m = re.search(r"ffmpeg version\s+n?v?(\d+)", out)
+                if m:
+                    FFMPEG_MAJOR = int(m.group(1))
+            except Exception:
+                pass
+    return FFMPEG_MAJOR
+
+
 def find_ffmpeg():
     global FFMPEG
     if FFMPEG:
@@ -2232,6 +2262,9 @@ def _update_loop(info):
         append_log("UPDATE failed %r" % (e,))
 
 
+STALL_SECS = 12        # alive-but-no-media for this long = stalled source
+
+
 class StreamSession(object):
     """One ffmpeg -> HLS remux job."""
 
@@ -2262,14 +2295,24 @@ class StreamSession(object):
         # and two ffmpegs on one multicast group doubles the loss).
         args = [ff, "-hide_banner", "-loglevel", "info", "-y"]
         if self.protocol == "rtsp":
+            # TCP-interleaved plus a 10 s socket timeout: an RTSP server that
+            # accepts the connection and then sends nothing must kill ffmpeg,
+            # not park it. The option was renamed in ffmpeg 5 (stimeout ->
+            # timeout); the bundled build is 4.2.2, a system one may be newer.
             args += ["-rtsp_transport", "tcp"]
+            args += (["-timeout"] if ffmpeg_major() >= 5 else ["-stimeout"]) \
+                + ["10000000"]
         if self.protocol in ("udp", "rtp"):
             # Windows drops high-bitrate multicast without a bigger socket
             # buffer and ffmpeg's ring; overrun_nonfatal keeps it alive
-            # instead of aborting mid-stream.
+            # instead of aborting mid-stream. -timeout (us) is what turns a
+            # totally silent group into an ffmpeg EXIT after 5 s instead of
+            # an eternal block: the session dies, the watchdog names it and
+            # the player overlay finally says "no data" instead of spinning.
             args += ["-buffer_size", "2097152",
                      "-fifo_size", "1000000",
-                     "-overrun_nonfatal", "1"]
+                     "-overrun_nonfatal", "1",
+                     "-timeout", "5000000"]
         # IRIB and satellite feeds carry MP2/AC3 audio and sometimes MPEG-2
         # video; Edge's MSE plays none of those from a copied TS. Video is
         # usually H.264 and stays copied (transcoding it would need a GPU
@@ -2330,6 +2373,23 @@ class StreamSession(object):
     def alive(self):
         return self.proc is not None and self.proc.poll() is None
 
+    def newest_media(self):
+        """mtime of the freshest playlist/segment - the heartbeat of a
+        session. No file at all -> None."""
+        newest = None
+        try:
+            for ent in os.listdir(self.dir):
+                if ent == "index.m3u8" or (ent.endswith(".ts")):
+                    try:
+                        mt = os.path.getmtime(os.path.join(self.dir, ent))
+                    except OSError:
+                        continue
+                    if newest is None or mt > newest:
+                        newest = mt
+        except OSError:
+            pass
+        return newest
+
     def check(self):
         """Record a hard failure when ffmpeg exited non-zero (bad source), and
         give a session that died mid-watch one automatic restart (a flaky
@@ -2344,11 +2404,28 @@ class StreamSession(object):
                 self.restarting = True
                 threading.Thread(target=self._restart, daemon=True,
                                  name="ff-restart").start()
+        elif self.alive() and time.time() - self.started > STALL_SECS:
+            # ALIVE but producing nothing: the source delivers 0 bytes and
+            # ffmpeg parks on the read. Before this watchdog that state had
+            # no name, no error and no picture - the exact field complaint
+            # "no image and no error message". Kill it so the dead-path above
+            # restarts (twice) and then reports honestly.
+            newest = self.newest_media()
+            idle_for = time.time() - (newest or self.started)
+            if idle_for > STALL_SECS and not self.restarting:
+                self.error = ("no-data: source delivered nothing for %d s "
+                              "(stalled ffmpeg killed by watchdog)"
+                              % int(idle_for))
+                CONNECTION.note("stream watchdog: %s stalled %ds - killing"
+                                % (self.key, int(idle_for)))
+                self.stop()
 
     def _restart(self):
         time.sleep(1.0)
         self.proc = None
         self.restarting = False
+        self.error = None
+        self.started = time.time()
         self.start()
 
     def stop(self):
@@ -2402,12 +2479,37 @@ class StreamEngine(object):
 
     def playlist_for(self, source, protocol):
         s = self.ensure(source, protocol)
-        # wait briefly for the first playlist
+        # wait briefly for the first playlist - but a session that already
+        # failed (ffmpeg missing / exited) must answer at ONCE, not spin the
+        # player for 15 more seconds before the overlay appears
         for _ in range(60):
-            if os.path.exists(s.playlist):
+            if os.path.exists(s.playlist) or s.error:
                 break
             time.sleep(0.25)
+        if not os.path.exists(s.playlist) and s.error is None:
+            # 15 s and not one byte of media: give the failure a NAME so the
+            # handler answers 500 and the player overlay appears at once -
+            # an endless 404 "waiting" is what kept the screen silently black.
+            rc = s.proc.poll() if s.proc is not None else None
+            if rc is not None:
+                s.error = ("ffmpeg exited (%s) before any media: %s"
+                           % (rc, " | ".join(list(s.log)[-3:]) or "no output"))
+            else:
+                s.error = ("no-data: nothing arrived from the source in 15 s "
+                           "(ffmpeg still waiting on it)")
         return s
+
+    def maintain(self):
+        """Called by the APK's 5 s maintenance loop (app_loop). check() used
+        to have NO caller at all - sessions died or stalled and nothing ever
+        looked at them again."""
+        with self.lock:
+            sessions = list(self.sessions.values())
+        for s in sessions:
+            try:
+                s.check()
+            except Exception:
+                pass
 
     def status(self):
         with self.lock:
@@ -2820,6 +2922,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(CONNECTION.state())
             if path == "/api/diagnose":
                 return self._json(diagnose())
+            if path == "/api/streams":
+                # the player overlay reads session error/codec/restarts/log
+                # from here; without this route every diagnosis line in the
+                # overlay was silently empty.
+                return self._json(STREAMS.status())
             if path == "/api/m3u":
                 d = load_m3u()
                 if q.get("refresh", ["0"])[0] in ("1", "true"):
