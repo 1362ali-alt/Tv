@@ -3390,9 +3390,17 @@ def _kill_port_owner(port):
 def main():
     port = int(os.environ.get("IPTV_PORT", "8787"))
     host = os.environ.get("IPTV_HOST", "127.0.0.1")
-    # BaseApplication.onCreate(): the handshake, the UDP 27777 announce listener
-    # and the 5 s maintenance loop all start before the first request is served.
-    CONNECTION.on_create()
+    # Bind FIRST, then run BaseApplication.onCreate() in the background.
+    # Field photo 2026-11-21 proved why: on a head-end that silently drops
+    # packets (not refuses - the VLAN pattern), every synchronous handshake
+    # step eats its full 8 s timeout, so the HTTP server bound ~40 s in -
+    # long after the launcher's patience ran out, and the resident saw
+    # "launch failed" on a machine where the backend was merely slow.
+    # The APK's own boot screen is a poll of connection state; serving the
+    # API instantly and letting the UI watch the handshake progress IS the
+    # ported behaviour ("attempt N of 20" while ping_loop runs).
+    threading.Thread(target=CONNECTION.on_create, daemon=True,
+                     name="on-create").start()
     srv = None
     for attempt in range(1, 11):
         try:

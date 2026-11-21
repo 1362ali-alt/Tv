@@ -242,6 +242,12 @@ if ($wantBuild) {
         $up = Start-OurBackend
         $got = Get-BackendBuild
     }
+    if (-not (Test-BackendEngine)) {
+        # nothing answers at all: our backend crashed or is stuck BEFORE
+        # binding - the port is NOT "held by another program" and saying so
+        # sent the resident on a wild-goose chase (field photo 2026-11-21).
+        Fail "The backend process did not answer on port $port at all. Open _userdata\backend.log next to this file - the last lines say why (python crash, antivirus block, ...). Send a photo of it."
+    }
     if ($got -ne $wantBuild) {
         Fail "Another program is holding port $port and could not be replaced (found build '$got', this package is '$wantBuild'). Restart Windows once, then run PORTABLE.bat again."
     }
