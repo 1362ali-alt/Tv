@@ -6,7 +6,7 @@
   "commit": "93b17e5",
   "url": "https://raw.githubusercontent.com/1362ali-alt/Tv/arena/8d696e12-tv/dist/PARDIK-IPTV-RonikaPalace-Kohak-Win10-x64-2.7.2.06-93b17e5.zip"
  },
- "commit": "b53d3bb",
+ "commit": "5fa44b9",
  "hotel": {
   "name": "PARDIK-SMART-IPTV-Win10-x64-2.7.2.06-93b17e5.zip",
   "sha256": "44832d8463772f543a961d8d4ba8735ec7a1f2fd6343487f08cb158a85c60b95",
@@ -15,10 +15,10 @@
   "url": "https://raw.githubusercontent.com/1362ali-alt/Tv/arena/8d696e12-tv/dist/PARDIK-SMART-IPTV-Win10-x64-2.7.2.06-93b17e5.zip"
  },
  "portable": {
-  "name": "PARDIK-IPTV-PORTABLE-2.7.2.06-b53d3bb.zip",
-  "sha256": "5d8312e86459bcfe76b1c8057918ab44791925bbf5fac875cbe9d13505669696",
-  "size": 99672652,
-  "commit": "b53d3bb",
-  "url": "https://raw.githubusercontent.com/1362ali-alt/Tv/arena/8d696e12-tv/dist/PARDIK-IPTV-PORTABLE-2.7.2.06-b53d3bb.zip"
+  "name": "PARDIK-IPTV-PORTABLE-2.7.2.06-5fa44b9.zip",
+  "sha256": "15198d600a616ec48dbed53f54f191f3e213cb2e357f6293a5bfa4cf5fb05a84",
+  "size": 99673922,
+  "commit": "5fa44b9",
+  "url": "https://raw.githubusercontent.com/1362ali-alt/Tv/arena/8d696e12-tv/dist/PARDIK-IPTV-PORTABLE-2.7.2.06-5fa44b9.zip"
  }
 }
