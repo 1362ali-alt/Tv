@@ -73,6 +73,9 @@ if [ "$MODE" = "portable" ]; then
     cp -r vendor/python "$STAGE/PARDIK-SMART-IPTV/runtime/python"
     cp vendor/ffmpeg.exe "$STAGE/PARDIK-SMART-IPTV/tools/ffmpeg.exe"
     cp -r vendor/vlc "$STAGE/PARDIK-SMART-IPTV/tools/vlc"
+    if [ -f vendor/PROVENANCE.txt ]; then
+        cp vendor/PROVENANCE.txt "$STAGE/PARDIK-SMART-IPTV/PROVENANCE.txt"
+    fi
 fi
 # launch.ps1 reads mode.txt to pick the deployment flavour (IPTV_MODE)
 printf '%s\r\n' "$MODE" > "$STAGE/PARDIK-SMART-IPTV/mode.txt"

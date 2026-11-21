@@ -2083,7 +2083,9 @@ async function showPlayerError(extra, opts) {
     det.hidden = !lines.length;
     det.textContent = lines.join("\n");
   }
-  const hevc = /hevc|h265/i.test(codec);
+  /* HEVC and MPEG-2 video: Edge's MSE decodes neither from a copied TS -
+     both must route to VLC (which is bundled in the portable edition). */
+  const hevc = /hevc|h265|mpeg2/i.test(codec);
   const decodeFail = !!(opts && opts.decode);
   const vlcBtn = $("#player-vlc");
   if (vlcBtn) vlcBtn.hidden = !S.config.vlc_installed;
@@ -2094,7 +2096,7 @@ async function showPlayerError(extra, opts) {
   }
   if (hevc && !S.config.vlc_installed && det) {
     det.textContent += "\n" + t("hevc_need_vlc",
-      "این کانال H.265/HEVC است و مرورگر آن را کدگشایی نمی‌کند؛ VLC را نصب کنید تا پخش خودکار سپرده شود.");
+      "این کانال H.265/HEVC یا MPEG-2 است و مرورگر آن را کدگشایی نمی‌کند؛ VLC را نصب کنید تا پخش خودکار سپرده شود.");
   }
   if ((hevc || decodeFail) && S.config.vlc_installed && !S.vlcTried) {
     S.vlcTried = true;

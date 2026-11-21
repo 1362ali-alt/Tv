@@ -159,9 +159,19 @@ function Stop-StaleBackend {
         Where-Object { $_.CommandLine -like "*iptv_backend.py*" } |
         ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
     try {
+        # NEVER kill an innocent process that happens to hold the port: only a
+        # python running iptv_backend.py is ours.
         Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue |
             Select-Object -ExpandProperty OwningProcess -Unique |
-            ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
+            ForEach-Object {
+                $op = Get-CimInstance Win32_Process -Filter "ProcessId=$_" -ErrorAction SilentlyContinue
+                if ($op -and ($op.CommandLine -like "*iptv_backend*" -or $op.Name -like "python*")) {
+                    Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue
+                    Log "killed stale backend PID $_ ($($op.Name))"
+                } else {
+                    Log "port $port owner PID $_ ($($op.Name)) is NOT ours - left running"
+                }
+            }
     } catch { }
 }
 function Test-BackendEngine {
@@ -218,7 +228,14 @@ if ($wantBuild) {
         Stop-StaleBackend
         Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue |
             Select-Object -ExpandProperty OwningProcess -Unique |
-            ForEach-Object { & taskkill /F /PID $_ 2>$null | Out-Null }
+            ForEach-Object {
+                $op = Get-CimInstance Win32_Process -Filter "ProcessId=$_" -ErrorAction SilentlyContinue
+                if ($op -and ($op.CommandLine -like "*iptv_backend*" -or $op.Name -like "python*")) {
+                    & taskkill /F /PID $_ 2>$null | Out-Null
+                } else {
+                    Log "hard-kill: port owner PID $_ ($($op.Name)) is NOT ours - left running"
+                }
+            }
         Start-Sleep -Milliseconds 800
         $up = Start-OurBackend
         $got = Get-BackendBuild

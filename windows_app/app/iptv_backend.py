@@ -1620,6 +1620,35 @@ def diagnose():
             chk("get_live_tv", False, "هیچ کانالی برنگشت",
                 "سرور کانالی برای این MAC/واحد برنگرداند؛ ثبت دستگاه در پنل پردیک را بررسی کنید.")
 
+    # 4b. RTSP over TCP: the decisive discriminator between "the media plane
+    #     is unreachable" (VLAN / switch / server firewall) and "the media
+    #     server answers but this client gets nothing" (registration). RTSP
+    #     is TCP 554 - the Windows firewall's inbound UDP rules cannot be the
+    #     reason a TCP OPTIONS dies, so a red line here means NETWORK, not
+    #     this machine's firewall.
+    sip = str(SETTINGS.get("server_ip") or "")
+    rtsp_port = int(SETTINGS.get("rtsp_port") or 554)
+    if sip and not sip.startswith("169.254."):
+        rsp, rerr = "", ""
+        try:
+            sk = socket.create_connection((sip, rtsp_port), timeout=4)
+            sk.settimeout(3)
+            sk.sendall(("OPTIONS rtsp://%s:%d RTSP/1.0\r\nCSeq: 1\r\n\r\n"
+                        % (sip, rtsp_port)).encode("ascii"))
+            rsp = sk.recv(200).decode("utf-8", "replace").strip()
+            sk.close()
+        except Exception as e:
+            rerr = str(e)
+        ok = rsp.upper().startswith("RTSP/1.0")
+        chk("rtsp_tcp", ok,
+            (rsp.splitlines()[0][:80] if rsp else (rerr or "پاسخی نیامد")),
+            ("پورت TCP %d رسانه باز است ولی پاسخ RTSP نیامد؛ سرویس رسانهٔ "
+             "هداند مشکل دارد." % rtsp_port) if not rerr else
+            ("به پورت RTSP (TCP %s:%d) نمی‌رسیم. این مسیر TCP است و فایروال "
+             "UDP مقصرش نیست: یا این کامپیوتر در VLAN دیگری نسبت به گیرنده‌های "
+             "ساختمان است، یا سرور رسانه فقط به دستگاه‌های ثبت‌شده سرویس "
+             "می‌دهد. با مدیر شبکهٔ مجتمع چک کنید." % (sip, rtsp_port)))
+
     # 5. can THIS machine actually receive the head-end's multicast? Android
     #    joins the group inside IjkMediaPlayer; on Windows the firewall or a
     #    VPN adapter can swallow the membership silently - VLC's cone and a
@@ -2293,7 +2322,9 @@ class StreamSession(object):
         # _drain parses it, so no SECOND ffmpeg session has to probe the
         # stream (an RTSP head-end may allow only one session per client,
         # and two ffmpegs on one multicast group doubles the loss).
-        args = [ff, "-hide_banner", "-loglevel", "info", "-y"]
+        # -nostats: ffmpeg's progress block ends with \r, which readline()
+        # never sees as a line ending - one "line" would grow without bound.
+        args = [ff, "-hide_banner", "-loglevel", "info", "-nostats", "-y"]
         if self.protocol == "rtsp":
             # TCP-interleaved plus a 10 s socket timeout: an RTSP server that
             # accepts the connection and then sends nothing must kill ffmpeg,
@@ -3271,6 +3302,25 @@ class Handler(BaseHTTPRequestHandler):
                                     "Access-Control-Allow-Methods": "GET,POST,OPTIONS"})
 
 
+def _pid_identity(pid):
+    """(image name, command line) of a pid via CIM - used to NEVER taskkill
+    an innocent process that merely happens to hold our port."""
+    try:
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             "$p = Get-CimInstance Win32_Process -Filter \"ProcessId=%s\";"
+             "if ($p) { $p.Name + '|' + $p.CommandLine }" % pid],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=20,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        ).stdout.decode("utf-8", "replace").strip()
+        if "|" in out:
+            n, c = out.split("|", 1)
+            return n.strip().lower(), c.strip()
+        return out.strip().lower(), ""
+    except Exception:
+        return "", ""
+
+
 def _kill_port_owner(port):
     """The field failure this exists for: an OLD backend (an install from
     rounds ago, auto-started at logon) holds 8787, the new one cannot bind,
@@ -3299,6 +3349,15 @@ def _kill_port_owner(port):
     pids.discard(str(os.getpid()))
     killed = False
     for pid in pids:
+        # only a PARDIK backend may be killed for holding OUR port: a python
+        # running iptv_backend.py. Anything else is logged and left alone -
+        # taskkilling an unknown application would be worse than the failure.
+        name, cmd = _pid_identity(pid)
+        if not (name.startswith("python") and "iptv_backend" in cmd.lower()):
+            CONNECTION.note("port-kill: PID %s (%s) is NOT a PARDIK backend - "
+                            "left running" % (pid, name or "unknown"))
+            append_log("PORT-KILL skipped pid=%s name=%s" % (pid, name))
+            continue
         try:
             r = subprocess.run(["taskkill", "/F", "/PID", pid],
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,

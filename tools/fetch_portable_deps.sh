@@ -7,23 +7,37 @@
 #   vendor/vlc/        portable VLC (PortableApps mirror repo on GitHub),
 #                      locales pruned to fa*/en* to keep the zip < 100 MB
 #
-# All sources are reachable from the build sandbox's allowlist (github.com,
-# pypi.org/files.pythonhosted.org). Re-runs are cheap: existing vendor parts
-# are kept. NEVER commit vendor/ (see .gitignore) - it is ~250 MB of binaries.
+# Supply chain: OFFICIAL sources are tried first (python.org embeddable zip,
+# get.videolan.org win64 zip, PyPI wheel verified against the PyPI JSON
+# sha256). The GitHub mirrors are the FALLBACK for build sandboxes whose
+# network only allows github.com - mirror commits are pinned below and every
+# fetched binary's sha256 lands in vendor/PROVENANCE.txt, which ships inside
+# the portable zip so anyone can verify what was bundled. Re-runs are cheap:
+# existing vendor parts are kept. NEVER commit vendor/ (see .gitignore).
+PY_MIRROR_COMMIT="${PY_MIRROR_COMMIT:-9d36aea98fb98f803a6b3166b9d6fbff8c9e4bbf}"
+VLC_MIRROR_COMMIT="${VLC_MIRROR_COMMIT:-7025703ef18c7a4bacb5b6ad588d367b86223607}"
 set -e
 cd "$(dirname "$0")/.."
 mkdir -p vendor/src
 
 # --- 1. Python 3.12.8 embeddable (Windows x64) -----------------------------
 if [ ! -f vendor/python/python.exe ]; then
-    if [ ! -d vendor/src/pym ]; then
-        git clone -q --depth 1 \
-            https://github.com/dm1495122-dot/python-3.12.8-embeddable-amd64 \
-            vendor/src/pym
+    off=vendor/src/python-3.12.8-embed-amd64.zip
+    curl -sfL -o "$off" "https://www.python.org/ftp/python/3.12.8/python-3.12.8-embed-amd64.zip" || rm -f "$off"
+    if [ -f "$off" ]; then
+        echo "python: official python.org embeddable"
+        mkdir -p vendor/python
+        unzip -qo "$off" -d vendor/python
+    else
+        echo "python: official unreachable -> GitHub mirror @ $PY_MIRROR_COMMIT"
+        if [ ! -d vendor/src/pym ]; then
+            git clone -q https://github.com/dm1495122-dot/python-3.12.8-embeddable-amd64 vendor/src/pym
+            (cd vendor/src/pym && git checkout -q "$PY_MIRROR_COMMIT" 2>/dev/null || true)
+        fi
+        mkdir -p vendor/python
+        (cd vendor/src/pym && tar cf - --exclude=.git --exclude=.gitignore \
+            --exclude=.gitattributes .) | (cd vendor/python && tar xf -)
     fi
-    mkdir -p vendor/python
-    (cd vendor/src/pym && tar cf - --exclude=.git --exclude=.gitignore \
-        --exclude=.gitattributes .) | (cd vendor/python && tar xf -)
     # drop stdlib parts a pure-stdlib backend never imports (~400 KB)
     python3 - <<'TRIM'
 import zipfile
@@ -52,10 +66,16 @@ FFWHEEL_VER="${FFWHEEL_VER:-0.4.9}"
 if [ ! -f vendor/ffmpeg.exe ]; then
     whl="vendor/src/imageio_ffmpeg-${FFWHEEL_VER}-py3-none-win_amd64.whl"
     if [ ! -f "$whl" ]; then
-        url=$(curl -s "https://pypi.org/pypi/imageio-ffmpeg/${FFWHEEL_VER}/json" |
-              python3 -c "import json,sys; print([f['url'] for f in json.load(sys.stdin)['urls'] if 'win_amd64' in f['filename']][0])")
+        read -r url want < <(curl -s "https://pypi.org/pypi/imageio-ffmpeg/${FFWHEEL_VER}/json" |
+              python3 -c "import json,sys; f=[f for f in json.load(sys.stdin)['urls'] if 'win_amd64' in f['filename']][0]; print(f['url'], f['digests']['sha256'])")
         echo "downloading $url"
         curl -sL -o "$whl" "$url"
+        got=$(sha256sum "$whl" | cut -d' ' -f1)
+        if [ "$got" != "$want" ]; then
+            echo "FATAL: imageio-ffmpeg wheel sha256 mismatch: got $got want $want" >&2
+            rm -f "$whl"; exit 1
+        fi
+        echo "wheel sha256 verified against PyPI JSON"
     fi
     python3 - "$whl" <<'PY'
 import sys, zipfile, shutil, os
@@ -69,12 +89,21 @@ fi
 
 # --- 3. Portable VLC --------------------------------------------------------
 if [ ! -f vendor/vlc/vlc.exe ]; then
-    if [ ! -d vendor/src/vlc ]; then
-        git clone -q --depth 1 \
-            https://github.com/Daniel-Paschoalinoto/vlc-portable vendor/src/vlc
+    offv=vendor/src/vlc-3.0.21-win64.zip
+    curl -sfL -o "$offv" "https://get.videolan.org/vlc/3.0.21/win64/vlc-3.0.21-win64.zip" || rm -f "$offv"
+    if [ -f "$offv" ]; then
+        echo "vlc: official get.videolan.org win64 zip"
+        mkdir -p vendor/vlc
+        unzip -qo "$offv" -d vendor/vlc
+    else
+        echo "vlc: official unreachable -> GitHub mirror @ $VLC_MIRROR_COMMIT"
+        if [ ! -d vendor/src/vlc ]; then
+            git clone -q https://github.com/Daniel-Paschoalinoto/vlc-portable vendor/src/vlc
+            (cd vendor/src/vlc && git checkout -q "$VLC_MIRROR_COMMIT" 2>/dev/null || true)
+        fi
+        mkdir -p vendor/vlc
+        cp -r vendor/src/vlc/App/vlc/. vendor/vlc/
     fi
-    mkdir -p vendor/vlc
-    cp -r vendor/src/vlc/App/vlc/. vendor/vlc/
     # prune translations except Persian/English (41 MB -> ~2 MB)
     find vendor/vlc/locale -mindepth 1 -maxdepth 1 -type d \
         ! -name 'fa*' ! -name 'en*' -exec rm -rf {} +
@@ -89,4 +118,34 @@ if [ ! -f vendor/vlc/vlc.exe ]; then
            vendor/vlc/lua vendor/vlc/hrtfs
     echo "vendor/vlc ready: $(du -sh vendor/vlc | cut -f1)"
 fi
+# --- provenance: what exactly was bundled, from where, with which hash -----
+{
+    echo "PARDIK IPTV portable - bundled dependency provenance"
+    echo "generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo
+    echo "python:  Windows embeddable CPython 3.12.8"
+    if [ -f vendor/src/python-3.12.8-embed-amd64.zip ]; then
+        echo "  source: https://www.python.org/ftp/python/3.12.8/python-3.12.8-embed-amd64.zip"
+        echo "  zip sha256: $(sha256sum vendor/src/python-3.12.8-embed-amd64.zip | cut -d' ' -f1)"
+    else
+        echo "  source: mirror github.com/dm1495122-dot/python-3.12.8-embeddable-amd64"
+        echo "  mirror commit: $(git -C vendor/src/pym rev-parse HEAD 2>/dev/null || echo unknown)"
+    fi
+    echo "  python.exe sha256: $(sha256sum vendor/python/python.exe | cut -d' ' -f1)"
+    echo
+    echo "ffmpeg:  static build from imageio-ffmpeg ${FFWHEEL_VER} PyPI wheel"
+    echo "  wheel sha256 verified against the PyPI JSON API at fetch time"
+    echo "  ffmpeg.exe sha256: $(sha256sum vendor/ffmpeg.exe | cut -d' ' -f1)"
+    echo
+    echo "vlc:     portable VLC"
+    if [ -f vendor/src/vlc-3.0.21-win64.zip ]; then
+        echo "  source: https://get.videolan.org/vlc/3.0.21/win64/vlc-3.0.21-win64.zip"
+        echo "  zip sha256: $(sha256sum vendor/src/vlc-3.0.21-win64.zip | cut -d' ' -f1)"
+    else
+        echo "  source: mirror github.com/Daniel-Paschoalinoto/vlc-portable (PortableApps layout)"
+        echo "  mirror commit: $(git -C vendor/src/vlc rev-parse HEAD 2>/dev/null || echo unknown)"
+    fi
+    echo "  vlc.exe sha256: $(sha256sum vendor/vlc/vlc.exe | cut -d' ' -f1)"
+} > vendor/PROVENANCE.txt
+cat vendor/PROVENANCE.txt
 echo "fetch_portable_deps: done"
