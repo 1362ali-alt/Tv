@@ -1680,7 +1680,20 @@ def diagnose():
         except Exception as e:
             rerr = str(e)
         ok = rsp.upper().startswith("RTSP/1.0")
-        chk("rtsp_tcp", ok,
+        any_rtsp = any(
+            (c.get("url") or c.get("src") or "").startswith("rtsp://") or
+            any(v.startswith("rtsp://") for v in (c.get("urls") or {}).values())
+            for c in chans)
+        if not ok and chans and not any_rtsp:
+            # 184/186 field channels are pure multicast: a dead RTSP port
+            # then says nothing about live TV (only VOD/timeshift), so it
+            # must not pollute issues[] (external review).
+            chk("rtsp_tcp", True,
+                (rsp.splitlines()[0][:80] if rsp else (rerr or "پاسخی نیامد")) +
+                " — اطلاعاتی: هیچ کانالی RTSP نیست؛ پخش زندهٔ این هداند فقط "
+                "مولتی‌کست است و RTSP فقط برای VOD/timeshift معنا دارد", "")
+        else:
+            chk("rtsp_tcp", ok,
             (rsp.splitlines()[0][:80] if rsp else (rerr or "پاسخی نیامد")),
             ("پورت TCP %d رسانه باز است ولی پاسخ RTSP نیامد؛ سرویس رسانهٔ "
              "هداند مشکل دارد." % rtsp_port) if not rerr else
@@ -1791,9 +1804,9 @@ def diagnose():
             "فهرست m3u خوانده نشد: %s" % (m.get("error") or "خطای نامشخص"))
     out["sample_channels"] = [
         {"number": c.get("number"), "name": c.get("name") or c.get("name_1") or "",
-         "src": (c.get("hlsUrl") or c.get("httpUrl") or c.get("url") or c.get("rtspUrl") or "")[:120],
+         "src": norm_media_url(c.get("hlsUrl") or c.get("httpUrl") or c.get("url") or c.get("rtspUrl") or "")[:120],
          "kind": classify(c.get("hlsUrl") or c.get("httpUrl") or c.get("url") or c.get("rtspUrl") or ""),
-         "urls": {k: c.get(k) for k in ("url", "rtspUrl", "hlsUrl", "httpUrl") if c.get(k)}}
+         "urls": {k: norm_media_url(c.get(k)) for k in ("url", "rtspUrl", "hlsUrl", "httpUrl") if c.get(k)}}
         for c in chans[:6]]
     out["multicast"] = dict(MULTICAST)
     try:
@@ -2429,6 +2442,12 @@ class StreamSession(object):
         # and two ffmpegs on one multicast group doubles the loss).
         # -nostats: ffmpeg's progress block ends with \r, which readline()
         # never sees as a line ending - one "line" would grow without bound.
+        if self.protocol in ("udp", "rtp"):
+            # the player overlay's multicast line used to read "not run yet"
+            # exactly in the photo the resident sent (external review): the
+            # probe only ran at channel-list load. Probe THIS group now, in
+            # parallel with ffmpeg, so the error screen carries a real count.
+            schedule_multicast_probe([{"url": self.source}], force=True)
         args = [ff, "-hide_banner", "-loglevel", "info", "-nostats", "-y"]
         if self.protocol == "rtsp":
             # TCP-interleaved plus a 10 s socket timeout: an RTSP server that
@@ -2703,8 +2722,17 @@ def choose_play_source(item, settings_obj=None):
     return url or rtsp or http or hls, proto
 
 
+def norm_media_url(u):
+    """The field head-end once sent "udp:/@224.3.0.3:10003" - ONE slash.
+    Left as-is it classifies as http and the channel can never play
+    (external review of the 22:4x capture). Normalize the scheme."""
+    if not u:
+        return u
+    return re.sub(r"^(udp|rtp):/+", lambda m: m.group(1) + "://", u)
+
+
 def classify(url):
-    u = url.lower()
+    u = norm_media_url(url or "").lower()
     if u.startswith("rtsp://"):
         return "rtsp"
     if u.startswith("udp://") or u.startswith("rtp://"):

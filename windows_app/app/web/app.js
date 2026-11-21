@@ -2064,6 +2064,18 @@ async function showPlayerError(extra, opts) {
   const mine = sessions.find(x => x.source === (S.playerCtx || {}).origSrc)
     || sessions[sessions.length - 1] || null;
   const codec = (mine && mine.codec) || "";
+  const ttl = $("#player-error-txt");
+  if (ttl) {
+    /* "Decoding video failed!" on a stream that delivered ZERO bytes blames
+       the decoder for the network's sin (external review): say what really
+       happened when ffmpeg starvation is the story. */
+    const blob = String(extra) + " " + String((mine && mine.error) || "");
+    ttl.textContent = /no-data|nothing for|stalled|source delivered/i.test(blob)
+      ? (S.lang === "fa"
+         ? "داده‌ای از سرچشمه نرسید (شبکه/مولتی‌کست)!"
+         : "No data arrived from the source (network/multicast)!")
+      : t("decoding_video_failed", "Decoding video failed!");
+  }
   const lines = [];
   lines.push("build " + ((S.config && S.config.build) || "?") +
     " · proto " + (((S.settings && S.settings.protocol) || "?")));
@@ -2072,7 +2084,11 @@ async function showPlayerError(extra, opts) {
   if (mine && mine.error) lines.push("ffmpeg: " + String(mine.error).slice(-160));
   else if (mine && mine.log && mine.log.length) lines.push("ffmpeg: " + mine.log[mine.log.length - 1].slice(-160));
   if (((S.playerCtx || {}).origSrc || "").indexOf("udp") === 0) {
-    const mc = (S.config && S.config.multicast) || null;
+    let mc = (S.config && S.config.multicast) || null;
+    try {
+      const cf = await (await fetch("/api/config")).json();
+      if (cf && cf.multicast) mc = cf.multicast;
+    } catch (e) {}
     lines.push(mc && mc.bytes >= 0
       ? "multicast probe: " + mc.bytes + " bytes / 2.5s"
       : "multicast probe: not run yet");
