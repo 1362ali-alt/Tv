@@ -155,9 +155,12 @@ Log $(if ($ff) { "ffmpeg: $ff" } else { "ffmpeg: NOT AVAILABLE (RTSP/UDP playbac
 # endpoint instead of the port: only a backend that answers /api/connection
 # (the BaseApplication/PingServerActivity state) is allowed to stay alive.
 function Stop-StaleBackend {
-    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    # filtered query: the full Win32_Process table took ~15 s on the field
+    # machine's slow WMI and made the launcher look hung before it started
+    Get-CimInstance Win32_Process -Filter "Name like 'python%'" -ErrorAction SilentlyContinue |
         Where-Object { $_.CommandLine -like "*iptv_backend.py*" } |
         ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Milliseconds 600
     try {
         # NEVER kill an innocent process that happens to hold the port: only a
         # python running iptv_backend.py is ours.
@@ -176,6 +179,32 @@ function Stop-StaleBackend {
             }
     } catch { }
 }
+function Dump-PortDiagnostics {
+    # One photo of the console must carry the whole truth: who owns the
+    # port, what that process actually is, and the backend's last words.
+    Log "---- port $port diagnostics ----"
+    try {
+        & "$env:SystemRoot\System32\netstat.exe" -ano | Select-String ":$port" |
+            ForEach-Object { Log ("netstat: " + $_.Line.Trim()) }
+    } catch { }
+    try {
+        Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object {
+                $gp = Get-Process -Id $_ -ErrorAction SilentlyContinue
+                Log ("owner PID $_ name=" + $(if ($gp) { $gp.Name } else { "?" }) + " path=" + $(if ($gp) { $gp.Path } else { "?" }))
+                $cim = Get-CimInstance Win32_Process -Filter "ProcessId=$_" -ErrorAction SilentlyContinue
+                Log ("owner PID $_ cmdline=" + $(if ($cim) { $cim.CommandLine } else { "? (WMI unreadable)" }))
+            }
+    } catch { }
+    $bl = Join-Path $root "_userdata\backend.log"
+    if (Test-Path $bl) {
+        Log "---- last lines of _userdata\backend.log ----"
+        Get-Content -Path $bl -Tail 12 | ForEach-Object { Log ("backend: " + $_) }
+    } else {
+        Log "backend.log does not exist yet - the backend died before writing anything"
+    }
+    Log "---- end diagnostics ----"
+}
 function Test-BackendEngine {
     try {
         $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 -Uri ($url + "api/connection")
@@ -183,10 +212,16 @@ function Test-BackendEngine {
     } catch { return $false }
 }
 function Get-BackendBuild {
-    try {
-        $j = (Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 -Uri ($url + "api/config")).Content | ConvertFrom-Json
-        return [string]$j.build
-    } catch { return "" }
+    # /api/build is three keys and zero machine state - it answers even when
+    # a broken section makes /api/config 500 (field photo 2026-11-21 21:10:
+    # config died, launcher read build '', killed its OWN healthy backend).
+    foreach ($p in @("api/build", "api/config")) {
+        try {
+            $j = (Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 -Uri ($url + $p)).Content | ConvertFrom-Json
+            if ($j -and $j.build) { return [string]$j.build }
+        } catch { }
+    }
+    return ""
 }
 # A backend that answers /api/connection but runs OLD code (left over from a
 # half-failed install) would keep serving stale APIs forever - /api/config
@@ -202,8 +237,9 @@ function Start-OurBackend {
     if ($ff) { $env:IPTV_FFMPEG = $ff }
     Log "starting backend: $py $backend"
     Start-Process -WindowStyle Hidden -FilePath $py -ArgumentList @("`"$backend`"") -WorkingDirectory $app
-    for ($i = 0; $i -lt 40; $i++) {
+    for ($i = 0; $i -lt 75; $i++) {
         Start-Sleep -Milliseconds 400
+        if ($i -eq 40) { Log "still waiting for the backend to answer (a first-run antivirus scan of python.exe can take a while)..." }
         if (Test-BackendEngine) { return $true }
     }
     return $false
@@ -246,10 +282,15 @@ if ($wantBuild) {
         # nothing answers at all: our backend crashed or is stuck BEFORE
         # binding - the port is NOT "held by another program" and saying so
         # sent the resident on a wild-goose chase (field photo 2026-11-21).
-        Fail "The backend process did not answer on port $port at all. Open _userdata\backend.log next to this file - the last lines say why (python crash, antivirus block, ...). Send a photo of it."
+        Dump-PortDiagnostics
+        Fail "The backend process did not answer on port $port at all. The console above now shows who owns the port and the last lines of _userdata\backend.log - send a photo of this whole window."
     }
     if ($got -ne $wantBuild) {
-        Fail "Another program is holding port $port and could not be replaced (found build '$got', this package is '$wantBuild'). Restart Windows once, then run PORTABLE.bat again."
+        # engine alive but wrong/empty stamp: NEVER blame "another program"
+        # again - the 21:10 photo showed OUR OWN healthy backend here, killed
+        # by this very script because /api/config had died on one section.
+        Dump-PortDiagnostics
+        Fail "A backend is running on port $port but reports build '$got' instead of '$wantBuild'. The diagnostics above name the process and quote _userdata\backend.log - send a photo of this whole window."
     }
     Log "backend verified: build $got on port $port"
 } elseif (-not $up) {

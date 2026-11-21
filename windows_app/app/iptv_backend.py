@@ -43,6 +43,10 @@ for _stream in (sys.stdout, sys.stderr):
         pass
 
 APP_VERSION_NAME = "2.7.2.06"
+# defined HERE, above build_stamp(): the call below runs at import time and
+# used to sit ~50 lines ABOVE this assignment - the NameError disappeared
+# into the except and /api/config reported an empty build on every machine.
+HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def build_stamp():
@@ -111,7 +115,6 @@ BRANDING = {
     },
 }
 
-HERE = os.path.dirname(os.path.abspath(__file__))
 WEB_DIR = os.path.join(HERE, "web")
 
 # --------------------------------------------------------------------------- #
@@ -2911,41 +2914,69 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static_file(os.path.join(WEB_DIR, path[5:]))
             if path.startswith("/assets/img/"):
                 return self._app_image(path[len("/assets/img/"):])
+            if path == "/api/build":
+                # Identity probe for the launcher: three keys, zero machine
+                # state. The field photo of 2026-11-21 21:10 proved why this
+                # must exist: /api/config below 500s when ANY one of its
+                # fifteen live sections throws on an odd machine (registry
+                # autostart query, exotic adapter, half-loaded m3u ...), and
+                # PowerShell's suppressed error then reads as build '' -
+                # after which the launcher killed its OWN healthy backend
+                # and ended in a FATAL that named the wrong suspect.
+                return self._json({"build": BUILD_STAMP,
+                                   "version": APP_VERSION_NAME,
+                                   "mode": APP_MODE})
             if path == "/api/config":
-                return self._json({
-                    "version": APP_VERSION_NAME,
-                    "version_code": APP_VERSION_CODE,
-                    "settings": {k: v for k, v in SETTINGS.d.items()
-                                 if k != "password"},
-                    "server": {
-                        "address": SETTINGS.address(),
-                        "protocol": SETTINGS.get("_server_protocol", "rtsp"),
-                    },
-                    "local_ip": detect_local_ip(),
-                    "mac": SETTINGS.get("device_mac"),
-                    "ffmpeg": bool(find_ffmpeg()),
-                    "ffmpeg_fetch": ffmpeg_fetch_state(),
-                    "streams": STREAMS.status(),
-                    "ws": {"prg": bool(WS.prg and WS.prg.connected),
-                           "vol": bool(WS.vol and WS.vol.connected),
-                           "volume": WS.volume, "muted": WS.muted},
-                    # v2.7.2.06 additions
-                    "vlc_installed": bool(find_vlc()),
-                    "vlc_fetch": vlc_fetch_state(),
-                    "multicast": dict(MULTICAST),
-                    "build": BUILD_STAMP,
-                    "autostart": autostart_state(),
-                    "apps_selected": load_apps().get("selected", []),
-                    # residential deployment (Pardik / Ronika Palace Kahak)
-                    "mode": APP_MODE,
-                    "branding": BRANDING[APP_MODE],
-                    "network": {k: NETWORK.get(k) for k in ("mac", "iface", "kind", "ip", "wired")},
-                    "m3u": {k: v for k, v in m3u_public(load_m3u()).items() if k != "channels"},
-                    # connection handshake (BaseApplication / PingServerActivity)
-                    "connection": {k: v for k, v in CONNECTION.state().items()
-                                   if k not in ("log", "sweep_log", "client",
-                                                "server_settings")},
-                })
+                cfg = {"version": APP_VERSION_NAME,
+                       "version_code": APP_VERSION_CODE,
+                       "build": BUILD_STAMP,
+                       "mode": APP_MODE,
+                       "branding": BRANDING[APP_MODE]}
+
+                def _sec(key, fn, default):
+                    # One broken section must never take the whole response
+                    # down: the UI and the launcher both read config partly,
+                    # and a 500 here used to look identical to "no backend".
+                    try:
+                        cfg[key] = fn()
+                    except Exception as e:
+                        cfg[key] = default
+                        cfg.setdefault("_config_errors", {})[key] = repr(e)
+                _sec("settings",
+                     lambda: {k: v for k, v in SETTINGS.d.items()
+                              if k != "password"}, {})
+                _sec("server", lambda: {
+                    "address": SETTINGS.address(),
+                    "protocol": SETTINGS.get("_server_protocol", "rtsp")}, {})
+                _sec("local_ip", detect_local_ip, "")
+                _sec("mac", lambda: SETTINGS.get("device_mac"), "")
+                _sec("ffmpeg", lambda: bool(find_ffmpeg()), False)
+                _sec("ffmpeg_fetch", ffmpeg_fetch_state, {})
+                _sec("streams", STREAMS.status, {})
+                _sec("ws", lambda: {
+                    "prg": bool(WS.prg and WS.prg.connected),
+                    "vol": bool(WS.vol and WS.vol.connected),
+                    "volume": WS.volume, "muted": WS.muted}, {})
+                # v2.7.2.06 additions
+                _sec("vlc_installed", lambda: bool(find_vlc()), False)
+                _sec("vlc_fetch", vlc_fetch_state, {})
+                _sec("multicast", lambda: dict(MULTICAST), {})
+                _sec("autostart", autostart_state, False)
+                _sec("apps_selected",
+                     lambda: load_apps().get("selected", []), [])
+                # residential deployment (Pardik / Ronika Palace Kahak)
+                _sec("network", lambda: {k: NETWORK.get(k) for k in
+                                         ("mac", "iface", "kind", "ip",
+                                          "wired")}, {})
+                _sec("m3u", lambda: {k: v for k, v in
+                                     m3u_public(load_m3u()).items()
+                                     if k != "channels"}, {})
+                # connection handshake (BaseApplication / PingServerActivity)
+                _sec("connection", lambda: {
+                    k: v for k, v in CONNECTION.state().items()
+                    if k not in ("log", "sweep_log", "client",
+                                 "server_settings")}, {})
+                return self._json(cfg)
             if path == "/api/network":
                 global NETWORK
                 NETWORK = detect_network()
