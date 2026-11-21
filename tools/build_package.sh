@@ -76,6 +76,9 @@ if [ "$MODE" = "portable" ]; then
     if [ -f vendor/PROVENANCE.txt ]; then
         cp vendor/PROVENANCE.txt "$STAGE/PARDIK-SMART-IPTV/PROVENANCE.txt"
     fi
+    # user-verifiable integrity list of every bundled runtime file
+    (cd "$STAGE/PARDIK-SMART-IPTV" && find runtime tools -type f -print0 |
+        sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
 fi
 # launch.ps1 reads mode.txt to pick the deployment flavour (IPTV_MODE)
 printf '%s\r\n' "$MODE" > "$STAGE/PARDIK-SMART-IPTV/mode.txt"

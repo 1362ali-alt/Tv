@@ -11,6 +11,11 @@ rem  path is normalized to its absolute form first - a rule saved
 rem  as ...\install\..\tools\ffmpeg.exe never matches the real file.
 rem ============================================================
 setlocal
+rem Without elevation EVERY netsh command below fails; that failure must be
+rem seen, not swallowed - a silently unregistered rule is why multicast can
+rem stay blocked even though "rules added" was printed.
+net session >nul 2>&1
+if errorlevel 1 goto NOADMIN
 for %%I in ("%~dp0..") do set "ROOT=%%~fI"
 set "TOOLS=%ROOT%\tools"
 set "RTPY=%ROOT%\runtime\python\python.exe"
@@ -35,4 +40,16 @@ netsh advfirewall firewall show rule name="PARDIK IPTV vlc multicast" | findstr 
 netsh advfirewall firewall show rule name="PARDIK IPTV python multicast" | findstr /i "Program"
 echo.
 echo Multicast firewall rules added with normalized paths.
+echo If any line above says "requested operation requires elevation",
+echo close this window and re-run the file with Run as administrator.
 pause
+exit /b 0
+:NOADMIN
+echo ============================================================
+echo  ADMINISTRATOR RIGHTS REQUIRED - nothing was changed.
+echo  Close this window, right-click allow_multicast.bat and
+echo  choose "Run as administrator", then check the printed
+echo  Program= lines to confirm the rules registered.
+echo ============================================================
+pause
+exit /b 1

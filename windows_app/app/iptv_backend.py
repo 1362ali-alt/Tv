@@ -1888,32 +1888,34 @@ FFMPEG = None
 FF_DIR = os.environ.get("IPTV_FFMPEG_DIR") or os.path.join(os.path.dirname(HERE), "tools")
 
 
-FFMPEG_MAJOR = None
+RTSP_TIMEOUT_OPT = None
 
 
-def ffmpeg_major():
-    """Major version of the ffmpeg in use - 4.x names the RTSP socket timeout
-    -stimeout, 5.x+ renamed it to -timeout; passing the wrong one makes
-    ffmpeg exit on an unknown option."""
-    global FFMPEG_MAJOR
-    if FFMPEG_MAJOR is None:
-        FFMPEG_MAJOR = 4
+def rtsp_timeout_opt():
+    """Which option name THIS ffmpeg uses for the RTSP socket timeout:
+    4.x calls it -stimeout, 5.x+ renamed it to -timeout (where plain
+    -timeout means listen-mode and would BREAK playback). Guessing from the
+    version string fails on git/daily builds ("git-2020-08-31-..." reads as
+    major 2020), so ask the binary: -h demuxer=rtsp lists the real options."""
+    global RTSP_TIMEOUT_OPT
+    if RTSP_TIMEOUT_OPT is None:
+        RTSP_TIMEOUT_OPT = "-stimeout"
         ff = find_ffmpeg()
         if ff:
             try:
                 out = subprocess.run(
-                    [ff, "-version"], stdout=subprocess.PIPE,
-                    stderr=subprocess.DEVNULL, timeout=15,
+                    [ff, "-hide_banner", "-h", "demuxer=rtsp"],
+                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                    timeout=15,
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 ).stdout.decode("utf-8", "replace")
-                # covers "4.2.2", "v6.0", "n4.4" and git builds like
-                # "N-116833-g45e0a58556" (master -> the new -timeout name)
-                m = re.search(r"ffmpeg version\s+\S*?(\d+)", out)
-                if m:
-                    FFMPEG_MAJOR = int(m.group(1))
+                if re.search(r"\bstimeout\b", out):
+                    RTSP_TIMEOUT_OPT = "-stimeout"
+                elif re.search(r"\btimeout\b", out):
+                    RTSP_TIMEOUT_OPT = "-timeout"
             except Exception:
                 pass
-    return FFMPEG_MAJOR
+    return RTSP_TIMEOUT_OPT
 
 
 def find_ffmpeg():
@@ -2343,11 +2345,9 @@ class StreamSession(object):
         if self.protocol == "rtsp":
             # TCP-interleaved plus a 10 s socket timeout: an RTSP server that
             # accepts the connection and then sends nothing must kill ffmpeg,
-            # not park it. The option was renamed in ffmpeg 5 (stimeout ->
-            # timeout); the bundled build is 4.2.2, a system one may be newer.
-            args += ["-rtsp_transport", "tcp"]
-            args += (["-timeout"] if ffmpeg_major() >= 5 else ["-stimeout"]) \
-                + ["10000000"]
+            # not park it. The option NAME differs between ffmpeg generations
+            # and picking wrong breaks playback, so the binary itself is asked.
+            args += ["-rtsp_transport", "tcp", rtsp_timeout_opt(), "10000000"]
         if self.protocol in ("udp", "rtp"):
             # Windows drops high-bitrate multicast without a bigger socket
             # buffer and ffmpeg's ring; overrun_nonfatal keeps it alive

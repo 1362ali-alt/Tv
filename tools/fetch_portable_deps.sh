@@ -111,6 +111,22 @@ fi
 if [ ! -f vendor/vlc/vlc.exe ]; then
     offv=vendor/src/vlc-3.0.21-win64.zip
     curl -sfL -o "$offv" "https://get.videolan.org/vlc/3.0.21/win64/vlc-3.0.21-win64.zip" || rm -f "$offv"
+    # videolan publishes a .sha256 next to every win zip - use it: an
+    # official download is only trusted when it matches the published hash.
+    if [ -f "$offv" ]; then
+        if curl -sfL -o "$offv.sha256" "https://get.videolan.org/vlc/3.0.21/win64/vlc-3.0.21-win64.zip.sha256" && [ -s "$offv.sha256" ]; then
+            want=$(awk '{print $1}' "$offv.sha256" | tail -1)
+            got=$(sha256sum "$offv" | cut -d' ' -f1)
+            if [ "$got" != "$want" ]; then
+                echo "vlc: official zip sha256 MISMATCH (got $got want $want) - discarding" >&2
+                rm -f "$offv"
+            else
+                echo "vlc: official zip sha256 verified against videolan.org sidecar"
+            fi
+        else
+            echo "vlc: no .sha256 sidecar reachable - recording hash only"
+        fi
+    fi
     if [ -f "$offv" ]; then
         echo "vlc: official get.videolan.org win64 zip"
         mkdir -p vendor/vlc
@@ -146,6 +162,19 @@ if [ ! -f vendor/src/python-3.12.8-embed-amd64.zip ]; then
 fi
 if [ ! -f vendor/src/vlc-3.0.21-win64.zip ]; then
     check_sha256 vendor/vlc/vlc.exe "$VLC_MIRROR_SHA256" "vlc.exe (audit)"
+fi
+# Whole-tree integrity: hashing only the two exes lets a tampered
+# python312.dll or libvlccore.dll ride along. SHA256SUMS covers EVERY file
+# that will be bundled; once generated it is re-verified on every build.
+if [ -f vendor/SHA256SUMS ]; then
+    (cd vendor && sha256sum -c --quiet SHA256SUMS) || {
+        echo "FATAL: vendor tree does not match SHA256SUMS - refusing to build" >&2
+        exit 1; }
+    echo "vendor/SHA256SUMS: all bundled files verified"
+else
+    (cd vendor && find python vlc ffmpeg.exe -type f -print0 | sort -z |
+        xargs -0 sha256sum > SHA256SUMS)
+    echo "vendor/SHA256SUMS: created ($(wc -l < vendor/SHA256SUMS) files)"
 fi
 
 # --- provenance: what exactly was bundled, from where, with which hash -----
