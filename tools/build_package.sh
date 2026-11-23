@@ -61,6 +61,7 @@ if [ "$MODE" = "portable" ]; then
     # everything stays inside the folder: data_dir() sees portable.flag
     printf 'portable\r\n' > "$STAGE/PARDIK-SMART-IPTV/portable.flag"
     cp windows_app/PORTABLE.bat "$STAGE/PARDIK-SMART-IPTV/PORTABLE.bat"
+    cp windows_app/STOP.bat "$STAGE/PARDIK-SMART-IPTV/STOP.bat"
     cp windows_app/README-PORTABLE-FA.md "$STAGE/PARDIK-SMART-IPTV/README-PORTABLE-FA.md"
     # FULL bundle: python + ffmpeg + vlc ship INSIDE the zip, so the target
     # machine needs no internet, no installer, no preinstalled anything.
