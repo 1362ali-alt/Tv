@@ -1646,6 +1646,20 @@ def diagnose():
              "پاردیک ثبت/فعال نشده و سرویس رسانه فقط به کلاینت‌های فعال جریان می‌دهد. "
              "متن پاردیک در README پورتابل را بفرستید تا همین MAC فعال شود."))
 
+    fw_ok = fw_marker_present()
+    chk("firewall_rules", fw_ok,
+        "marker=%s root=%s" % ("present" if fw_ok else "missing", fw_root()),
+        "" if fw_ok else
+        ("قاعده‌های فایروال مولتی‌کست برای پوشهٔ در حال اجرا ثبت نشده؛ روی پیام پخش "
+         "دکمهٔ «ثبت فایروال (UAC)» را بزنید یا install\\allow_multicast.bat را با "
+         "Run as administrator اجرا کنید. بدون آن python/ffmpeg کر می‌مانند ولی VLC بازی می‌کند."))
+    root = fw_root()
+    chk("serving_root", "appdata" not in root.lower(), root,
+        "" if "appdata" not in root.lower() else
+        ("پورت 8787 دست نسخهٔ نصبی قدیمی (AppData) است نه پوشهٔ پورتابلی که باز کردید؛ "
+         "STOP.bat بزنید، نسخهٔ نصبی را از Control Panel حذف کنید و PORTABLE.bat همین "
+         "پوشه را اجرا کنید."))
+
     # 4. the platform contract: GetSettings then the live tables
     st = None
     if tcp_ms is not None:
@@ -2294,7 +2308,62 @@ def udp_bind_url(url):
     return url + ("&" if "?" in url else "?") + "localaddr=" + lip
 
 
-MULTICAST = {"url": "", "bytes": -1, "at": 0.0, "error": "", "mode": ""}
+MULTICAST = {"url": "", "bytes": -1, "at": 0.0, "error": "", "mode": "",
+           "groups": []}
+
+# Field capture 23:08: the launcher's one-shot UAC never fired because port
+# 8787 was already held by the self-updated INSTALLED copy serving from its
+# own folder - the new folder's launch.ps1 never ran at all. So firewall
+# registration now lives in the BACKEND: whichever copy serves can raise the
+# consent prompt (overlay button, plus one auto-ask after a blind probe), and
+# /api/fw_state names the serving root so "which copy am I even running?"
+# answers itself instead of eating another field evening.
+FW = {"asked": False, "proc": None}
+
+
+def fw_marker_path():
+    return os.path.normpath(os.path.join(HERE, "..", "install", "fw_rules.ok"))
+
+
+def fw_root():
+    return os.path.normpath(os.path.join(HERE, ".."))
+
+
+def fw_marker_present():
+    try:
+        return os.path.exists(fw_marker_path())
+    except Exception:
+        return False
+
+
+def fw_state():
+    root = fw_root()
+    return {"marker": fw_marker_present(), "root": root,
+            "installed_copy": "appdata" in root.lower(),
+            "pending": FW.get("proc") is not None and FW["proc"].poll() is None}
+
+
+def fw_spawn_uac():
+    """Raise the multicast-firewall consent prompt from the backend itself."""
+    bat = os.path.normpath(os.path.join(HERE, "..", "install",
+                                         "allow_multicast.bat"))
+    if not os.path.exists(bat):
+        return {"state": "error", "error": "allow_multicast.bat missing"}
+    if fw_marker_present():
+        return {"state": "marker"}
+    if FW.get("proc") is not None and FW["proc"].poll() is None:
+        return {"state": "pending"}
+    try:
+        FW["proc"] = subprocess.Popen(
+            ["powershell", "-NoProfile", "-Command",
+             "Start-Process -FilePath '%s' -ArgumentList 'auto' -Verb RunAs "
+             "-Wait" % bat],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        FW["asked"] = True
+        append_log("FW UAC consent requested from backend (root=%s)" % fw_root())
+        return {"state": "asked"}
+    except Exception as e:
+        return {"state": "error", "error": str(e)}
 
 # Field capture 2026-11-23: media_ports said "554:drop 8060:open 8080:drop".
 # 8060 is the vendor's timeshift/HLS port (the APK's own debug literal is a
@@ -2355,20 +2424,45 @@ def probe_timeshift_background():
 
 
 def schedule_multicast_probe(chans, force=False):
-    url = next((c.get("url") or "" for c in chans
-                if (c.get("url") or "").startswith(("udp://", "rtp://"))), "")
-    if not url:
+    # 23:08 capture: VLC went dark on ONE channel while PRESS TV had played
+    # an hour earlier - "is the channel dead or are we blind?" must be
+    # answerable in-app, so the probe visits up to three distinct groups.
+    urls = []
+    for c in chans or []:
+        u = (c.get("url") or "") if isinstance(c, dict) else ""
+        if u.startswith(("udp://", "rtp://")) and u not in urls:
+            urls.append(u)
+        if len(urls) >= 3:
+            break
+    if not urls:
         return
+    url = urls[0]
     now = time.time()
     if not force and MULTICAST["url"] == url and now - MULTICAST["at"] < 120:
         return
     MULTICAST["url"] = url
 
     def run():
-        got, err = _multicast_probe(url, NETWORK.get("ip") or "")
-        MULTICAST.update(bytes=got, at=time.time(), error=err)
-        append_log("MULTICAST %s bytes=%d %s" % (url, got, err))
-        CONNECTION.note("multicast probe %s -> %d bytes %s" % (url, got, err))
+        groups = []
+        for u in urls:
+            got, err = _multicast_probe(u, NETWORK.get("ip") or "")
+            groups.append({"url": u, "bytes": got, "error": err,
+                           "mode": MULTICAST.get("mode") or ""})
+        got, err = groups[0]["bytes"], groups[0]["error"]
+        MULTICAST.update(bytes=got, at=time.time(), error=err, groups=groups,
+                         mode=groups[0].get("mode") or "")
+        flowed = sum(1 for g in groups if g["bytes"] > 0)
+        append_log("MULTICAST %s bytes=%d %s | groups %d/%d flowed"
+                   % (url, got, err, flowed, len(groups)))
+        CONNECTION.note("multicast probe %s -> %d bytes %s (%d/%d groups)"
+                        % (url, got, err, flowed, len(groups)))
+        # the launcher's UAC may never fire (another copy serves the port),
+        # so the backend raises the consent prompt itself, once per session,
+        # the first time a blind probe meets an unregistered folder
+        if flowed == 0 and not fw_marker_present() and not FW["asked"]:
+            FW["asked"] = True
+            append_log("FW auto-UAC after blind probe: %s"
+                       % fw_spawn_uac().get("state"))
     threading.Thread(target=run, daemon=True, name="mc-probe").start()
 
 
@@ -3221,6 +3315,8 @@ class Handler(BaseHTTPRequestHandler):
                 # BaseApplication.isConnected() + PingServerActivity state: the
                 # UI reads this to know whether the live-TV menu may open.
                 return self._json(CONNECTION.state())
+            if path == "/api/fw_state":
+                return self._json(fw_state())
             if path == "/api/diagnose":
                 return self._json(diagnose())
             if path == "/api/streams":
@@ -3309,6 +3405,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(ensure_vlc("player banner"))
         if u.path == "/api/update/apply":
             return self._json(update_apply())
+        if u.path == "/api/register_firewall":
+            return self._json(fw_spawn_uac())
         if u.path == "/api/player_report":
             append_log("PLAYER " + str(data.get("text") or "")[:300])
             return self._json({"ok": True})

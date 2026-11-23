@@ -2093,12 +2093,25 @@ async function showPlayerError(extra, opts) {
       ? "multicast probe: " + mc.bytes + " bytes / 2.5s" +
         (mc.mode ? " (" + mc.mode + ")" : "")
       : "multicast probe: not run yet");
+    if (mc && mc.groups && mc.groups.length > 1)
+      lines.push("groups flowed: " +
+        mc.groups.filter(g => g.bytes > 0).length + "/" + mc.groups.length +
+        " (کانال‌های دیگر همان شبکه)");
   }
   try {
     const cn = await (await fetch("/api/connection")).json();
     const cl = cn && cn.client;
     if (cl && cl.enable === false)
       lines.push("server client record: enable=False (MAC ثبت/فعال نشده!)");
+  } catch (e) {}
+  let fwMissing = false;
+  try {
+    const fw = await (await fetch("/api/fw_state")).json();
+    fwMissing = !!fw && fw.marker === false;
+    if (fwMissing)
+      lines.push("firewall rules: NOT registered" +
+        (fw.installed_copy ? " — serving root is the INSTALLED copy: "
+                           : " for root: ") + (fw.root || "?"));
   } catch (e) {}
   if (extra) lines.push(String(extra).slice(0, 160));
   const det = $("#player-error-detail");
@@ -2116,6 +2129,39 @@ async function showPlayerError(extra, opts) {
   if (instBtn) {
     instBtn.hidden = !((S.config.vlc_fetch || {}).enabled && !S.config.vlc_installed);
     instBtn.onclick = () => healVlc(S.playerCtx.item);
+  }
+  /* The 23:08 capture: the launcher's one-shot UAC never appeared because a
+     different copy held the port - so the consent prompt became reachable
+     from the error overlay itself, with a poll until the marker lands. */
+  const fwBtn = $("#player-fw");
+  if (fwBtn) {
+    fwBtn.hidden = !fwMissing;
+    fwBtn.disabled = false;
+    fwBtn.textContent = "ثبت فایروال (UAC)";
+    fwBtn.onclick = async () => {
+      fwBtn.disabled = true;
+      fwBtn.textContent = "درخواست UAC…";
+      try { await apiPost("/api/register_firewall", {}); } catch (e) {}
+      let ok = false;
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        try {
+          const st = await (await fetch("/api/fw_state")).json();
+          if (st && st.marker) { ok = true; break; }
+        } catch (e) {}
+      }
+      if (ok) {
+        toast(t("fw_registered", "قاعده‌های فایروال ثبت شد؛ تلاش دوباره…"));
+        fwBtn.hidden = true;
+        const rt = $("#player-retry");
+        if (rt) rt.click();
+      } else {
+        fwBtn.disabled = false;
+        fwBtn.textContent = "ثبت فایروال (UAC)";
+        toast(t("fw_declined",
+          "UAC تأیید نشد؛ «پخش با VLC» همچنان راه‌حل است یا bat را دستی با Run as administrator بزنید."));
+      }
+    };
   }
   if (hevc && !S.config.vlc_installed && det) {
     det.textContent += "\n" + t("hevc_need_vlc",
