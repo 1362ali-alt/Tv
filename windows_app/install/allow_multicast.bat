@@ -42,7 +42,9 @@ echo.
 echo Multicast firewall rules added with normalized paths.
 echo If any line above says "requested operation requires elevation",
 echo close this window and re-run the file with Run as administrator.
-pause
+> "%~dp0fw_rules.ok" echo ok
+rem "auto" = the launcher itself asked (UAC): no pause, window closes alone
+if /i not "%~1"=="auto" pause
 exit /b 0
 :NOADMIN
 echo ============================================================

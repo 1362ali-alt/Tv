@@ -1803,8 +1803,10 @@ def diagnose():
         got, merr = _multicast_probe(murl, ip)
         MULTICAST.update(url=murl, bytes=got, at=time.time(), error=merr)
         chk("multicast_recv", got > 0,
-            ("%s → %d بایت در ۲٫۵ ثانیه (join روی %s)" % (murl, got, ip or "؟"))
-            if got else (merr or ("۰ بایت (join روی %s)" % (ip or "؟"))),
+            ("%s → %d بایت در ۲٫۵ ثانیه (join روی %s، %s)"
+             % (murl, got, ip or "؟", MULTICAST.get("mode") or "?"))
+            if got else (merr or ("۰ بایت (join روی %s، %s)"
+                                 % (ip or "؟", MULTICAST.get("mode") or "?"))),
             "هیچ بستهٔ مولتی‌کستی به این دستگاه نرسید، در حالی که عضویت گروه روی "
             "همین نشانی پین شده بود (ffmpeg با ?localaddr، VLC با --miface-addr، "
             "probe با IP_ADD_MEMBERSHIP روی همان رابط): پس نه آداپتر اشتباه مقصر است "
@@ -2292,7 +2294,7 @@ def udp_bind_url(url):
     return url + ("&" if "?" in url else "?") + "localaddr=" + lip
 
 
-MULTICAST = {"url": "", "bytes": -1, "at": 0.0, "error": ""}
+MULTICAST = {"url": "", "bytes": -1, "at": 0.0, "error": "", "mode": ""}
 
 # Field capture 2026-11-23: media_ports said "554:drop 8060:open 8080:drop".
 # 8060 is the vendor's timeshift/HLS port (the APK's own debug literal is a
@@ -2371,38 +2373,57 @@ def schedule_multicast_probe(chans, force=False):
 
 
 def _multicast_probe(url, local_ip, secs=2.5):
-    """Join the group like a player would and count bytes for `secs`."""
+    """Join the group like a player would and count bytes for `secs`.
+
+    Two bind styles: the field proof of 2026-11-23 (bundled VLC played the
+    live channel while our socket counted 0 bytes) means some Windows
+    stacks deliver multicast only to sockets bound to the GROUP address -
+    which is what VLC does. So a blind first pass earns a group-bind second
+    chance, and the winning mode is reported for the diagnosis."""
     m = re.match(r"(?:udp|rtp)://@?([^:/?@]+):(\d+)", url or "")
     if not m:
         return 0, "bad url"
     grp, port = m.group(1), int(m.group(2))
-    sk = None
-    try:
-        sk = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sk.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sk.bind(("", port))
-        iface = local_ip if local_ip and not local_ip.startswith("169.254.") else "0.0.0.0"
-        sk.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP,
-                      socket.inet_aton(grp) + socket.inet_aton(iface))
-        sk.settimeout(secs)
-        got = 0
-        while got < 3000000:
-            try:
-                b = sk.recv(65536)
-            except socket.timeout:
-                break
-            if not b:
-                break
-            got += len(b)
-        return got, ""
-    except Exception as e:
-        return 0, str(e)
-    finally:
+    iface = local_ip if local_ip and not local_ip.startswith("169.254.") else "0.0.0.0"
+
+    def attempt(bind_addr, secs):
+        sk = None
         try:
-            if sk:
-                sk.close()
-        except Exception:
-            pass
+            sk = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sk.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sk.bind((bind_addr, port))
+            sk.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP,
+                          socket.inet_aton(grp) + socket.inet_aton(iface))
+            sk.settimeout(secs)
+            got = 0
+            while got < 3000000:
+                try:
+                    b = sk.recv(65536)
+                except socket.timeout:
+                    break
+                if not b:
+                    break
+                got += len(b)
+            return got, ""
+        except Exception as e:
+            return 0, str(e)
+        finally:
+            try:
+                if sk:
+                    sk.close()
+            except Exception:
+                pass
+
+    got, err = attempt("", secs)
+    mode = "any-bind" if got else "none"
+    if not got:
+        got2, err2 = attempt(grp, secs)
+        if got2:
+            got, err, mode = got2, err2, "group-bind"
+        else:
+            err = err or err2
+    MULTICAST["mode"] = mode
+    return got, err
 
 
 UPDATE_MANIFEST_URL = ("https://raw.githubusercontent.com/1362ali-alt/Tv/"

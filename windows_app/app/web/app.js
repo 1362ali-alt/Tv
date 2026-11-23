@@ -2090,7 +2090,8 @@ async function showPlayerError(extra, opts) {
       if (cf && cf.multicast) mc = cf.multicast;
     } catch (e) {}
     lines.push(mc && mc.bytes >= 0
-      ? "multicast probe: " + mc.bytes + " bytes / 2.5s"
+      ? "multicast probe: " + mc.bytes + " bytes / 2.5s" +
+        (mc.mode ? " (" + mc.mode + ")" : "")
       : "multicast probe: not run yet");
   }
   try {

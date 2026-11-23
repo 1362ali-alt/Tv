@@ -34,6 +34,25 @@ function Fail($msg) {
 }
 Log "launch start (root=$root)"
 
+# --- multicast firewall rules: once per folder, with a single UAC yes/no ---
+# Field proof 2026-11-23: the bundled VLC PLAYED the live channel while our
+# own python/ffmpeg saw 0 multicast bytes - Windows inbound firewall allows
+# per executable, VLC got its allowance (prompt) and our exes never did.
+# So the launcher now registers the rules ITSELF on first run in a folder:
+# one UAC prompt, marker file, done. Decline it and the VLC fallback still
+# carries playback, exactly as the field photo showed.
+$fwMarker = Join-Path $PSScriptRoot "fw_rules.ok"
+if (-not (Test-Path $fwMarker)) {
+    Log "first run in this folder: asking administrator ONCE to register multicast firewall rules (without them python/ffmpeg receive 0 bytes; VLC only plays because Windows prompted for it)"
+    try {
+        Start-Process -FilePath (Join-Path $PSScriptRoot "allow_multicast.bat") -ArgumentList "auto" -Verb RunAs -Wait
+    } catch {
+        Log "UAC declined or unavailable: in-app multicast may stay blind - the VLC fallback still works, or run install\allow_multicast.bat as admin"
+    }
+    if (Test-Path $fwMarker) { Log "multicast firewall rules registered for this folder" }
+    else { Log "WARNING: fw_rules.ok missing - rules NOT registered; run install\allow_multicast.bat with Run as administrator" }
+}
+
 # --- deployment flavour -----------------------------------------------------
 # Pardik ships the same client for two installations: the residential complex
 # (default, "residential") and the hotel/hospitality platform ("hotel"). The
