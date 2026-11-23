@@ -1729,6 +1729,23 @@ def diagnose():
              "نه تقصیر برنامه است نه فایروال ویندوز؛ متن آمادهٔ ticket برای مدیر "
              "شبکه/پاردیک در README پورتابل آمده است."))
 
+    # 4a-bis. the one open media port: is there live-as-timeshift HLS on it?
+    if not TIMESHIFT["root"] and time.time() - TIMESHIFT["at"] < 300:
+        chk("timeshift_http", True, "probe running - reopen in ~10 s", "")
+    elif TIMESHIFT["tmpl"]:
+        chk("timeshift_http", True,
+            ("template=%s hits=%s" % (TIMESHIFT["tmpl"],
+                                      ",".join(TIMESHIFT["hits"])))[:160],
+            "")
+    else:
+        chk("timeshift_http", False,
+            ("8060 root: %s" % (TIMESHIFT["root"] or "not probed"))[:160],
+            "پورت 8060 هداند باز است ولی قالب HLS/timeShift کشف نشد. نشانی "
+            "http://10.21.0.10:8060/ را در مرورگر باز کنید و عکسش را بفرستید؛ "
+            "همین پرسش در متن پاردیک هم هست.")
+        if time.time() - TIMESHIFT["at"] > 300:
+            probe_timeshift_background()
+
     # 4b. what the head-end orders for playback: server_settings.protocol.
     #     The 2026-11-21 field capture carried protocol=mscore with
     #     streamMediaIp=127.0.0.1:8261 - on the Android box playback runs
@@ -2260,6 +2277,63 @@ def udp_bind_url(url):
 
 
 MULTICAST = {"url": "", "bytes": -1, "at": 0.0, "error": ""}
+
+# Field capture 2026-11-23: media_ports said "554:drop 8060:open 8080:drop".
+# 8060 is the vendor's timeshift/HLS port (the APK's own debug literal is a
+# hard-coded test HLS url on :8060) and it is the ONE media-adjacent port
+# this PC reaches. If the head-end serves live-as-timeshift HLS there, a
+# Windows client can play WITHOUT any VLAN/registration change - so discover
+# the url template empirically and, once found, inject it as each channel's
+# hlsUrl (the picker prefers hls, hls.js plays it natively).
+TIMESHIFT = {"tmpl": "", "at": 0.0, "root": "", "hits": []}
+TS_PATH_CANDIDATES = (
+    "msrec/{n}.m3u8", "msrec/{n}/index.m3u8", "msrec/{n}/now.m3u8",
+    "hls/{n}.m3u8", "live/{n}.m3u8", "{n}.m3u8",
+)
+
+
+def probe_timeshift_background():
+    def run():
+        try:
+            TIMESHIFT["at"] = time.time()
+            st = CONNECTION.state().get("server_settings") or {}
+            ip = str(st.get("timeshiftServerIp") or SETTINGS.get("server_ip") or "")
+            try:
+                port = int(st.get("timeshiftServerPort") or 8060)
+            except Exception:
+                port = 8060
+            if not ip or not port:
+                return
+            base = "http://%s:%d/" % (ip, port)
+            try:
+                with urllib.request.urlopen(base, timeout=2) as r:
+                    TIMESHIFT["root"] = "/ -> HTTP %s %r" % (
+                        r.status, r.read(24))
+            except Exception as e:
+                TIMESHIFT["root"] = "/ -> %s" % (e.__class__.__name__)
+            for n in (1, 2):
+                for cand in TS_PATH_CANDIDATES:
+                    u = base + cand.replace("{n}", str(n))
+                    try:
+                        with urllib.request.urlopen(u, timeout=2) as r:
+                            body = r.read(256)
+                            ct = (r.headers.get("Content-Type") or "").lower()
+                        if (body[:7] == b"#EXTM3U" or body[:1] == b"\x47"
+                                or "mpegurl" in ct):
+                            TIMESHIFT["tmpl"] = base + cand
+                            TIMESHIFT["hits"].append(
+                                "n=%s %s -> HTTP %s %dB"
+                                % (n, cand, r.status, len(body)))
+                            append_log("TIMESHIFT HLS template found: %s"
+                                       % TIMESHIFT["tmpl"])
+                            return
+                    except Exception:
+                        continue
+            append_log("TIMESHIFT probe: no HLS template on %s (%s)"
+                       % (base, TIMESHIFT["root"]))
+        except Exception as e:
+            TIMESHIFT["root"] = (TIMESHIFT["root"] + " | err %r" % (e,))[:160]
+    threading.Thread(target=run, daemon=True, name="ts-probe").start()
 
 
 def schedule_multicast_probe(chans, force=False):
@@ -3141,6 +3215,13 @@ class Handler(BaseHTTPRequestHandler):
                     res = fn(**params) if params else fn()
                     if ep == "live_tv" and isinstance(res, list):
                         schedule_multicast_probe(res)
+                        if TIMESHIFT["tmpl"]:
+                            for b in res:
+                                if isinstance(b, dict) and not b.get("hlsUrl"):
+                                    n = b.get("number") or b.get("id")
+                                    if n is not None:
+                                        b["hlsUrl"] = TIMESHIFT[
+                                            "tmpl"].replace("{n}", str(n))
                     return self._json(res)
                 except Exception as e:
                     return self._json({"error": str(e)}, 502)
