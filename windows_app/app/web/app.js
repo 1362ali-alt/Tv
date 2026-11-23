@@ -2093,6 +2093,12 @@ async function showPlayerError(extra, opts) {
       ? "multicast probe: " + mc.bytes + " bytes / 2.5s"
       : "multicast probe: not run yet");
   }
+  try {
+    const cn = await (await fetch("/api/connection")).json();
+    const cl = cn && cn.client;
+    if (cl && cl.enable === false)
+      lines.push("server client record: enable=False (MAC ثبت/فعال نشده!)");
+  } catch (e) {}
   if (extra) lines.push(String(extra).slice(0, 160));
   const det = $("#player-error-detail");
   if (det) {

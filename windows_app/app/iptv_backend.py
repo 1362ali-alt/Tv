@@ -1630,6 +1630,22 @@ def diagnose():
         "می‌کند و تا پاسخ نگیرد وارد منوی پخش زنده نمی‌شود. آدرس هداند را در تنظیمات "
         "وارد کنید یا «جستجوی هداند» را بزنید.")
 
+    # 3b. the registration verdict the field log finally exposed (2026-11-23):
+    #     GetClient answers name=<mac> enable=False - the head-end keeps a
+    #     client record for this MAC but marks it DISABLED. Control plane
+    #     still serves it (settings, 186 channels) while the media plane
+    #     (multicast + RTSP) stays silent: the classic unregistered-client
+    #     signature. Say it out loud instead of letting the resident guess.
+    cl = conn.get("client") or {}
+    if isinstance(cl, dict) and cl:
+        en = cl.get("enable")
+        chk("client_registration", en is not False,
+            "GetClient: name=%s enable=%s" % (cl.get("name"), en),
+            "" if en is not False else
+            ("سرور کنترل پروندهٔ این MAC را با enable=False برگرداند: دستگاه در پنل "
+             "پاردیک ثبت/فعال نشده و سرویس رسانه فقط به کلاینت‌های فعال جریان می‌دهد. "
+             "متن پاردیک در README پورتابل را بفرستید تا همین MAC فعال شود."))
+
     # 4. the platform contract: GetSettings then the live tables
     st = None
     if tcp_ms is not None:
@@ -3215,6 +3231,8 @@ class Handler(BaseHTTPRequestHandler):
                     res = fn(**params) if params else fn()
                     if ep == "live_tv" and isinstance(res, list):
                         schedule_multicast_probe(res)
+                        if time.time() - TIMESHIFT["at"] > 300:
+                            probe_timeshift_background()
                         if TIMESHIFT["tmpl"]:
                             for b in res:
                                 if isinstance(b, dict) and not b.get("hlsUrl"):
