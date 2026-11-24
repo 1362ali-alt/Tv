@@ -264,6 +264,19 @@ function Get-BackendBuild {
     }
     return ""
 }
+function Get-BackendRoot {
+    # /api/fw_state (build 807287d+) names the folder of the backend that
+    # actually owns the port - the only witness that survives a self-updated
+    # copy serving the VERY SAME stamp from somewhere else.
+    $body = Invoke-LocalApi "/api/fw_state"
+    if ($body) {
+        try {
+            $j = $body | ConvertFrom-Json
+            if ($j -and $j.root) { return [string]$j.root }
+        } catch { }
+    }
+    return ""
+}
 # A backend that answers /api/connection but runs OLD code (left over from a
 # half-failed install) would keep serving stale APIs forever - /api/config
 # carries the zip's build stamp, so a mismatch means "restart the backend".
@@ -350,6 +363,37 @@ if ($wantBuild) {
         Fail "A backend is running on port $port but reports build '$got' instead of '$wantBuild'. The diagnostics above name the process and quote _userdata\backend.log - send a photo of this whole window."
     }
     Log "backend verified: build $got on port $port"
+    # 23:08 field capture: a copy in ANOTHER folder (the in-app updater's
+    # AppData swap area, or an old portable folder whose backend never died)
+    # can hold 8787 with the VERY SAME stamp - stamp equality then reads as
+    # "verified" while the folder the resident double-clicked serves nothing
+    # and its launch-time UAC/marker logic never runs. If the serving root
+    # is not ours, retire it and take the port over.
+    $servRoot = Get-BackendRoot
+    $myRoot = $root
+    try { $myRoot = (Resolve-Path $root).Path } catch { }
+    if ($servRoot -and $myRoot -and
+        ($servRoot.TrimEnd("\") -ne $myRoot.TrimEnd("\"))) {
+        Log "port $port is served from ANOTHER folder: $servRoot (this launcher: $myRoot) - retiring it so the folder you opened is the one serving"
+        Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty OwningProcess -Unique |
+            ForEach-Object {
+                $op = Get-CimInstance Win32_Process -Filter "ProcessId=$_" -ErrorAction SilentlyContinue
+                if ($op -and $op.CommandLine -like "*iptv_backend*") {
+                    & taskkill /F /PID $_ 2>$null | Out-Null
+                } else {
+                    Log "root takeover: port owner PID $_ ($($op.Name)) is not an iptv backend - left running"
+                }
+            }
+        Start-Sleep -Milliseconds 1200
+        $up2 = Start-OurBackend
+        $got2 = Get-BackendBuild
+        if (-not $up2 -or $got2 -ne $wantBuild) {
+            Dump-PortDiagnostics
+            Fail "Another copy of PARDIK IPTV in $servRoot would not give up port $port. Run STOP.bat in THIS folder (or reboot once), then launch again."
+        }
+        Log "backend re-verified from THIS folder: build $got2"
+    }
 } elseif (-not $up) {
     Fail "The backend did not answer on port $port within 16 seconds. See $logfile and _userdata\backend.log."
 }

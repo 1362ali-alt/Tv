@@ -1656,8 +1656,9 @@ def diagnose():
     root = fw_root()
     chk("serving_root", "appdata" not in root.lower(), root,
         "" if "appdata" not in root.lower() else
-        ("پورت 8787 دست نسخهٔ نصبی قدیمی (AppData) است نه پوشهٔ پورتابلی که باز کردید؛ "
-         "STOP.bat بزنید، نسخهٔ نصبی را از Control Panel حذف کنید و PORTABLE.bat همین "
+        ("پورت 8787 دست پوشهٔ دیگری از همین برنامه است نه پوشه‌ای که باز کردید؛ STOP.bat "
+         "بزنید، میان‌بر PARDIK را از shell:startup و Task Manager>Startup غیرفعال کنید، "
+         "پوشهٔ AppData\\Local\\PARDIK-SMART-IPTV را rename کنید و PORTABLE.bat همین "
          "پوشه را اجرا کنید."))
 
     # 4. the platform contract: GetSettings then the live tables
