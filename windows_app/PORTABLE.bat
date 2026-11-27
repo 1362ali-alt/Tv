@@ -13,6 +13,10 @@ echo  PARDIK IPTV - portable, no install needed
 if exist "%~dp0build_info.json" type "%~dp0build_info.json"
 echo ==================================================
 if exist "%~dp0runtime\python\python.exe" goto RUN
+rem LITE test builds ship without the runtime: reuse the one an earlier
+rem portable folder or the updater's AppData copy already proved on this box
+if exist "%LOCALAPPDATA%\PARDIK-SMART-IPTV\runtime\python\python.exe" goto RUN
+for /d %%s in ("%~dp0..\*\runtime\python") do if exist "%%~s\python.exe" goto RUN
 echo Preparing the bundled python runtime...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install\bootstrap_runtime.ps1"
 if not exist "%~dp0runtime\python\python.exe" goto NORUNTIME

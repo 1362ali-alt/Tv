@@ -1958,6 +1958,25 @@ def launch_app(name):
     return {"ok": False, "error": "app not found"}
 
 
+def _reuse_roots():
+    """Earlier portable folders and the updater's AppData copy: the LITE test
+    zip ships without ffmpeg/VLC/runtime and reuses the binaries those folds
+    already proved on this machine (field request 2026-11-27: smaller zip)."""
+    roots = []
+    la = os.environ.get("LOCALAPPDATA")
+    if la:
+        roots.append(os.path.join(la, "PARDIK-SMART-IPTV"))
+    parent = os.path.dirname(os.path.dirname(HERE))
+    try:
+        for ent in sorted(os.listdir(parent))[:25]:
+            p = os.path.join(parent, ent)
+            if os.path.isdir(p) and p != os.path.dirname(HERE):
+                roots.append(p)
+    except Exception:
+        pass
+    return roots
+
+
 def find_vlc():
     """org.videolan.vlc on Android -> vlc.exe on Windows."""
     cands = [os.environ.get("IPTV_VLC")] if os.environ.get("IPTV_VLC") else []
@@ -1966,6 +1985,12 @@ def find_vlc():
     if os.path.isdir(_vd):
         for _ent in sorted(os.listdir(_vd)):
             cands.append(os.path.join(_vd, _ent, "vlc.exe"))
+    for r in _reuse_roots():
+        cands.append(os.path.join(r, "tools", "vlc", "vlc.exe"))
+        vd = os.path.join(r, "tools", "vlc")
+        if os.path.isdir(vd):
+            for ent in sorted(os.listdir(vd)):
+                cands.append(os.path.join(vd, ent, "vlc.exe"))
     if os.name == "nt":
         for base in (os.environ.get("ProgramFiles"),
                      os.environ.get("ProgramFiles(x86)"),
@@ -2091,6 +2116,8 @@ def find_ffmpeg():
     tools = os.path.join(os.path.dirname(HERE), "tools")
     cands.append(os.path.join(tools, "ffmpeg.exe"))
     cands.append(os.path.join(tools, "ffmpeg"))
+    for r in _reuse_roots():
+        cands.append(os.path.join(r, "tools", "ffmpeg.exe"))
     cands.append("ffmpeg")
     cands.append("ffmpeg.exe")
     for c in cands:

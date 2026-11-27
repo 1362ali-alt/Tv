@@ -13,8 +13,9 @@ case "$MODE" in
   residential) OUT="dist/PARDIK-IPTV-RonikaPalace-Kohak-Win10-x64-${VER}-${COMMIT}.zip" ;;
   hotel)       OUT="dist/PARDIK-SMART-IPTV-Win10-x64-${VER}-${COMMIT}.zip" ;;
   portable)    OUT="dist/PARDIK-IPTV-PORTABLE-${VER}-${COMMIT}.zip" ;;
+  lite)        OUT="dist/PARDIK-IPTV-PORTABLE-LITE-${VER}-${COMMIT}.zip" ;;
   source)      OUT="dist/PARDIK-SOURCE-${COMMIT}.zip" ;;
-  *) echo "unknown MODE=$MODE (residential|hotel|portable|source)" >&2; exit 1 ;;
+  *) echo "unknown MODE=$MODE (residential|hotel|portable|lite|source)" >&2; exit 1 ;;
 esac
 if [ "$MODE" = "source" ]; then
     # the whole program source, for review: app, assets, installer, docs
@@ -57,29 +58,39 @@ cp windows_app/PARDIK-SMART-IPTV.bat windows_app/PARDIK-SMART-IPTV-silent.vbs \
 COMMIT=$(git -C /home/user/Tv rev-parse --short HEAD 2>/dev/null || echo unknown)
 printf '{"commit": "%s", "date": "%s"}\n' "$COMMIT" "$(date -u +%Y%m%d-%H%M)" \
   > "$STAGE/PARDIK-SMART-IPTV/build_info.json"
-if [ "$MODE" = "portable" ]; then
+if [ "$MODE" = "portable" ] || [ "$MODE" = "lite" ]; then
     # everything stays inside the folder: data_dir() sees portable.flag
     printf 'portable\r\n' > "$STAGE/PARDIK-SMART-IPTV/portable.flag"
     cp windows_app/PORTABLE.bat "$STAGE/PARDIK-SMART-IPTV/PORTABLE.bat"
     cp windows_app/STOP.bat "$STAGE/PARDIK-SMART-IPTV/STOP.bat"
     cp windows_app/README-PORTABLE-FA.md "$STAGE/PARDIK-SMART-IPTV/README-PORTABLE-FA.md"
-    # FULL bundle: python + ffmpeg + vlc ship INSIDE the zip, so the target
-    # machine needs no internet, no installer, no preinstalled anything.
-    # tools/fetch_portable_deps.sh populates vendor/ before this runs.
-    if [ ! -f vendor/python/python.exe ] || [ ! -f vendor/ffmpeg.exe ] \
-       || [ ! -f vendor/vlc/vlc.exe ]; then
-        bash tools/fetch_portable_deps.sh
+    if [ "$MODE" = "portable" ]; then
+        # FULL bundle: python + ffmpeg + vlc ship INSIDE the zip, so the target
+        # machine needs no internet, no installer, no preinstalled anything.
+        # tools/fetch_portable_deps.sh populates vendor/ before this runs.
+        if [ ! -f vendor/python/python.exe ] || [ ! -f vendor/ffmpeg.exe ] \
+           || [ ! -f vendor/vlc/vlc.exe ]; then
+            bash tools/fetch_portable_deps.sh
+        fi
+        mkdir -p "$STAGE/PARDIK-SMART-IPTV/runtime"
+        cp -r vendor/python "$STAGE/PARDIK-SMART-IPTV/runtime/python"
+        cp vendor/ffmpeg.exe "$STAGE/PARDIK-SMART-IPTV/tools/ffmpeg.exe"
+        cp -r vendor/vlc "$STAGE/PARDIK-SMART-IPTV/tools/vlc"
+        if [ -f vendor/PROVENANCE.txt ]; then
+            cp vendor/PROVENANCE.txt "$STAGE/PARDIK-SMART-IPTV/PROVENANCE.txt"
+        fi
+        # user-verifiable integrity list of every bundled runtime file
+        (cd "$STAGE/PARDIK-SMART-IPTV" && find runtime tools -type f -print0 |
+            sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
+    else
+        # LITE test bundle (field request 2026-11-27): the ~200 MB of python
+        # runtime + ffmpeg + VLC are ALREADY on the field machine (earlier
+        # portable folders and the updater's AppData copy), so this zip ships
+        # without them and the launcher/backend reuse them in place.
+        printf 'lite\r\n' > "$STAGE/PARDIK-SMART-IPTV/lite.flag"
+        (cd "$STAGE/PARDIK-SMART-IPTV" && find tools -type f -print0 2>/dev/null |
+            sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
     fi
-    mkdir -p "$STAGE/PARDIK-SMART-IPTV/runtime"
-    cp -r vendor/python "$STAGE/PARDIK-SMART-IPTV/runtime/python"
-    cp vendor/ffmpeg.exe "$STAGE/PARDIK-SMART-IPTV/tools/ffmpeg.exe"
-    cp -r vendor/vlc "$STAGE/PARDIK-SMART-IPTV/tools/vlc"
-    if [ -f vendor/PROVENANCE.txt ]; then
-        cp vendor/PROVENANCE.txt "$STAGE/PARDIK-SMART-IPTV/PROVENANCE.txt"
-    fi
-    # user-verifiable integrity list of every bundled runtime file
-    (cd "$STAGE/PARDIK-SMART-IPTV" && find runtime tools -type f -print0 |
-        sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
 fi
 # launch.ps1 reads mode.txt to pick the deployment flavour (IPTV_MODE)
 printf '%s\r\n' "$MODE" > "$STAGE/PARDIK-SMART-IPTV/mode.txt"

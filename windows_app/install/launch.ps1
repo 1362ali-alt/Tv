@@ -84,6 +84,19 @@ function Find-Python {
     # system python of unknown age/state - bundled first, always.
     $bundled = Join-Path $root "runtime\python\python.exe"
     if (Test-Path $bundled) { return $bundled }
+    # LITE test builds ship without the 22 MB runtime: reuse the identical
+    # embedded runtime an earlier portable folder or the updater's AppData
+    # copy already proved on this machine - zero download, same interpreter.
+    $re = Join-Path $env:LOCALAPPDATA "PARDIK-SMART-IPTV\runtime\python\python.exe"
+    if (Test-Path $re) { Log "reusing python runtime from $re"; return $re }
+    $parent = Split-Path -Parent $root
+    if ($parent -and (Test-Path $parent)) {
+        foreach ($d in (Get-ChildItem -Directory -Path $parent -ErrorAction SilentlyContinue | Select-Object -First 25)) {
+            if ($d.FullName -eq $root) { continue }
+            $c = Join-Path $d.FullName "runtime\python\python.exe"
+            if (Test-Path $c) { Log "reusing python runtime from $c"; return $c }
+        }
+    }
     foreach ($c in @("py","python","python3")) {
         $p = Get-Command $c -ErrorAction SilentlyContinue
         if ($p) {
@@ -114,6 +127,18 @@ function Ensure-FFmpeg {
     if (Test-Path $ff) { return $ff }
     $sysff = Get-Command ffmpeg -ErrorAction SilentlyContinue
     if ($sysff) { return $sysff.Source }
+    # LITE reuse, same idea as the runtime: an earlier folder or the updater
+    # copy already holds the exact static build this port was tested with.
+    $reff = Join-Path $env:LOCALAPPDATA "PARDIK-SMART-IPTV\tools\ffmpeg.exe"
+    if (Test-Path $reff) { Log "reusing ffmpeg from $reff"; return $reff }
+    $parent = Split-Path -Parent $root
+    if ($parent -and (Test-Path $parent)) {
+        foreach ($d in (Get-ChildItem -Directory -Path $parent -ErrorAction SilentlyContinue | Select-Object -First 25)) {
+            if ($d.FullName -eq $root) { continue }
+            $c = Join-Path $d.FullName "tools\ffmpeg.exe"
+            if (Test-Path $c) { Log "reusing ffmpeg from $c"; return $c }
+        }
+    }
     # No ffmpeg yet. imageio-ffmpeg ships a static Windows build inside its
     # wheel, so fetch it from PyPI. Two bugs made this always fail before:
     #   * "files.pythonhosted.org/packages/source/<i>/<pkg>/<file>.whl" is the
