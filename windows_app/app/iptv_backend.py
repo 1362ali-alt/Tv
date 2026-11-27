@@ -1856,6 +1856,7 @@ def diagnose():
         {"number": c.get("number"), "name": c.get("name") or c.get("name_1") or "",
          "src": norm_media_url(c.get("hlsUrl") or c.get("httpUrl") or c.get("url") or c.get("rtspUrl") or "")[:120],
          "kind": classify(c.get("hlsUrl") or c.get("httpUrl") or c.get("url") or c.get("rtspUrl") or ""),
+         "node": "channel" if (c.get("hlsUrl") or c.get("httpUrl") or c.get("url") or c.get("rtspUrl")) else "menu",
          "urls": {k: norm_media_url(c.get(k)) for k in ("url", "rtspUrl", "hlsUrl", "httpUrl") if c.get(k)}}
         for c in chans[:6]]
     out["multicast"] = dict(MULTICAST)

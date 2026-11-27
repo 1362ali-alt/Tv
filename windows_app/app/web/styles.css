@@ -220,6 +220,11 @@ body{
 .pkg-item,.rec-item,.type-item{background:var(--panel); border:1px solid rgba(255,255,255,.18); border-radius:12px;
   padding:.9em 1.4em; cursor:pointer; display:flex; align-items:center; gap:1em; min-width:12em;}
 .pkg-item .num{color:var(--gold); font-weight:700;}
+.crumbs{padding:.9em 2.4em 0; color:var(--gold-2); font-size:.95em;}
+.pkg-item.pkg-menu{border-style:dashed;}
+.pkg-item .tagproto{margin-inline-start:auto; color:var(--gold-2); font-size:.82em;
+  border:1px solid rgba(255,255,255,.22); border-radius:8px; padding:.12em .6em; white-space:nowrap;}
+.pkg-item .price{color:var(--gold-2); font-size:.9em;}
 .focusgrid{display:grid; grid-template-columns:repeat(auto-fill,minmax(11em,1fr)); gap:1.2em; padding:1.2em 2.4em; overflow:auto;}
 .poster{background:var(--panel); border-radius:12px; overflow:hidden; cursor:pointer; position:relative; border:1px solid rgba(255,255,255,.14);}
 .poster img{width:100%; aspect-ratio:2/3; object-fit:cover; display:block; background:#111;}

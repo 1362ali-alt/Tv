@@ -18,6 +18,7 @@ const S = {
   menu: [],
   channels: [],
   packages: [],
+  nav: null, navRows: [],
   stack: [],
   cur: null,
   playerCtx: null,
@@ -260,6 +261,7 @@ function back() {
   if ($("#epg-detail").hidden === false) { $("#epg-detail").hidden = true; focusFirst(S.cur); return; }
   if ($("#epg-panel").hidden === false) { $("#epg-panel").hidden = true; focusFirst(S.cur); return; }
   if ($("#side-list").hidden === false) { $("#side-list").hidden = true; focusFirst(S.cur); return; }
+  if (S.cur === "scr-livepkg" && S.nav && S.nav.stack && S.nav.stack.length) { navPop(); return; }
   if (S.cur === "scr-player" && S.playerCtx && S.playerCtx.kind === "live") {
     // Android: press back twice to exit
     const now = Date.now();
@@ -1751,56 +1753,137 @@ function m3uActive() {
    panel). isShowPackage -> showPackageStyle 1 ? LivePlayerWithPackageActivity
    (the player, packages switchable inside it) : LivePackageActivity (the list). */
 async function openLive() {
-  const st = S.settings || {};
   try {
     if (m3uActive()) {
       S.packages = m3uPackages();
-      renderPackages();
-      show("scr-livepkg");
+      navReset(); renderNav(); show("scr-livepkg");
       return;
     }
-    if (st.showPackage) {
-      S.packages = (await apiGet("live_packages")) || [];
-      if (Number(st.showPackageStyle) === 1 && S.packages.length) {
-        await loadChannels(S.packages[0].id);
-        startPlayer("live");
-        return;
-      }
-      renderPackages();
-      show("scr-livepkg");
-    } else {
-      await loadChannels(-1);
-      startPlayer("live");
+    S.packages = (await apiGet("live_packages")) || [];
+    if (S.packages.length) {
+      /* Pardik's own first screen IS the category split; jumping straight
+         into the player (showPackageStyle 1) or skipping menus (showPackage
+         off) is what made the port feel "worse than Pardik" in the field
+         report of 2026-11-24. The menu browser is now the entry point for
+         every head-end that publishes packages; showPackageStyle only
+         decides the in-player package bar. */
+      navReset(); renderNav(); show("scr-livepkg");
+      return;
     }
+    await loadChannels(-1);
+    if ((S.navRows || []).some(isMenu)) {
+      navReset();
+      S.nav.stack.push({ id: -1, title: t("live", "پخش زنده"), kind: "root" });
+      S.nav.rows = S.navRows;
+      renderNav(); show("scr-livepkg");
+      return;
+    }
+    startPlayer("live");
   } catch (e) { toast(t("status_disconnected", "خطا در دریافت کانال‌ها")); }
 }
-function renderPackages() {
-  const list = $("#pkg-list"); list.innerHTML = "";
-  S.packages.forEach(p => {
-    const d = el("div", "pkg-item focusable");
-    d.appendChild(el("span", "num", String(p.number != null ? p.number : p.id)));
-    d.appendChild(el("span", null, nm(p) || p.name || ""));
-    if (p.price) d.appendChild(el("span", "price", String(p.price)));
-    d.onclick = async () => { await loadChannels(p.id); startPlayer("live"); };
+/* --- the Pardik menu tree: packages -> submenus -> channels ---------------
+   Field report 2026-11-24: clicking a CATEGORY row started "a film that
+   never plays", because pickSource* synthesized rtsp://…/live/N.sdp from
+   `number` for beans that carry NO source at all - and those sourceless
+   beans are exactly Pardik's menu/submenu nodes. A bean is a channel only
+   when the head-end published a source; everything else is a menu node and
+   drills down (GetLiveTV?id, then a package match) instead of playing. */
+function beanSources(c) {
+  if (!c) return [];
+  return [c.hlsUrl, c.rtspUrl, c.httpUrl, c.url]
+    .filter(u => typeof u === "string" && u.trim());
+}
+function isChan(c) { return !!c && (beanSources(c).length > 0 || !!c._m3u); }
+function isMenu(c) { return !!c && !isChan(c); }
+function navReset() { S.nav = { stack: [], rows: [] }; }
+async function fetchRows(packageId) {
+  if (typeof packageId === "string" && packageId.indexOf("m3u:") === 0) {
+    const g = ((S.packages || []).find(p => p.id === packageId) || {})._group;
+    return (S.m3uChannels || []).filter(c => c.group === g).map(m3uChannel);
+  }
+  if (packageId === -1 && m3uActive()) return (S.m3uChannels || []).map(m3uChannel);
+  return (await apiGet("live_tv", { packageId: packageId })) || [];
+}
+async function navOpen(node) {
+  let rows = [];
+  try { rows = await fetchRows(node.id); } catch (e) { rows = []; }
+  if (!rows.length) {
+    const pkg = (S.packages || []).find(p =>
+      String(p.id) === String(node.id) || (nm(p) || "") === (node.title || ""));
+    if (pkg && pkg.id !== node.id) {
+      try { rows = await fetchRows(pkg.id); } catch (e) { rows = []; }
+    }
+  }
+  if (!rows.length) {
+    toast(t("menu_empty", "این منو خالی است؛ هداند برای آن چیزی برنگرداند."));
+    return;
+  }
+  S.nav.stack.push(node);
+  S.nav.rows = rows;
+  renderNav();
+  focusFirst("scr-livepkg");
+}
+function navPop() {
+  if (!S.nav || !S.nav.stack.length) return;
+  S.nav.stack.pop();
+  S.nav.rows = [];
+  renderNav();
+  focusFirst("scr-livepkg");
+}
+function renderNav() {
+  const list = $("#pkg-list");
+  if (!list || !S.nav) return;
+  list.innerHTML = "";
+  const crumbs = $("#pkg-crumbs");
+  if (crumbs) {
+    crumbs.hidden = !S.nav.stack.length;
+    crumbs.textContent = ["منوها"].concat(S.nav.stack.map(s => s.title || "")).join(" › ");
+  }
+  const atRoot = !S.nav.stack.length;
+  const rows = atRoot ? (S.packages || []) : S.nav.rows;
+  if (!rows.length) {
+    list.appendChild(el("div", "pkg-item", t("no_data", "اطلاعاتی موجود نیست")));
+    return;
+  }
+  rows.forEach(r => {
+    const menu = atRoot || isMenu(r);
+    const d = el("div", "pkg-item focusable" + (menu ? " pkg-menu" : ""));
+    if (r.number != null) d.appendChild(el("span", "num", String(r.number)));
+    d.appendChild(el("span", null, nm(r) || r.name || ""));
+    if (atRoot && r.content) d.appendChild(el("span", "tagproto", String(r.content).slice(0, 40)));
+    else if (menu) d.appendChild(el("span", "tagproto", "منو ▸"));
+    else {
+      const proto = classify(beanSources(r)[0] || "");
+      d.appendChild(el("span", "tagproto",
+        proto === "udp" ? "مولتی‌کست" : proto));
+      if (S.favourites.indexOf(r.id) >= 0) d.appendChild(el("span", "tagproto", "★"));
+    }
+    if (r.price) d.appendChild(el("span", "price", String(r.price)));
+    d.onclick = async () => {
+      if (menu) {
+        await navOpen({ id: r.id, title: nm(r) || r.name || "",
+                        kind: atRoot ? "pkg" : "menu" });
+        return;
+      }
+      S.channels = S.nav.rows.filter(isChan);
+      startPlayer("live", r, S.channels);
+      S.playerCtx.index = Math.max(0, S.channels.indexOf(r));
+    };
     list.appendChild(d);
   });
 }
 async function loadChannels(packageId) {
-  if (typeof packageId === "string" && packageId.indexOf("m3u:") === 0) {
-    const g = ((S.packages || []).find(p => p.id === packageId) || {})._group;
-    S.channels = (S.m3uChannels || []).filter(c => c.group === g).map(m3uChannel);
-  } else if (packageId === -1 && m3uActive()) {
-    S.channels = (S.m3uChannels || []).map(m3uChannel);
-  } else {
-    S.channels = (await apiGet("live_tv", { packageId: packageId })) || [];
-  }
+  const rows = await fetchRows(packageId);
+  S.navRows = rows;
+  S.channels = rows.filter(isChan);
   S.channels.forEach(c => { if (S.favourites.indexOf(c.id) >= 0) c._fav = true; });
 }
 function pickSourceAll(item) {
   const proto = ((S.settings && S.settings.protocol) || "rtsp").toLowerCase();
   let rtsp = item.rtspUrl || "";
   const hls = item.hlsUrl || "", http = item.httpUrl || "", url = item.url || "";
-  if (!rtsp && item.number != null && S.config && S.config.settings) {
+  if (!rtsp && item.number != null && S.config && S.config.settings &&
+      beanSources(item).length) {
     rtsp = "rtsp://" + (S.config.settings.server_ip || "") + ":" +
       (S.config.settings.rtsp_port || 554) + "/live/" + item.number + ".sdp";
   }
@@ -1829,7 +1912,8 @@ function pickSourceLegacy(item) {
   const proto = ((S.settings && S.settings.protocol) || "rtsp").toLowerCase();
   let rtsp = item.rtspUrl || "";
   const hls = item.hlsUrl || "", http = item.httpUrl || "", url = item.url || "";
-  if (!rtsp && item.number != null && S.config && S.config.settings) {
+  if (!rtsp && item.number != null && S.config && S.config.settings &&
+      beanSources(item).length) {
     /* IptvSP.getLiveRtspUrl(n): the APK's UNICAST feed - rtsp://ip:554/live/n.sdp.
        A bean that only carries udp:// must not drag the player onto multicast:
        multicast dies at firewalls and subnet borders, unicast rtsp does not. */
@@ -2610,7 +2694,8 @@ async function openRec() {
   c1.innerHTML = ""; c2.innerHTML = ""; c3.innerHTML = "";
   try {
     let chs = (await apiGet("rec_tv")) || [];
-    if (!Array.isArray(chs) || !chs.length) chs = (await apiGet("live_tv", { packageId: -1 })) || [];
+    if (!Array.isArray(chs) || !chs.length)
+      chs = ((await apiGet("live_tv", { packageId: -1 })) || []).filter(isChan);
     chs.slice(0, 80).forEach(c => {
       const d = el("div", "rec-item focusable");
       d.textContent = (c.number != null ? c.number + "  " : "") + (nm(c) || c.name || "");

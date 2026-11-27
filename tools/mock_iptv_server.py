@@ -94,6 +94,10 @@ PACKAGES = [
      "content": "بازپخش شبکه‌های ماهواره‌ای از هداند مجتمع", "content_1": "Satellite channels restreamed by the complex head-end",
      "price": 0, "clientIds": "", "tvIds": "7,8,9,10", "imagePath": "",
      "nameVisible": True, "imageVisible": False},
+    {"id": 3, "number": 3, "name": "کانال‌های خبری", "name_1": "News channels",
+     "content": "یک زیرمنوی واقعی داخل بسته", "content_1": "A real submenu inside a package",
+     "price": 0, "clientIds": "", "tvIds": "50,51,52", "imagePath": "",
+     "nameVisible": True, "imageVisible": False},
 ]
 
 
@@ -129,7 +133,22 @@ def channels():
         tv(10, "دویچه وله", "DW English", 10, {"httpUrl": vod + "welcome.mp4"}),
         # a multicast-fed channel, like the real building head-end hands out
         tv(91, "شبکه مولتی‌کست", "Multicast Test", 11, {"url": "udp://224.3.0.2:10002"}, ts=True),
+        # --- Pardik menu nodes: beans with name/number but NO source at all.
+        # The field head-end mixes these into GetLiveTV; the port must render
+        # them as drill-down menus, never as "a film that never plays".
+        _tv(50, "زیرمنوی خبری", 90, {}),
+        tv(51, "بی‌بی‌سی فارسی", "BBC Persian", 91, {"httpUrl": vod + "test.mp4"}),
+        tv(52, "یورونیوز", "Euronews", 92, {"hlsUrl": vod + "test.m3u8"}),
     ]
+
+
+SUBMENUS = {
+    "50": [
+        _tv(53, "خبر شبکهٔ تهران", 93, {}),   # nested empty-ish menu node
+        _tv(54, "PRESS TV", 94, {"httpUrl": "http://127.0.0.1:%d/iptv2/vod/test.ts" % PORT}),
+        _tv(55, "العالم", 95, {"url": "udp://224.3.0.3:10003"}),
+    ],
+}
 
 
 VOD_TYPES = [
@@ -461,6 +480,8 @@ class H(BaseHTTPRequestHandler):
                 if pkg and pkg["tvIds"]:
                     ids = set(int(x) for x in pkg["tvIds"].split(","))
                     chs = [c for c in chs if c["id"] in ids]
+            if pid in SUBMENUS:
+                return self._j(SUBMENUS[pid])
             return self._j(chs)
         if p == "/iptv2/manager/GetLiveStatus":
             return self._j(channels())
