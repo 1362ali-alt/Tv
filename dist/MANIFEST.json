@@ -6,5 +6,12 @@
   "commit": "e951403",
   "url": "https://raw.githubusercontent.com/1362ali-alt/Tv/arena/8d696e12-tv/dist/PARDIK-IPTV-PORTABLE-2.7.2.06-e951403.zip"
  },
- "commit": "e951403"
+ "commit": "214a319",
+ "lite": {
+  "name": "PARDIK-IPTV-PORTABLE-LITE-2.7.2.06-214a319.zip",
+  "sha256": "4919e1709d48a33e862b999e476da9497d8907612328765ea719025d1fc3042e",
+  "size": 12459760,
+  "commit": "214a319",
+  "url": "https://raw.githubusercontent.com/1362ali-alt/Tv/arena/8d696e12-tv/dist/PARDIK-IPTV-PORTABLE-LITE-2.7.2.06-214a319.zip"
+ }
 }
