@@ -32,7 +32,8 @@ if exist "%ProgramFiles%\VideoLAN\VLC\vlc.exe" netsh advfirewall firewall add ru
 rem the multicast probe runs INSIDE python - without its own rule the probe
 rem can read 0 bytes while playback through ffmpeg is fine, or vice versa
 if exist "%RTPY%" netsh advfirewall firewall add rule name="PARDIK IPTV python multicast" dir=in action=allow program="%RTPY%" enable=yes profile=any >nul 2>&1
-netsh advfirewall firewall add rule name="PARDIK IPTV udp multicast 10000-10200" dir=in action=allow protocol=udp localport=10000-10200 enable=yes profile=any >nul 2>&1
+netsh advfirewall firewall delete rule name="PARDIK IPTV udp multicast 10000-10200" >nul 2>&1
+netsh advfirewall firewall add rule name="PARDIK IPTV udp multicast 10000-10999" dir=in action=allow protocol=udp localport=10000-10999 enable=yes profile=any >nul 2>&1
 echo.
 echo Rules registered for:
 netsh advfirewall firewall show rule name="PARDIK IPTV ffmpeg multicast" | findstr /i "Program"

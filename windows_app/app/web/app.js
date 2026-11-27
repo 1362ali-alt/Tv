@@ -2174,8 +2174,10 @@ async function showPlayerError(extra, opts) {
       if (cf && cf.multicast) mc = cf.multicast;
     } catch (e) {}
     lines.push(mc && mc.bytes >= 0
-      ? "multicast probe: " + mc.bytes + " bytes / 2.5s" +
-        (mc.mode ? " (" + mc.mode + ")" : "")
+      ? "multicast probe: " + mc.bytes + " bytes / 3s" +
+        (mc.mode ? " (" + mc.mode + ")" : "") +
+        (mc.iface ? " iface=" + mc.iface
+                  : (mc.tried && mc.tried.length ? " tried " + mc.tried.join("/") : ""))
       : "multicast probe: not run yet");
     if (mc && mc.groups && mc.groups.length > 1)
       lines.push("groups flowed: " +

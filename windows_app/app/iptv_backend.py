@@ -1646,6 +1646,13 @@ def diagnose():
              "پاردیک ثبت/فعال نشده و سرویس رسانه فقط به کلاینت‌های فعال جریان می‌دهد. "
              "متن پاردیک در README پورتابل را بفرستید تا همین MAC فعال شود."))
 
+    live_ok, live_det = fw_live_rules()
+    if os.name == "nt":
+        chk("fw_rules_live", bool(live_ok),
+            "windows says: %s" % live_det,
+            "" if live_ok else
+            ("قاعدهٔ UDP مولتی‌کست در فایروال ویندوز وجود ندارد/غیرفعال است؛ دکمهٔ "
+             "«ثبت فایروال (UAC)» یا install\\allow_multicast.bat با Run as administrator."))
     fw_ok = fw_marker_present()
     chk("firewall_rules", fw_ok,
         "marker=%s root=%s" % ("present" if fw_ok else "missing", fw_root()),
@@ -1815,7 +1822,7 @@ def diagnose():
     murl = next((c.get("url") or "" for c in chans
                  if (c.get("url") or "").startswith(("udp://", "rtp://"))), "")
     if murl:
-        got, merr = _multicast_probe(murl, ip)
+        got, merr = _multicast_probe(murl)
         MULTICAST.update(url=murl, bytes=got, at=time.time(), error=merr)
         chk("multicast_recv", got > 0,
             ("%s → %d بایت در ۲٫۵ ثانیه (join روی %s، %s)"
@@ -1980,10 +1987,11 @@ def play_with_vlc(url, title=""):
     vlc = find_vlc()
     if not vlc or not url:
         return {"ok": False, "installed": bool(vlc), "reason": "not_installed"}
-    args = [vlc, "--play-and-exit", "--no-video-title-show"]
+    args = [vlc, "--play-and-exit", "--no-video-title-show",
+            "--no-autoupdate"]
     if title:
         args += ["--meta-title=" + title]
-    lip = NETWORK.get("ip") or ""
+    lip = MULTICAST.get("iface") or NETWORK.get("ip") or ""
     if url.startswith(("udp://", "rtp://")) and lip and not lip.startswith("169.254."):
         args += ["--miface-addr", lip]
         m = re.match(r"(udp|rtp)://([^@:/?]+):", url)
@@ -2298,7 +2306,7 @@ def udp_bind_url(url):
     interface, so hand it the wired LAN address we already know."""
     if not url or not url.startswith(("udp://", "rtp://")):
         return url
-    lip = NETWORK.get("ip") or ""
+    lip = MULTICAST.get("iface") or NETWORK.get("ip") or ""
     if not lip or lip.startswith("169.254."):
         # the NIC may have gotten its address only after boot probed it
         try:
@@ -2311,7 +2319,7 @@ def udp_bind_url(url):
 
 
 MULTICAST = {"url": "", "bytes": -1, "at": 0.0, "error": "", "mode": "",
-           "groups": []}
+           "groups": [], "iface": "", "tried": []}
 
 # Field capture 23:08: the launcher's one-shot UAC never fired because port
 # 8787 was already held by the self-updated INSTALLED copy serving from its
@@ -2447,7 +2455,7 @@ def schedule_multicast_probe(chans, force=False):
     def run():
         groups = []
         for u in urls:
-            got, err = _multicast_probe(u, NETWORK.get("ip") or "")
+            got, err = _multicast_probe(u)
             groups.append({"url": u, "bytes": got, "error": err,
                            "mode": MULTICAST.get("mode") or ""})
         got, err = groups[0]["bytes"], groups[0]["error"]
@@ -2468,7 +2476,86 @@ def schedule_multicast_probe(chans, force=False):
     threading.Thread(target=run, daemon=True, name="mc-probe").start()
 
 
-def _multicast_probe(url, local_ip, secs=2.5):
+IFACES = {"list": [], "at": 0.0}
+
+
+def mcast_ifaces():
+    """Every plausible join interface, detected IP first.
+
+    2026-11-27 field night: VLC (pinned like us) received the sports channel
+    while python counted 0 bytes on THREE groups with the firewall port rule
+    present - the one variable left is WHICH adapter the membership lands on
+    (the taskbar VPN badge is on in every capture). So the probe now walks
+    every IPv4 the machine owns plus the default join, and reports the
+    winner so ffmpeg/VLC can pin to the interface that actually flows."""
+    now = time.time()
+    if IFACES["list"] and now - IFACES["at"] < 300:
+        return IFACES["list"]
+    ips = []
+
+    def add(ip):
+        ip = (ip or "").strip()
+        if ip and not ip.startswith(("127.", "169.254.")) and ip not in ips:
+            ips.append(ip)
+    add(NETWORK.get("ip") or "")
+    try:
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             "(Get-NetIPAddress -AddressFamily IPv4).IPAddress"],
+            capture_output=True, timeout=8,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        for line in (out.stdout or b"").decode("utf-8", "ignore").splitlines():
+            add(line)
+    except Exception:
+        pass
+    if len(ips) < 2:
+        try:
+            for info in socket.getaddrinfo(socket.gethostname(), None):
+                try:
+                    add(info[4][0])
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    if not ips:
+        ips = ["0.0.0.0"]
+    IFACES.update(list=ips, at=now)
+    return ips
+
+
+FWLIVE = {"at": 0.0, "ok": None, "detail": ""}
+
+
+def fw_live_rules():
+    """Ask WINDOWS itself whether the multicast rules exist and are enabled -
+    the marker file only says the bat ran once; rules can be removed later by
+    policy/AV, and a ghost folder can hold a marker of its own."""
+    now = time.time()
+    if FWLIVE["ok"] is not None and now - FWLIVE["at"] < 120:
+        return FWLIVE["ok"], FWLIVE["detail"]
+    if os.name != "nt":
+        FWLIVE.update(at=now, ok=True, detail="n/a (not windows)")
+        return True, "n/a"
+    ok, detail = False, ""
+    try:
+        out = subprocess.run(
+            ["netsh", "advfirewall", "firewall", "show", "rule",
+             "name=PARDIK IPTV udp multicast 10000-10999"],
+            capture_output=True, timeout=10,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        txt = (out.stdout or b"").decode("utf-8", "ignore")
+        if "Yes" in txt or "Enabled" in txt:
+            ok = "Enabled:              Yes" in txt or "Yes" in txt
+            detail = "rule present"
+        else:
+            detail = "rule missing"
+    except Exception as e:
+        detail = "query failed: %s" % e
+    FWLIVE.update(at=now, ok=ok, detail=detail)
+    return ok, detail
+
+
+def _multicast_probe(url, secs=3.0):
     """Join the group like a player would and count bytes for `secs`.
 
     Two bind styles: the field proof of 2026-11-23 (bundled VLC played the
@@ -2480,9 +2567,11 @@ def _multicast_probe(url, local_ip, secs=2.5):
     if not m:
         return 0, "bad url"
     grp, port = m.group(1), int(m.group(2))
-    iface = local_ip if local_ip and not local_ip.startswith("169.254.") else "0.0.0.0"
+    ifaces = list(mcast_ifaces())
+    if "0.0.0.0" not in ifaces:
+        ifaces.append("0.0.0.0")
 
-    def attempt(bind_addr, secs):
+    def attempt(bind_addr, iface, secs):
         sk = None
         try:
             sk = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -2510,15 +2599,22 @@ def _multicast_probe(url, local_ip, secs=2.5):
             except Exception:
                 pass
 
-    got, err = attempt("", secs)
-    mode = "any-bind" if got else "none"
+    got, err, win, mode = 0, "", "", "none"
+    for iface in ifaces:
+        g, e = attempt("", iface, secs)
+        if g:
+            got, err, win, mode = g, "", iface, "any-bind"
+            break
+        err = err or e
     if not got:
-        got2, err2 = attempt(grp, secs)
-        if got2:
-            got, err, mode = got2, err2, "group-bind"
+        g2, e2 = attempt(grp, ifaces[0], secs)
+        if g2:
+            got, err, win, mode = g2, "", ifaces[0], "group-bind"
         else:
-            err = err or err2
+            err = err or e2
     MULTICAST["mode"] = mode
+    MULTICAST["iface"] = win
+    MULTICAST["tried"] = ifaces
     return got, err
 
 
